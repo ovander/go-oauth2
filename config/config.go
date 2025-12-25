@@ -1,0 +1,120 @@
+package config
+
+import (
+	"os"
+	"strconv"
+	"time"
+
+	"github.com/joho/godotenv"
+)
+
+type Config struct {
+	// Server
+	Port        string
+	AdminPort   string // Separate port for admin API (set to "" to disable)
+	Host        string
+	Environment string
+
+	// Database
+	DatabaseURL string
+	DBPoolSize  int
+
+	// JWT
+	JWTSecret   string
+	OAuthIssuer string
+
+	// Token TTLs
+	AccessTokenTTL  time.Duration
+	RefreshTokenTTL time.Duration
+	EmailTokenTTL   time.Duration
+	ResetTokenTTL   time.Duration
+	InviteTokenTTL  time.Duration
+
+	// Security
+	MaxFailedAttempts     int
+	LockoutDurationSecs   int
+	SecretKeyBase         string
+
+	// Rate Limiting
+	RateLimitLogin       int
+	RateLimitLoginWindow time.Duration
+	RateLimitSignup      int
+	RateLimitSignupWindow time.Duration
+
+	// Email/SMTP
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUsername string
+	SMTPPassword string
+	SMTPSecurity string
+	FromEmail    string
+
+	// Keys
+	KeysPath string
+}
+
+func Load() *Config {
+	// Load .env file (ignore error in production)
+	_ = godotenv.Load()
+
+	return &Config{
+		// Server
+		Port:        getEnv("PORT", "8080"),
+		AdminPort:   getEnv("ADMIN_PORT", ""),  // Empty = disabled (use single port mode)
+		Host:        getEnv("PHX_HOST", "localhost"),
+		Environment: getEnv("ENV", "development"),
+
+		// Database
+		DatabaseURL: getEnv("DATABASE_URL", "postgres://localhost/socrate_auth_dev"),
+		DBPoolSize:  getEnvInt("DB_POOL_SIZE", 10),
+
+		// JWT
+		JWTSecret:   getEnv("JWT_SECRET", "change-me-in-production"),
+		OAuthIssuer: getEnv("OAUTH_ISSUER", "http://localhost:8080"),
+
+		// Token TTLs
+		AccessTokenTTL:  time.Duration(getEnvInt("ACCESS_TOKEN_TTL", 900)) * time.Second,
+		RefreshTokenTTL: time.Duration(getEnvInt("REFRESH_TOKEN_TTL", 604800)) * time.Second,
+		EmailTokenTTL:   time.Duration(getEnvInt("EMAIL_TOKEN_TTL", 86400)) * time.Second,
+		ResetTokenTTL:   time.Duration(getEnvInt("RESET_TOKEN_TTL", 3600)) * time.Second,
+		InviteTokenTTL:  time.Duration(getEnvInt("INVITE_TOKEN_TTL", 86400)) * time.Second,
+
+		// Security
+		MaxFailedAttempts:   getEnvInt("MAX_FAILED_ATTEMPTS", 5),
+		LockoutDurationSecs: getEnvInt("LOCKOUT_DURATION_SECONDS", 900),
+		SecretKeyBase:       getEnv("SECRET_KEY_BASE", ""),
+
+		// Rate Limiting
+		RateLimitLogin:        getEnvInt("RATE_LIMIT_LOGIN", 5),
+		RateLimitLoginWindow:  time.Duration(getEnvInt("RATE_LIMIT_LOGIN_WINDOW", 60000)) * time.Millisecond,
+		RateLimitSignup:       getEnvInt("RATE_LIMIT_SIGNUP", 3),
+		RateLimitSignupWindow: time.Duration(getEnvInt("RATE_LIMIT_SIGNUP_WINDOW", 3600000)) * time.Millisecond,
+
+		// Email/SMTP
+		SMTPHost:     getEnv("SMTP_HOST", ""),
+		SMTPPort:     getEnvInt("SMTP_PORT", 587),
+		SMTPUsername: getEnv("SMTP_USERNAME", ""),
+		SMTPPassword: getEnv("SMTP_PASSWORD", ""),
+		SMTPSecurity: getEnv("SMTP_SECURITY", "starttls"),
+		FromEmail:    getEnv("FROM_EMAIL", "no-reply@example.com"),
+
+		// Keys
+		KeysPath: getEnv("KEYS_PATH", "keys"),
+	}
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func getEnvInt(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if intVal, err := strconv.Atoi(value); err == nil {
+			return intVal
+		}
+	}
+	return defaultValue
+}

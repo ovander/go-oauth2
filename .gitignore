@@ -1,0 +1,29 @@
+# Go
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+
+# Env & secrets
+.env
+.env.*
+*.key
+*.pem
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+
+# Vendor (si non utilisé)
+vendor/
+
+# Temporary
+tmp/

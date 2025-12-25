@@ -25,6 +25,24 @@ type App struct {
 	AdminRouter http.Handler // Internal admin API
 
 	DB *gorm.DB
+
+	// Cleanup functions for graceful shutdown
+	codeStore         *auth.CodeStore
+	loginRateLimiter  *middleware.RateLimiter
+	signupRateLimiter *middleware.RateLimiter
+}
+
+// Stop gracefully stops all background goroutines
+func (a *App) Stop() {
+	if a.codeStore != nil {
+		a.codeStore.Stop()
+	}
+	if a.loginRateLimiter != nil {
+		a.loginRateLimiter.Stop()
+	}
+	if a.signupRateLimiter != nil {
+		a.signupRateLimiter.Stop()
+	}
 }
 
 func Bootstrap(cfg *config.Config) *App {
@@ -54,11 +72,6 @@ func Bootstrap(cfg *config.Config) *App {
 	})
 
 	// ==========================================
-	// Code Store (10 minute TTL for auth codes)
-	// ==========================================
-	codeStore := auth.NewCodeStore(10 * time.Minute)
-
-	// ==========================================
 	// Repositories
 	// ==========================================
 	userRepo := repository.NewUserRepository(db)
@@ -66,6 +79,17 @@ func Bootstrap(cfg *config.Config) *App {
 	userAppRoleRepo := repository.NewUserAppRoleRepository(db)
 	adminLogRepo := repository.NewAdminLogRepository(db)
 	appActivityLogRepo := repository.NewAppActivityLogRepository(db)
+	authCodeRepo := repository.NewAuthorizationCodeRepository(db)
+	usedTokenRepo := repository.NewUsedTokenRepository(db)
+	securityAuditRepo := repository.NewSecurityAuditLogRepository(db)
+
+	// ==========================================
+	// Code Store (database-backed with cleanup)
+	// ==========================================
+	codeStore := auth.NewCodeStore(authCodeRepo, auth.CodeStoreConfig{
+		TTL:             10 * time.Minute,
+		CleanupInterval: time.Minute,
+	})
 
 	// ==========================================
 	// Services
@@ -76,16 +100,23 @@ func Bootstrap(cfg *config.Config) *App {
 	adminLogService := service.NewAdminLogService(adminLogRepo)
 	appActivityLogService := service.NewAppActivityLogService(appActivityLogRepo)
 
-	authService := service.NewAuthService(
+	// Use auth service with full features (single-use tokens + audit logging)
+	authService := service.NewAuthServiceFull(
 		userRepo,
 		appRepo,
 		userAppRoleRepo,
+		usedTokenRepo,
+		securityAuditRepo,
 		tokenService,
 		service.AuthServiceConfig{
 			MaxFailedAttempts: cfg.MaxFailedAttempts,
 			LockoutDuration:   time.Duration(cfg.LockoutDurationSecs) * time.Second,
 		},
 	)
+
+	// Security audit service for querying logs
+	securityAuditService := service.NewSecurityAuditService(securityAuditRepo)
+	_ = securityAuditService // Available for admin handlers if needed
 
 	oauthService := service.NewOAuthService(
 		userRepo,
@@ -109,10 +140,21 @@ func Bootstrap(cfg *config.Config) *App {
 	appLogsHandler := handler.NewAppLogsHandler(appActivityLogService)
 
 	// ==========================================
-	// Rate Limiters
+	// Rate Limiters (with graceful shutdown support)
 	// ==========================================
-	loginRateLimiter := middleware.NewRateLimiter(cfg.RateLimitLogin, cfg.RateLimitLoginWindow)
-	signupRateLimiter := middleware.NewRateLimiter(cfg.RateLimitSignup, cfg.RateLimitSignupWindow)
+	loginRateLimiter := middleware.NewRateLimiterWithConfig(middleware.RateLimiterConfig{
+		Limit:           cfg.RateLimitLogin,
+		Window:          cfg.RateLimitLoginWindow,
+		MaxEntries:      cfg.RateLimitMaxEntries,
+		CleanupInterval: time.Minute,
+	})
+
+	signupRateLimiter := middleware.NewRateLimiterWithConfig(middleware.RateLimiterConfig{
+		Limit:           cfg.RateLimitSignup,
+		Window:          cfg.RateLimitSignupWindow,
+		MaxEntries:      cfg.RateLimitMaxEntries,
+		CleanupInterval: time.Minute,
+	})
 
 	// ==========================================
 	// Router Configuration
@@ -157,9 +199,12 @@ func Bootstrap(cfg *config.Config) *App {
 	)
 
 	return &App{
-		Router:      combinedRouter,
-		OAuthRouter: routers.OAuth,
-		AdminRouter: routers.Admin,
-		DB:          db,
+		Router:            combinedRouter,
+		OAuthRouter:       routers.OAuth,
+		AdminRouter:       routers.Admin,
+		DB:                db,
+		codeStore:         codeStore,
+		loginRateLimiter:  loginRateLimiter,
+		signupRateLimiter: signupRateLimiter,
 	}
 }

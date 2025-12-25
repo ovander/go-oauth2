@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// Config holds all application configuration
 type Config struct {
 	// Server
 	Port        string
@@ -18,6 +20,7 @@ type Config struct {
 	// Database
 	DatabaseURL string
 	DBPoolSize  int
+	DBTimeout   time.Duration
 
 	// JWT
 	JWTSecret   string
@@ -31,15 +34,16 @@ type Config struct {
 	InviteTokenTTL  time.Duration
 
 	// Security
-	MaxFailedAttempts     int
-	LockoutDurationSecs   int
-	SecretKeyBase         string
+	MaxFailedAttempts   int
+	LockoutDurationSecs int
+	SecretKeyBase       string
 
 	// Rate Limiting
-	RateLimitLogin       int
-	RateLimitLoginWindow time.Duration
-	RateLimitSignup      int
+	RateLimitLogin        int
+	RateLimitLoginWindow  time.Duration
+	RateLimitSignup       int
 	RateLimitSignupWindow time.Duration
+	RateLimitMaxEntries   int
 
 	// Email/SMTP
 	SMTPHost     string
@@ -53,23 +57,25 @@ type Config struct {
 	KeysPath string
 }
 
+// Load loads configuration from environment variables
 func Load() *Config {
 	// Load .env file (ignore error in production)
 	_ = godotenv.Load()
 
-	return &Config{
+	cfg := &Config{
 		// Server
 		Port:        getEnv("PORT", "8080"),
-		AdminPort:   getEnv("ADMIN_PORT", ""),  // Empty = disabled (use single port mode)
+		AdminPort:   getEnv("ADMIN_PORT", ""), // Empty = disabled (use single port mode)
 		Host:        getEnv("PHX_HOST", "localhost"),
 		Environment: getEnv("ENV", "development"),
 
 		// Database
 		DatabaseURL: getEnv("DATABASE_URL", "postgres://localhost/socrate_auth_dev"),
 		DBPoolSize:  getEnvInt("DB_POOL_SIZE", 10),
+		DBTimeout:   time.Duration(getEnvInt("DB_TIMEOUT_SECONDS", 30)) * time.Second,
 
 		// JWT
-		JWTSecret:   getEnv("JWT_SECRET", "change-me-in-production"),
+		JWTSecret:   getEnv("JWT_SECRET", ""),
 		OAuthIssuer: getEnv("OAUTH_ISSUER", "http://localhost:8080"),
 
 		// Token TTLs
@@ -89,6 +95,7 @@ func Load() *Config {
 		RateLimitLoginWindow:  time.Duration(getEnvInt("RATE_LIMIT_LOGIN_WINDOW", 60000)) * time.Millisecond,
 		RateLimitSignup:       getEnvInt("RATE_LIMIT_SIGNUP", 3),
 		RateLimitSignupWindow: time.Duration(getEnvInt("RATE_LIMIT_SIGNUP_WINDOW", 3600000)) * time.Millisecond,
+		RateLimitMaxEntries:   getEnvInt("RATE_LIMIT_MAX_ENTRIES", 10000),
 
 		// Email/SMTP
 		SMTPHost:     getEnv("SMTP_HOST", ""),
@@ -101,6 +108,48 @@ func Load() *Config {
 		// Keys
 		KeysPath: getEnv("KEYS_PATH", "keys"),
 	}
+
+	return cfg
+}
+
+// Validate validates the configuration for the given environment
+// Returns an error if required configuration is missing in production
+func (c *Config) Validate() error {
+	if c.IsProduction() {
+		// Critical security settings that must be set in production
+		if c.SecretKeyBase == "" {
+			return fmt.Errorf("SECRET_KEY_BASE must be set in production")
+		}
+		if len(c.SecretKeyBase) < 32 {
+			return fmt.Errorf("SECRET_KEY_BASE must be at least 32 characters in production")
+		}
+		if c.DatabaseURL == "" || c.DatabaseURL == "postgres://localhost/socrate_auth_dev" {
+			return fmt.Errorf("DATABASE_URL must be set to a production database")
+		}
+		if c.OAuthIssuer == "" || c.OAuthIssuer == "http://localhost:8080" {
+			return fmt.Errorf("OAUTH_ISSUER must be set to a production URL")
+		}
+		// Warn about insecure defaults
+		if c.AccessTokenTTL > 30*time.Minute {
+			fmt.Println("WARNING: ACCESS_TOKEN_TTL is set to more than 30 minutes, consider reducing for better security")
+		}
+	}
+	return nil
+}
+
+// IsProduction returns true if running in production environment
+func (c *Config) IsProduction() bool {
+	return c.Environment == "production" || c.Environment == "prod"
+}
+
+// IsDevelopment returns true if running in development environment
+func (c *Config) IsDevelopment() bool {
+	return c.Environment == "development" || c.Environment == "dev"
+}
+
+// IsTest returns true if running in test environment
+func (c *Config) IsTest() bool {
+	return c.Environment == "test"
 }
 
 func getEnv(key, defaultValue string) string {

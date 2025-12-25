@@ -10,12 +10,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var (
-	ErrRoleNotFound       = errors.New("user app role not found")
-	ErrRoleAlreadyExists  = errors.New("user already has a role in this app")
-	ErrCannotRemoveSelf   = errors.New("cannot remove yourself from the app")
-)
-
 type UserAppRoleService interface {
 	GetUserRoleForApp(ctx context.Context, userID, appID uint) (*model.UserAppRole, error)
 	GetUserRoles(ctx context.Context, userID uint) ([]model.UserAppRole, error)

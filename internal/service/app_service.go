@@ -14,12 +14,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var (
-	ErrAppNotFound     = errors.New("app not found")
-	ErrClientIDExists  = errors.New("client ID already exists")
-	ErrInvalidRedirectURI = errors.New("invalid redirect URI")
-)
-
 type AppService interface {
 	List(ctx context.Context) ([]model.App, error)
 	GetByID(ctx context.Context, id uint) (*model.App, error)

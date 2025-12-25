@@ -4,14 +4,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/socrate-auth/go-oauth/config"
-	"github.com/socrate-auth/go-oauth/internal/handler"
-	internalhttp "github.com/socrate-auth/go-oauth/internal/http"
-	"github.com/socrate-auth/go-oauth/internal/middleware"
-	"github.com/socrate-auth/go-oauth/internal/repository"
-	"github.com/socrate-auth/go-oauth/internal/service"
-	"github.com/socrate-auth/go-oauth/internal/shared/auth"
-	"github.com/socrate-auth/go-oauth/pkg/database"
+	"github.com/ovandermoten/go-oauth2/config"
+	"github.com/ovandermoten/go-oauth2/internal/handler"
+	internalhttp "github.com/ovandermoten/go-oauth2/internal/http"
+	"github.com/ovandermoten/go-oauth2/internal/middleware"
+	"github.com/ovandermoten/go-oauth2/internal/repository"
+	"github.com/ovandermoten/go-oauth2/internal/service"
+	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/pkg/database"
 	"gorm.io/gorm"
 )
 

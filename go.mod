@@ -1,4 +1,4 @@
-module github.com/socrate-auth/go-oauth
+module github.com/ovandermoten/go-oauth2
 
 go 1.22
 

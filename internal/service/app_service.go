@@ -7,10 +7,10 @@ import (
 	"errors"
 	"time"
 
-	"github.com/socrate-auth/go-oauth/internal/dto"
-	"github.com/socrate-auth/go-oauth/internal/model"
-	"github.com/socrate-auth/go-oauth/internal/repository"
-	"github.com/socrate-auth/go-oauth/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovandermoten/go-oauth2/internal/repository"
+	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 	"gorm.io/gorm"
 )
 

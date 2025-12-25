@@ -5,9 +5,9 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/socrate-auth/go-oauth/internal/contextkeys"
-	"github.com/socrate-auth/go-oauth/internal/model"
-	"github.com/socrate-auth/go-oauth/internal/repository"
+	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
+	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovandermoten/go-oauth2/internal/repository"
 )
 
 // RequireRole checks if the user has one of the specified roles

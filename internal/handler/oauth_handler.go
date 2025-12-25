@@ -7,10 +7,10 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/socrate-auth/go-oauth/internal/dto"
-	"github.com/socrate-auth/go-oauth/internal/middleware"
-	"github.com/socrate-auth/go-oauth/internal/service"
-	"github.com/socrate-auth/go-oauth/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovandermoten/go-oauth2/internal/middleware"
+	"github.com/ovandermoten/go-oauth2/internal/service"
+	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 )
 
 type OAuthHandler struct {

@@ -10,7 +10,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/socrate-auth/go-oauth/internal/model"
+	"github.com/ovandermoten/go-oauth2/internal/model"
 )
 
 // Token-related errors

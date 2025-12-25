@@ -7,10 +7,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/socrate-auth/go-oauth/internal/handler"
-	"github.com/socrate-auth/go-oauth/internal/middleware"
-	"github.com/socrate-auth/go-oauth/internal/repository"
-	"github.com/socrate-auth/go-oauth/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/internal/handler"
+	"github.com/ovandermoten/go-oauth2/internal/middleware"
+	"github.com/ovandermoten/go-oauth2/internal/repository"
+	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 )
 
 type RouterConfig struct {

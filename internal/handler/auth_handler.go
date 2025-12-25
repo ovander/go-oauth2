@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/socrate-auth/go-oauth/internal/dto"
-	"github.com/socrate-auth/go-oauth/internal/middleware"
-	"github.com/socrate-auth/go-oauth/internal/service"
+	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovandermoten/go-oauth2/internal/middleware"
+	"github.com/ovandermoten/go-oauth2/internal/service"
 )
 
 type AuthHandler struct {

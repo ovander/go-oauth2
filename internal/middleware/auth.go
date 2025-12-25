@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/socrate-auth/go-oauth/internal/contextkeys"
-	"github.com/socrate-auth/go-oauth/internal/repository"
-	"github.com/socrate-auth/go-oauth/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
+	"github.com/ovandermoten/go-oauth2/internal/repository"
+	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 )
 
 // AuthMiddleware validates JWT tokens, verifies token version, and adds user info to context

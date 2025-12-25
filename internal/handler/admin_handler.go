@@ -6,10 +6,10 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/socrate-auth/go-oauth/internal/dto"
-	"github.com/socrate-auth/go-oauth/internal/middleware"
-	"github.com/socrate-auth/go-oauth/internal/model"
-	"github.com/socrate-auth/go-oauth/internal/service"
+	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovandermoten/go-oauth2/internal/middleware"
+	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovandermoten/go-oauth2/internal/service"
 )
 
 type AdminHandler struct {

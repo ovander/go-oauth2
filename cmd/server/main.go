@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/socrate-auth/go-oauth/config"
+	"github.com/ovandermoten/go-oauth2/config"
 )
 
 func main() {

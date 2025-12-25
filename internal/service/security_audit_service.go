@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/socrate-auth/go-oauth/internal/model"
-	"github.com/socrate-auth/go-oauth/internal/repository"
+	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovandermoten/go-oauth2/internal/repository"
 )
 
 // SecurityAuditService provides security audit logging functionality

@@ -16,6 +16,11 @@ func main() {
 	// Load configuration
 	cfg := config.Load()
 
+	// Validate configuration (fails on critical missing settings in production)
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("Configuration validation failed: %v", err)
+	}
+
 	// Initialize application
 	app := Bootstrap(cfg)
 
@@ -126,11 +131,15 @@ func waitForShutdown(srv1, srv2 *http.Server, app *App) {
 		}
 	}
 
+	// Stop background workers (code store cleanup, rate limiter cleanup, etc.)
+	log.Println("Stopping background workers...")
+	app.Stop()
+
 	// Close database connection
 	sqlDB, err := app.DB.DB()
 	if err == nil {
 		sqlDB.Close()
 	}
 
-	log.Println("👋 Servers stopped")
+	log.Println("Servers stopped")
 }

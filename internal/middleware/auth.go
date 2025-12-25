@@ -11,37 +11,51 @@ import (
 	"github.com/socrate-auth/go-oauth/internal/shared/auth"
 )
 
-// AuthMiddleware validates JWT tokens and adds user info to context
+// AuthMiddleware validates JWT tokens, verifies token version, and adds user info to context
 func AuthMiddleware(tokenService *auth.TokenService, userRepo repository.UserRepository) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
-				http.Error(w, `{"error": "authorization header required"}`, http.StatusUnauthorized)
+				writeAuthError(w, "authorization header required", http.StatusUnauthorized)
 				return
 			}
 
 			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 			if tokenString == authHeader {
-				http.Error(w, `{"error": "invalid authorization header format"}`, http.StatusUnauthorized)
+				writeAuthError(w, "invalid authorization header format", http.StatusUnauthorized)
 				return
 			}
 
 			claims, err := tokenService.VerifyAccessToken(tokenString)
 			if err != nil {
-				http.Error(w, `{"error": "invalid or expired token"}`, http.StatusUnauthorized)
+				writeAuthError(w, "invalid or expired token", http.StatusUnauthorized)
 				return
 			}
 
 			userID, err := strconv.ParseUint(claims.Subject, 10, 64)
 			if err != nil {
-				http.Error(w, `{"error": "invalid token claims"}`, http.StatusUnauthorized)
+				writeAuthError(w, "invalid token claims", http.StatusUnauthorized)
 				return
 			}
 
 			user, err := userRepo.FindByID(r.Context(), uint(userID))
 			if err != nil {
-				http.Error(w, `{"error": "user not found"}`, http.StatusUnauthorized)
+				writeAuthError(w, "user not found", http.StatusUnauthorized)
+				return
+			}
+
+			// CRITICAL: Verify token version to support token revocation
+			// If the user's token version has been incremented (via logout, password reset, etc.),
+			// all previously issued tokens become invalid
+			if claims.TokenVersion > 0 && user.TokenVersion != claims.TokenVersion {
+				writeAuthError(w, "token has been revoked", http.StatusUnauthorized)
+				return
+			}
+
+			// Check if user account is locked
+			if user.IsLocked() {
+				writeAuthError(w, "account is locked", http.StatusForbidden)
 				return
 			}
 
@@ -90,6 +104,18 @@ func OptionalAuthMiddleware(tokenService *auth.TokenService, userRepo repository
 				return
 			}
 
+			// Verify token version - silently skip if token is revoked
+			if claims.TokenVersion > 0 && user.TokenVersion != claims.TokenVersion {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Skip if user is locked
+			if user.IsLocked() {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			ctx := context.WithValue(r.Context(), contextkeys.UserIDKey, user.ID)
 			ctx = context.WithValue(ctx, contextkeys.UserRoleKey, string(user.Role))
 			ctx = context.WithValue(ctx, contextkeys.CurrentUserKey, user)
@@ -110,4 +136,12 @@ func GetUserIDFromContext(ctx context.Context) (uint, bool) {
 func GetUserRoleFromContext(ctx context.Context) (string, bool) {
 	role, ok := ctx.Value(contextkeys.UserRoleKey).(string)
 	return role, ok
+}
+
+// writeAuthError writes a JSON error response for authentication failures
+func writeAuthError(w http.ResponseWriter, message string, statusCode int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("WWW-Authenticate", `Bearer realm="oauth2", error="invalid_token"`)
+	w.WriteHeader(statusCode)
+	w.Write([]byte(`{"error": "` + message + `"}`))
 }

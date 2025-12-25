@@ -12,14 +12,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var (
-	ErrUserNotFound       = errors.New("user not found")
-	ErrEmailAlreadyExists = errors.New("email already exists")
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrAccountLocked      = errors.New("account is locked")
-	ErrUserNotVerified    = errors.New("user email not verified")
-)
-
 type UserService interface {
 	List(ctx context.Context, page, pageSize int) ([]model.User, int64, error)
 	GetByID(ctx context.Context, id uint) (*model.User, error)

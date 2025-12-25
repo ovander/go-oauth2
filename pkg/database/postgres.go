@@ -1,12 +1,12 @@
 package database
 
 import (
-	"log"
 	"time"
 
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
+	glogger "gorm.io/gorm/logger"
 )
 
 // ConnectionConfig holds database connection configuration
@@ -39,18 +39,18 @@ func Connect(databaseURL string, poolSize int) *gorm.DB {
 // ConnectWithConfig connects to the database with custom configuration
 func ConnectWithConfig(databaseURL string, cfg ConnectionConfig) *gorm.DB {
 	gormConfig := &gorm.Config{
-		Logger:      logger.Default.LogMode(logger.Info),
+		Logger:      logger.NewGormLogger(glogger.Info, cfg.SlowQueryLogTime, true),
 		PrepareStmt: cfg.PrepareStmt, // Cache prepared statements for better performance
 	}
 
 	db, err := gorm.Open(postgres.Open(databaseURL), gormConfig)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		logger.Fatalf("Failed to connect to database: %v", err)
 	}
 
 	sqlDB, err := db.DB()
 	if err != nil {
-		log.Fatalf("Failed to get underlying sql.DB: %v", err)
+		logger.Fatalf("Failed to get underlying sql.DB: %v", err)
 	}
 
 	// Connection pool settings
@@ -59,6 +59,6 @@ func ConnectWithConfig(databaseURL string, cfg ConnectionConfig) *gorm.DB {
 	sqlDB.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 	sqlDB.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
 
-	log.Println("Database connected successfully")
+	logger.Info("✅ Database connected successfully")
 	return db
 }

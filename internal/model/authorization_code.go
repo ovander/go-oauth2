@@ -7,7 +7,7 @@ import (
 // AuthorizationCode represents a stored OAuth2 authorization code
 type AuthorizationCode struct {
 	ID                  uint              `gorm:"primaryKey" json:"id"`
-	Code                string            `gorm:"column:code;uniqueIndex;not null" json:"-"`
+	Code                string            `gorm:"column:code;uniqueIndex:idx_auth_codes_code;not null" json:"-"`
 	UserID              uint              `gorm:"column:user_id;not null;index" json:"user_id"`
 	AppID               uint              `gorm:"column:app_id;not null;index" json:"app_id"`
 	ClientID            string            `gorm:"column:client_id;not null" json:"client_id"`

@@ -21,6 +21,7 @@ type AuthService interface {
 	Logout(ctx context.Context, userID uint) error
 	RequestPasswordReset(ctx context.Context, email string) (string, error)
 	ResetPassword(ctx context.Context, token, newPassword string) error
+	ChangePassword(ctx context.Context, userID uint, currentPassword, newPassword string) error
 	ValidateInviteToken(ctx context.Context, token string) (*dto.InviteValidationResponse, error)
 	AcceptInvite(ctx context.Context, token, password string) (*dto.LoginResponse, error)
 }
@@ -306,15 +307,16 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 	})
 
 	return &dto.LoginResponse{
-		AccessToken:  tokenSet.AccessToken,
-		RefreshToken: tokenSet.RefreshToken,
-		IDToken:      tokenSet.IDToken,
-		TokenType:    "Bearer",
-		ExpiresIn:    tokenSet.ExpiresIn,
-		UserID:       user.ID,
-		App:          &dto.AppResponse{ID: app.ID, Name: app.Name, ClientID: app.ClientID},
-		Roles:        []string{string(userAppRole.Role)},
-		AppRoles:     appRoles,
+		AccessToken:        tokenSet.AccessToken,
+		RefreshToken:       tokenSet.RefreshToken,
+		IDToken:            tokenSet.IDToken,
+		TokenType:          "Bearer",
+		ExpiresIn:          tokenSet.ExpiresIn,
+		UserID:             user.ID,
+		App:                &dto.AppResponse{ID: app.ID, Name: app.Name, ClientID: app.ClientID},
+		Roles:              []string{string(userAppRole.Role)},
+		AppRoles:           appRoles,
+		MustChangePassword: user.MustChangePassword,
 	}, nil
 }
 
@@ -456,8 +458,11 @@ func (s *authService) ResetPassword(ctx context.Context, token, newPassword stri
 		}
 	}
 
+	now := time.Now()
 	user.HashedPassword = hashedPassword
-	user.UpdatedAt = time.Now()
+	user.MustChangePassword = false // Clear the forced password change flag
+	user.PasswordChangedAt = &now
+	user.UpdatedAt = now
 
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
@@ -471,6 +476,57 @@ func (s *authService) ResetPassword(ctx context.Context, token, newPassword stri
 	// Log password change
 	s.logSecurityEvent(ctx, model.SecurityEventPasswordChanged, &user.ID, nil, true, map[string]interface{}{
 		"email": user.Email,
+	})
+
+	return nil
+}
+
+// ChangePassword changes the password for an authenticated user
+func (s *authService) ChangePassword(ctx context.Context, userID uint, currentPassword, newPassword string) error {
+	user, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("%w: user_id=%d", ErrUserNotFound, userID)
+	}
+
+	// Verify current password
+	if !auth.CheckPassword(currentPassword, user.HashedPassword) {
+		return ErrInvalidCredentials
+	}
+
+	// Validate new password
+	if err := auth.ValidatePassword(newPassword); err != nil {
+		return fmt.Errorf("password validation failed: %w", err)
+	}
+
+	// Ensure new password is different from current
+	if auth.CheckPassword(newPassword, user.HashedPassword) {
+		return fmt.Errorf("new password must be different from current password")
+	}
+
+	hashedPassword, err := auth.HashPassword(newPassword)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	now := time.Now()
+	user.HashedPassword = hashedPassword
+	user.MustChangePassword = false
+	user.PasswordChangedAt = &now
+	user.UpdatedAt = now
+
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	// Invalidate all existing tokens (user must re-login)
+	if err := s.userRepo.IncrementTokenVersion(ctx, user.ID); err != nil {
+		return fmt.Errorf("failed to revoke tokens: %w", err)
+	}
+
+	// Log password change
+	s.logSecurityEvent(ctx, model.SecurityEventPasswordChanged, &user.ID, nil, true, map[string]interface{}{
+		"email":  user.Email,
+		"source": "change_password",
 	})
 
 	return nil

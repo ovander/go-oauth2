@@ -48,15 +48,16 @@ type SignupResponse struct {
 }
 
 type LoginResponse struct {
-	AccessToken  string        `json:"access_token"`
-	RefreshToken string        `json:"refresh_token"`
-	IDToken      string        `json:"id_token"`
-	TokenType    string        `json:"token_type"`
-	ExpiresIn    int           `json:"expires_in"`
-	UserID       uint          `json:"user_id"`
-	App          *AppResponse  `json:"app,omitempty"`
-	Roles        []string      `json:"roles"`
-	AppRoles     map[string]string `json:"app_roles"`
+	AccessToken        string            `json:"access_token"`
+	RefreshToken       string            `json:"refresh_token"`
+	IDToken            string            `json:"id_token"`
+	TokenType          string            `json:"token_type"`
+	ExpiresIn          int               `json:"expires_in"`
+	UserID             uint              `json:"user_id"`
+	App                *AppResponse      `json:"app,omitempty"`
+	Roles              []string          `json:"roles"`
+	AppRoles           map[string]string `json:"app_roles"`
+	MustChangePassword bool              `json:"must_change_password,omitempty"`
 }
 
 type RefreshResponse struct {

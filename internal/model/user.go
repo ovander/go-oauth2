@@ -21,6 +21,7 @@ type User struct {
 	HashedPassword      string         `gorm:"column:hashed_password" json:"-"`
 	IsVerified          bool           `gorm:"default:false" json:"is_verified"`
 	Role                UserRole       `gorm:"type:varchar(20);default:user" json:"role"`
+	MustChangePassword  bool           `gorm:"column:must_change_password;default:false" json:"must_change_password"`
 	Title               *string        `json:"title,omitempty"`
 	Division            *string        `json:"division,omitempty"`
 	Company             *string        `json:"company,omitempty"`
@@ -40,6 +41,7 @@ type User struct {
 	FailedLoginAttempts int            `gorm:"column:failed_login_attempts;default:0" json:"-"`
 	LockedUntil         *time.Time     `gorm:"column:locked_until;index" json:"-"`
 	LastLoginAttempt    *time.Time     `gorm:"column:last_login_attempt" json:"-"`
+	PasswordChangedAt   *time.Time     `gorm:"column:password_changed_at" json:"-"`
 	CreatedAt           time.Time      `gorm:"column:inserted_at" json:"created_at"`
 	UpdatedAt           time.Time      `json:"updated_at"`
 }

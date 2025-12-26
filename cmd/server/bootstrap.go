@@ -8,10 +8,12 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/handler"
 	internalhttp "github.com/ovandermoten/go-oauth2/internal/http"
 	"github.com/ovandermoten/go-oauth2/internal/middleware"
+	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/service"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 	"github.com/ovandermoten/go-oauth2/pkg/database"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 	"gorm.io/gorm"
 )
 
@@ -50,6 +52,23 @@ func Bootstrap(cfg *config.Config) *App {
 	// Database
 	// ==========================================
 	db := database.Connect(cfg.DatabaseURL, cfg.DBPoolSize)
+
+	// ==========================================
+	// Auto-migrate database schema
+	// ==========================================
+	if err := db.AutoMigrate(
+		&model.User{},
+		&model.App{},
+		&model.UserAppRole{},
+		&model.AdminLog{},
+		&model.AppActivityLog{},
+		&model.AuthorizationCode{},
+		&model.UsedToken{},
+		&model.SecurityAuditLog{},
+	); err != nil {
+		logger.Fatalf("Failed to auto-migrate database: %v", err)
+	}
+	logger.Info("✅ Database schema migrated successfully")
 
 	// ==========================================
 	// Key Manager

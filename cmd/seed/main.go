@@ -28,6 +28,16 @@ func main() {
 	// Connect to database
 	db := database.Connect(cfg.DatabaseURL, cfg.DBPoolSize)
 
+	// Auto-migrate database schema
+	if err := db.AutoMigrate(
+		&model.User{},
+		&model.App{},
+		&model.UserAppRole{},
+	); err != nil {
+		logger.Fatalf("Failed to auto-migrate database: %v", err)
+	}
+	logger.Info("✅ Database schema migrated successfully")
+
 	// Get or generate password
 	adminPassword := *password
 	if adminPassword == "" {

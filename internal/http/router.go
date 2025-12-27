@@ -34,6 +34,7 @@ func NewRouters(
 	profileHandler *handler.ProfileHandler,
 	adminHandler *handler.AdminHandler,
 	adminAuthHandler *handler.AdminAuthHandler,
+	dashboardHandler *handler.DashboardHandler,
 	healthHandler *handler.HealthHandler,
 	appLogsHandler *handler.AppLogsHandler,
 	tokenService *auth.TokenService,
@@ -43,7 +44,7 @@ func NewRouters(
 ) *Routers {
 	return &Routers{
 		OAuth: newOAuthRouter(authHandler, oauthHandler, profileHandler, healthHandler, tokenService, userRepo, config),
-		Admin: newAdminRouter(adminHandler, adminAuthHandler, appUsersHandler, appLogsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config),
+		Admin: newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config),
 	}
 }
 
@@ -167,6 +168,7 @@ func newOAuthRouter(
 func newAdminRouter(
 	adminHandler *handler.AdminHandler,
 	adminAuthHandler *handler.AdminAuthHandler,
+	dashboardHandler *handler.DashboardHandler,
 	appUsersHandler *handler.AppUsersHandler,
 	appLogsHandler *handler.AppLogsHandler,
 	healthHandler *handler.HealthHandler,
@@ -246,6 +248,15 @@ func newAdminRouter(
 				r.Post("/unlock", adminHandler.UnlockUser)
 			})
 		})
+
+		// Dashboard endpoints
+		r.Route("/dashboard", func(r chi.Router) {
+			r.Get("/stats", dashboardHandler.GetStats)
+			r.Get("/activity", dashboardHandler.GetActivity)
+			r.Get("/health", dashboardHandler.GetHealth)
+			r.Get("/login-trends", dashboardHandler.GetLoginTrends)
+			r.Get("/app-usage", dashboardHandler.GetAppUsage)
+		})
 	})
 
 	// ==========================================
@@ -284,6 +295,7 @@ func NewRouter(
 	profileHandler *handler.ProfileHandler,
 	adminHandler *handler.AdminHandler,
 	adminAuthHandler *handler.AdminAuthHandler,
+	dashboardHandler *handler.DashboardHandler,
 	healthHandler *handler.HealthHandler,
 	appLogsHandler *handler.AppLogsHandler,
 	tokenService *auth.TokenService,
@@ -317,7 +329,7 @@ func NewRouter(
 	r.Mount("/", oauthRouter)
 
 	// Mount Admin router under /admin prefix (for single-port mode)
-	adminRouter := newAdminRouter(adminHandler, adminAuthHandler, appUsersHandler, appLogsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config)
+	adminRouter := newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config)
 	r.Mount("/manage", adminRouter)
 
 	return r

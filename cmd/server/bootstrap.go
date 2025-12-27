@@ -156,6 +156,7 @@ func Bootstrap(cfg *config.Config) *App {
 	profileHandler := handler.NewProfileHandler(userService)
 	adminHandler := handler.NewAdminHandler(appService, userService, adminLogService, appActivityLogService)
 	adminAuthHandler := handler.NewAdminAuthHandler(authService, userService)
+	dashboardHandler := handler.NewDashboardHandler(db, userRepo, appRepo, userAppRoleRepo)
 	healthHandler := handler.NewHealthHandler(db)
 	appLogsHandler := handler.NewAppLogsHandler(appActivityLogService)
 
@@ -196,6 +197,7 @@ func Bootstrap(cfg *config.Config) *App {
 		profileHandler,
 		adminHandler,
 		adminAuthHandler,
+		dashboardHandler,
 		healthHandler,
 		appLogsHandler,
 		tokenService,
@@ -212,6 +214,7 @@ func Bootstrap(cfg *config.Config) *App {
 		profileHandler,
 		adminHandler,
 		adminAuthHandler,
+		dashboardHandler,
 		healthHandler,
 		appLogsHandler,
 		tokenService,

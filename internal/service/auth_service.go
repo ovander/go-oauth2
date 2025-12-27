@@ -265,21 +265,6 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 		return nil, fmt.Errorf("%w: please verify your email first", ErrUserNotVerified)
 	}
 
-	app, err := s.appRepo.FindByClientID(ctx, req.AppClientID)
-	if err != nil {
-		return nil, fmt.Errorf("%w: client_id=%s", ErrAppNotFound, req.AppClientID)
-	}
-
-	userAppRole, err := s.userAppRoleRepo.FindByUserAndApp(ctx, user.ID, app.ID)
-	if err != nil {
-		return nil, fmt.Errorf("%w: user has no access to app", ErrRoleNotFound)
-	}
-
-	appRoles, err := s.userAppRoleRepo.GetUserRolesMap(ctx, user.ID)
-	if err != nil {
-		appRoles = make(map[string]string)
-	}
-
 	// Reset failed attempts and update last login
 	if err := s.userRepo.ResetFailedLoginAttempts(ctx, user.ID); err != nil {
 		// Log error but continue
@@ -292,8 +277,53 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 		// Log error but continue
 	}
 
+	// Handle login with or without app context
+	var app *model.App
+	var role string
+	var appRoles map[string]string
+	var appResponse *dto.AppResponse
+	var appIDPtr *uint
+
+	if req.AppClientID != "" {
+		// App-specific login
+		var err error
+		app, err = s.appRepo.FindByClientID(ctx, req.AppClientID)
+		if err != nil {
+			return nil, fmt.Errorf("%w: client_id=%s", ErrAppNotFound, req.AppClientID)
+		}
+
+		userAppRole, err := s.userAppRoleRepo.FindByUserAndApp(ctx, user.ID, app.ID)
+		if err != nil {
+			return nil, fmt.Errorf("%w: user has no access to app", ErrRoleNotFound)
+		}
+
+		role = string(userAppRole.Role)
+		appRoles, err = s.userAppRoleRepo.GetUserRolesMap(ctx, user.ID)
+		if err != nil {
+			appRoles = make(map[string]string)
+		}
+		appResponse = &dto.AppResponse{ID: app.ID, Name: app.Name, ClientID: app.ClientID}
+		appIDPtr = &app.ID
+	} else {
+		// Admin portal login (no app context) - only allowed for superadmins and admins
+		if user.Role != model.UserRoleSuperadmin && user.Role != model.UserRoleAdmin {
+			return nil, fmt.Errorf("%w: app_client_id is required for non-admin users", ErrAppNotFound)
+		}
+
+		// Use global role for admin portal login
+		role = string(user.Role)
+		appRoles = make(map[string]string)
+
+		// Create a virtual "admin-portal" app for token generation
+		app = &model.App{
+			ID:       0,
+			ClientID: "admin-portal",
+			Name:     "Admin Portal",
+		}
+	}
+
 	tokenSet, err := s.tokenService.GenerateTokenSet(
-		user, app, string(userAppRole.Role),
+		user, app, role,
 		"openid email profile offline_access",
 		appRoles, "", now.Unix(),
 	)
@@ -302,7 +332,7 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 	}
 
 	// Log successful login
-	s.logSecurityEvent(ctx, model.SecurityEventLoginSuccess, &user.ID, &app.ID, true, map[string]interface{}{
+	s.logSecurityEvent(ctx, model.SecurityEventLoginSuccess, &user.ID, appIDPtr, true, map[string]interface{}{
 		"email": user.Email,
 	})
 
@@ -313,8 +343,8 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 		TokenType:          "Bearer",
 		ExpiresIn:          tokenSet.ExpiresIn,
 		UserID:             user.ID,
-		App:                &dto.AppResponse{ID: app.ID, Name: app.Name, ClientID: app.ClientID},
-		Roles:              []string{string(userAppRole.Role)},
+		App:                appResponse,
+		Roles:              []string{role},
 		AppRoles:           appRoles,
 		MustChangePassword: user.MustChangePassword,
 	}, nil

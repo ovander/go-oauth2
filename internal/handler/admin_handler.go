@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -328,7 +329,7 @@ func (h *AdminHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/admin/users
 func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
-	_, ok := middleware.GetUserIDFromContext(r.Context())
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		writeError(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -336,7 +337,13 @@ func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 
 	// Check if user is global admin
 	user, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
-	if user == nil || !user.IsGlobalAdmin() {
+	if user == nil {
+		fmt.Printf("[DEBUG] ListUsers: user is nil for userID=%d\n", userID)
+		writeError(w, "forbidden: global admin required", http.StatusForbidden)
+		return
+	}
+	fmt.Printf("[DEBUG] ListUsers: userID=%d, role=%s, isGlobalAdmin=%v\n", user.ID, user.Role, user.IsGlobalAdmin())
+	if !user.IsGlobalAdmin() {
 		writeError(w, "forbidden: global admin required", http.StatusForbidden)
 		return
 	}

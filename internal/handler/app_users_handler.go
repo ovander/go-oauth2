@@ -18,20 +18,26 @@ import (
 type AppUsersHandler struct {
 	userService        service.UserService
 	userAppRoleService service.UserAppRoleService
+	appService         service.AppService
 	adminLogService    service.AdminLogService
+	emailService       service.EmailService
 	tokenService       *auth.TokenService
 }
 
 func NewAppUsersHandler(
 	userService service.UserService,
 	userAppRoleService service.UserAppRoleService,
+	appService service.AppService,
 	adminLogService service.AdminLogService,
+	emailService service.EmailService,
 	tokenService *auth.TokenService,
 ) *AppUsersHandler {
 	return &AppUsersHandler{
 		userService:        userService,
 		userAppRoleService: userAppRoleService,
+		appService:         appService,
 		adminLogService:    adminLogService,
+		emailService:       emailService,
 		tokenService:       tokenService,
 	}
 }
@@ -183,6 +189,19 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	// Send invite email
+	if h.emailService != nil {
+		app, appErr := h.appService.GetByID(r.Context(), appID)
+		appName := "the application"
+		if appErr == nil && app != nil {
+			appName = app.Name
+		}
+		if emailErr := h.emailService.SendInviteEmail(user.Email, appName, inviteToken); emailErr != nil {
+			// Log error but don't fail the operation
+			// Email sending is best-effort
+		}
 	}
 
 	// Mark invite as sent

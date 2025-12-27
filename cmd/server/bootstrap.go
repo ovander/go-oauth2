@@ -119,6 +119,23 @@ func Bootstrap(cfg *config.Config) *App {
 	adminLogService := service.NewAdminLogService(adminLogRepo)
 	appActivityLogService := service.NewAppActivityLogService(appActivityLogRepo)
 
+	// Email service (nil if SMTP not configured)
+	var emailService service.EmailService
+	if cfg.SMTPHost != "" {
+		emailService = service.NewEmailService(service.SMTPConfig{
+			Host:     cfg.SMTPHost,
+			Port:     cfg.SMTPPort,
+			Username: cfg.SMTPUsername,
+			Password: cfg.SMTPPassword,
+			Security: cfg.SMTPSecurity,
+			From:     cfg.FromEmail,
+			BaseURL:  cfg.OAuthIssuer,
+		})
+		logger.Info("✅ Email service configured with SMTP")
+	} else {
+		logger.Info("⚠️  Email service not configured (SMTP_HOST not set)")
+	}
+
 	// Use auth service with full features (single-use tokens + audit logging)
 	authService := service.NewAuthServiceFull(
 		userRepo,
@@ -127,6 +144,7 @@ func Bootstrap(cfg *config.Config) *App {
 		usedTokenRepo,
 		securityAuditRepo,
 		tokenService,
+		emailService,
 		service.AuthServiceConfig{
 			MaxFailedAttempts: cfg.MaxFailedAttempts,
 			LockoutDuration:   time.Duration(cfg.LockoutDurationSecs) * time.Second,
@@ -157,7 +175,7 @@ func Bootstrap(cfg *config.Config) *App {
 	// ==========================================
 	authHandler := handler.NewAuthHandler(authService, cfg.Environment, cfg.OAuthIssuer)
 	oauthHandler := handler.NewOAuthHandler(oauthService, authService, appService, templateService, cfg.OAuthIssuer)
-	appUsersHandler := handler.NewAppUsersHandler(userService, userAppRoleService, adminLogService, tokenService)
+	appUsersHandler := handler.NewAppUsersHandler(userService, userAppRoleService, appService, adminLogService, emailService, tokenService)
 	profileHandler := handler.NewProfileHandler(userService)
 	adminHandler := handler.NewAdminHandler(appService, userService, userAppRoleService, adminLogService, appActivityLogService)
 	adminAuthHandler := handler.NewAdminAuthHandler(authService, userService)

@@ -34,6 +34,7 @@ type authService struct {
 	usedTokenRepo     repository.UsedTokenRepository
 	auditRepo         repository.SecurityAuditLogRepository
 	tokenService      *auth.TokenService
+	emailService      EmailService
 	maxFailedAttempts int
 	lockoutDuration   time.Duration
 }
@@ -93,6 +94,7 @@ func NewAuthServiceFull(
 	usedTokenRepo repository.UsedTokenRepository,
 	auditRepo repository.SecurityAuditLogRepository,
 	tokenService *auth.TokenService,
+	emailService EmailService,
 	config AuthServiceConfig,
 ) AuthService {
 	return &authService{
@@ -102,6 +104,7 @@ func NewAuthServiceFull(
 		usedTokenRepo:     usedTokenRepo,
 		auditRepo:         auditRepo,
 		tokenService:      tokenService,
+		emailService:      emailService,
 		maxFailedAttempts: config.MaxFailedAttempts,
 		lockoutDuration:   config.LockoutDuration,
 	}
@@ -160,6 +163,18 @@ func (s *authService) Signup(ctx context.Context, req dto.SignupRequest) (*model
 	verifyToken, err := s.tokenService.GenerateEmailVerificationToken(user.Email, user.ID)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to generate verification token: %w", err)
+	}
+
+	// Send verification email
+	if s.emailService != nil {
+		if err := s.emailService.SendVerificationEmail(user.Email, user.Name, verifyToken); err != nil {
+			// Log but don't fail - user can request resend
+			s.logSecurityEvent(ctx, model.SecurityEventEmailSendFailed, &user.ID, &app.ID, false, map[string]interface{}{
+				"email": user.Email,
+				"type":  "verification",
+				"error": err.Error(),
+			})
+		}
 	}
 
 	// Log user registration
@@ -501,6 +516,17 @@ func (s *authService) RequestPasswordReset(ctx context.Context, email string) (s
 	token, err := s.tokenService.GeneratePasswordResetToken(user.Email, user.ID)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate reset token: %w", err)
+	}
+
+	// Send password reset email
+	if s.emailService != nil {
+		if err := s.emailService.SendPasswordResetEmail(user.Email, user.Name, token); err != nil {
+			s.logSecurityEvent(ctx, model.SecurityEventEmailSendFailed, &user.ID, nil, false, map[string]interface{}{
+				"email": user.Email,
+				"type":  "password_reset",
+				"error": err.Error(),
+			})
+		}
 	}
 
 	// Log password reset request

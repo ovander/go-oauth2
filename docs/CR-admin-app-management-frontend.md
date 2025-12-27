@@ -27,7 +27,7 @@ This document describes the admin portal API endpoints for managing OAuth applic
 
 **Endpoint:** `GET /api/admin/apps`
 
-**Description:** Returns all OAuth apps owned by the current admin.
+**Description:** Returns ALL OAuth apps in the system. The superadmin manages all apps regardless of ownership.
 
 **Response:**
 ```json
@@ -481,6 +481,9 @@ These endpoints are for global user management across all apps.
 | `reset_password` | Password reset triggered |
 | `revoke_tokens` | User tokens revoked |
 | `unlock_user` | User account unlocked |
+| `create_superadmin` | Superadmin account created |
+| `update_superadmin` | Superadmin account updated |
+| `delete_superadmin` | Superadmin account deleted |
 
 ---
 
@@ -539,6 +542,130 @@ These endpoints are for global user management across all apps.
 
 ---
 
+## Part 6: Superadmin Management
+
+These endpoints allow superadmins to manage other superadmin accounts.
+
+---
+
+### 6.1 List Superadmins
+
+**Endpoint:** `GET /api/admin/superadmins`
+
+**Description:** Returns all superadmin users in the system.
+
+**Response:**
+```json
+{
+  "superadmins": [
+    {
+      "id": 1,
+      "email": "admin@example.com",
+      "name": "Primary Admin",
+      "is_verified": true,
+      "last_login": "2025-12-27T14:00:00Z",
+      "failed_logins": 0,
+      "locked_until": null,
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-12-27T14:00:00Z"
+    }
+  ],
+  "total_count": 1
+}
+```
+
+---
+
+### 6.2 Get Superadmin Details
+
+**Endpoint:** `GET /api/admin/superadmins/{id}`
+
+**Response:** Single superadmin object as above.
+
+**Error Responses:**
+| Status | Condition |
+|--------|-----------|
+| 400 | Invalid ID |
+| 404 | Superadmin not found or user is not a superadmin |
+
+---
+
+### 6.3 Create Superadmin
+
+**Endpoint:** `POST /api/admin/superadmins`
+
+**Request Body:**
+```json
+{
+  "email": "newadmin@example.com",
+  "name": "New Admin",
+  "password": "SecurePassword123!"
+}
+```
+
+**Field Validation:**
+| Field | Required | Description |
+|-------|----------|-------------|
+| `email` | Yes | Unique email address |
+| `name` | Yes | Display name |
+| `password` | Yes | Must meet password policy |
+
+**Response (201 Created):** Superadmin object.
+
+**Note:** Superadmins are automatically verified upon creation.
+
+**Error Responses:**
+| Status | Condition |
+|--------|-----------|
+| 400 | Missing required fields or invalid password |
+| 409 | Email already exists |
+
+---
+
+### 6.4 Update Superadmin
+
+**Endpoint:** `PUT /api/admin/superadmins/{id}`
+
+**Request Body (all fields optional):**
+```json
+{
+  "name": "Updated Name",
+  "email": "updated@example.com",
+  "password": "NewSecurePassword123!"
+}
+```
+
+**Response:** Updated superadmin object.
+
+**Error Responses:**
+| Status | Condition |
+|--------|-----------|
+| 400 | Invalid password or target is not a superadmin |
+| 404 | Superadmin not found |
+| 409 | Email already exists |
+
+---
+
+### 6.5 Delete Superadmin
+
+**Endpoint:** `DELETE /api/admin/superadmins/{id}`
+
+**Response:** `204 No Content`
+
+**Constraints:**
+1. **Cannot delete yourself** - Returns 403
+2. **Cannot delete the last superadmin** - Returns 403
+
+**Error Responses:**
+| Status | Condition |
+|--------|-----------|
+| 400 | Target user is not a superadmin |
+| 403 | Cannot delete your own account |
+| 403 | Cannot delete the last superadmin |
+| 404 | Superadmin not found |
+
+---
+
 ## Frontend Implementation Guide
 
 ### Recommended Page Structure
@@ -547,7 +674,7 @@ These endpoints are for global user management across all apps.
 Admin Portal
 ├── Dashboard (uses dashboard endpoints - see other CR)
 ├── Apps
-│   ├── List Apps (/api/admin/apps)
+│   ├── List Apps (/api/admin/apps) - ALL apps in system
 │   ├── Create App (/api/admin/apps POST)
 │   └── App Details
 │       ├── Settings (update/delete app)
@@ -556,9 +683,13 @@ Admin Portal
 │           ├── List Users
 │           ├── Add User
 │           └── User Actions (role, verify, reset, remove)
-├── Users (Global - superadmin only)
+├── Users (Global)
 │   ├── List All Users
 │   └── User Actions (revoke tokens, unlock)
+├── Superadmins
+│   ├── List Superadmins (/api/admin/superadmins)
+│   ├── Create Superadmin (/api/admin/superadmins POST)
+│   └── Superadmin Actions (update, delete with constraints)
 └── Activity Log (/api/admin/activity)
 ```
 
@@ -626,6 +757,31 @@ interface AddUserResponse {
   invite_token: string;
   role: string;
 }
+
+// Superadmin Management
+interface Superadmin {
+  id: number;
+  email: string;
+  name: string;
+  is_verified: boolean;
+  last_login?: string;
+  failed_logins: number;
+  locked_until?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface CreateSuperadminRequest {
+  email: string;
+  name: string;
+  password: string;
+}
+
+interface UpdateSuperadminRequest {
+  name?: string;
+  email?: string;
+  password?: string;
+}
 ```
 
 ### Security Considerations
@@ -643,9 +799,14 @@ interface AddUserResponse {
    - Confirm before rotating secrets
 
 3. **Role-Based UI:**
-   - Hide global user management for non-superadmins
+   - All admin portal features are for superadmins only
    - Show app-scoped user management only for app admins
    - Disable self-removal from apps
+
+4. **Superadmin Deletion:**
+   - Show warning when attempting to delete a superadmin
+   - Disable delete button for current user (cannot delete self)
+   - Show error message if trying to delete the last superadmin
 
 ---
 
@@ -668,7 +829,7 @@ interface AddUserResponse {
 ## Testing Checklist
 
 ### App Management
-- [ ] List apps - verify owned apps displayed
+- [ ] List apps - verify ALL apps displayed (not just owned)
 - [ ] Create app - verify client_id and client_secret returned
 - [ ] Update app - verify changes saved
 - [ ] Delete app - verify removal
@@ -694,6 +855,14 @@ interface AddUserResponse {
 - [ ] View admin activity log
 - [ ] View app-specific logs
 
+### Superadmin Management
+- [ ] List superadmins - verify all superadmins displayed
+- [ ] Create superadmin - verify account created and auto-verified
+- [ ] Update superadmin - verify name/email/password update
+- [ ] Delete superadmin - verify removal
+- [ ] Delete self - verify 403 error "cannot delete your own account"
+- [ ] Delete last superadmin - verify 403 error "cannot delete the last superadmin"
+
 ---
 
 ## Related Documents
@@ -703,3 +872,4 @@ interface AddUserResponse {
   - `internal/handler/admin_handler.go`
   - `internal/handler/app_users_handler.go`
   - `internal/dto/app_dto.go`
+  - `internal/dto/superadmin_dto.go`

@@ -6,6 +6,7 @@ import (
 
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
 type AdminLogService interface {
@@ -20,6 +21,10 @@ type adminLogService struct {
 }
 
 func NewAdminLogService(repo repository.AdminLogRepository) AdminLogService {
+	logger.WithFields(logger.Fields{
+		"service": "admin_log",
+	}).Info("✅ Admin log service initialized")
+
 	return &adminLogService{repo: repo}
 }
 

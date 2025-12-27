@@ -11,6 +11,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/dto"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
 // OAuth service errors
@@ -71,6 +72,14 @@ func NewOAuthService(
 	keyManager *auth.KeyManager,
 	issuer string,
 ) OAuthService {
+	requireHTTPS := strings.HasPrefix(issuer, "https://")
+
+	logger.WithFields(logger.Fields{
+		"service":       "oauth",
+		"issuer":        issuer,
+		"require_https": requireHTTPS,
+	}).Info("✅ OAuth service initialized")
+
 	return &oauthService{
 		userRepo:        userRepo,
 		appRepo:         appRepo,
@@ -79,7 +88,7 @@ func NewOAuthService(
 		tokenService:    tokenService,
 		keyManager:      keyManager,
 		issuer:          issuer,
-		requireHTTPS:    strings.HasPrefix(issuer, "https://"),
+		requireHTTPS:    requireHTTPS,
 	}
 }
 
@@ -94,6 +103,12 @@ func NewOAuthServiceWithConfig(
 	issuer string,
 	config OAuthServiceConfig,
 ) OAuthService {
+	logger.WithFields(logger.Fields{
+		"service":       "oauth",
+		"issuer":        issuer,
+		"require_https": config.RequireHTTPS,
+	}).Info("✅ OAuth service initialized")
+
 	return &oauthService{
 		userRepo:        userRepo,
 		appRepo:         appRepo,

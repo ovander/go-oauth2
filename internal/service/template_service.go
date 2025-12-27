@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 	"github.com/ovandermoten/go-oauth2/web"
 )
 
@@ -41,6 +42,11 @@ func NewTemplateService() *TemplateService {
 	// Parse reset password template with base
 	resetPasswordTmpl := template.Must(template.New("reset_password").Parse(mustReadTemplate("templates/base.html")))
 	template.Must(resetPasswordTmpl.Parse(mustReadTemplate("templates/reset_password.html")))
+
+	logger.WithFields(logger.Fields{
+		"service":   "template",
+		"templates": []string{"login", "error", "accept_invite", "forgot_password", "reset_password"},
+	}).Info("✅ Template service initialized")
 
 	return &TemplateService{
 		loginTemplate:          loginTmpl,

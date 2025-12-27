@@ -10,6 +10,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
 // AuthService defines the authentication service interface
@@ -53,6 +54,15 @@ func NewAuthService(
 	tokenService *auth.TokenService,
 	config AuthServiceConfig,
 ) AuthService {
+	logger.WithFields(logger.Fields{
+		"service":             "auth",
+		"max_failed_attempts": config.MaxFailedAttempts,
+		"lockout_duration":    config.LockoutDuration.String(),
+		"used_token_tracking": false,
+		"audit_logging":       false,
+		"email_enabled":       false,
+	}).Info("✅ Auth service initialized")
+
 	return &authService{
 		userRepo:          userRepo,
 		appRepo:           appRepo,
@@ -74,6 +84,15 @@ func NewAuthServiceWithUsedTokenRepo(
 	tokenService *auth.TokenService,
 	config AuthServiceConfig,
 ) AuthService {
+	logger.WithFields(logger.Fields{
+		"service":             "auth",
+		"max_failed_attempts": config.MaxFailedAttempts,
+		"lockout_duration":    config.LockoutDuration.String(),
+		"used_token_tracking": true,
+		"audit_logging":       false,
+		"email_enabled":       false,
+	}).Info("✅ Auth service initialized")
+
 	return &authService{
 		userRepo:          userRepo,
 		appRepo:           appRepo,
@@ -97,6 +116,15 @@ func NewAuthServiceFull(
 	emailService EmailService,
 	config AuthServiceConfig,
 ) AuthService {
+	logger.WithFields(logger.Fields{
+		"service":             "auth",
+		"max_failed_attempts": config.MaxFailedAttempts,
+		"lockout_duration":    config.LockoutDuration.String(),
+		"used_token_tracking": usedTokenRepo != nil,
+		"audit_logging":       auditRepo != nil,
+		"email_enabled":       emailService != nil,
+	}).Info("✅ Auth service initialized")
+
 	return &authService{
 		userRepo:          userRepo,
 		appRepo:           appRepo,

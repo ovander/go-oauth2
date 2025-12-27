@@ -7,6 +7,7 @@ import (
 
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
 // SecurityAuditService provides security audit logging functionality
@@ -51,6 +52,10 @@ type securityAuditService struct {
 
 // NewSecurityAuditService creates a new security audit service
 func NewSecurityAuditService(repo repository.SecurityAuditLogRepository) SecurityAuditService {
+	logger.WithFields(logger.Fields{
+		"service": "security_audit",
+	}).Info("✅ Security audit service initialized")
+
 	return &securityAuditService{repo: repo}
 }
 

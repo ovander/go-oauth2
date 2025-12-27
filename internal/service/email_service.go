@@ -46,6 +46,14 @@ type emailTemplates struct {
 
 // NewEmailService creates a new email service
 func NewEmailService(config SMTPConfig) EmailService {
+	logger.WithFields(logger.Fields{
+		"service":   "email",
+		"smtp_host": config.Host,
+		"smtp_port": config.Port,
+		"security":  config.Security,
+		"from":      config.From,
+	}).Info("✅ Email service initialized")
+
 	return &emailService{
 		config:    config,
 		templates: parseEmailTemplates(),

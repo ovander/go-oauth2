@@ -11,6 +11,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 	"gorm.io/gorm"
 )
 
@@ -32,6 +33,10 @@ type appService struct {
 }
 
 func NewAppService(repo repository.AppRepository) AppService {
+	logger.WithFields(logger.Fields{
+		"service": "app",
+	}).Info("✅ App service initialized")
+
 	return &appService{repo: repo}
 }
 

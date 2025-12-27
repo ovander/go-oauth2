@@ -244,6 +244,7 @@ func newAdminRouter(
 
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", adminHandler.GetUser)
+				r.Get("/apps", adminHandler.GetUserApps) // Get all apps user belongs to
 				r.Post("/revoke-tokens", adminHandler.RevokeUserTokens)
 				r.Post("/unlock", adminHandler.UnlockUser)
 			})

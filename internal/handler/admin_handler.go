@@ -15,6 +15,7 @@ import (
 type AdminHandler struct {
 	appService         service.AppService
 	userService        service.UserService
+	userAppRoleService service.UserAppRoleService
 	adminLogService    service.AdminLogService
 	appActivityService service.AppActivityLogService
 }
@@ -22,12 +23,14 @@ type AdminHandler struct {
 func NewAdminHandler(
 	appService service.AppService,
 	userService service.UserService,
+	userAppRoleService service.UserAppRoleService,
 	adminLogService service.AdminLogService,
 	appActivityService service.AppActivityLogService,
 ) *AdminHandler {
 	return &AdminHandler{
 		appService:         appService,
 		userService:        userService,
+		userAppRoleService: userAppRoleService,
 		adminLogService:    adminLogService,
 		appActivityService: appActivityService,
 	}
@@ -406,6 +409,64 @@ func (h *AdminHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 		Role:       string(user.Role),
 		IsVerified: user.IsVerified,
 		CreatedAt:  user.CreatedAt,
+	})
+}
+
+// GET /api/admin/users/:id/apps
+// Returns all apps this user belongs to with their roles
+func (h *AdminHandler) GetUserApps(w http.ResponseWriter, r *http.Request) {
+	_, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Check if user is global admin
+	currentUser, _ := r.Context().Value("current_user").(*model.User)
+	if currentUser == nil || !currentUser.IsGlobalAdmin() {
+		writeError(w, "forbidden: global admin required", http.StatusForbidden)
+		return
+	}
+
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, "invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	// Get user info
+	user, err := h.userService.GetByID(r.Context(), uint(userID))
+	if err != nil {
+		writeError(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	// Get user's app memberships
+	roles, err := h.userAppRoleService.GetUserRoles(r.Context(), uint(userID))
+	if err != nil {
+		writeError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	memberships := make([]dto.UserAppMembershipResponse, 0, len(roles))
+	for _, role := range roles {
+		if role.App != nil {
+			memberships = append(memberships, dto.UserAppMembershipResponse{
+				AppID:     role.AppID,
+				AppName:   role.App.Name,
+				ClientID:  role.App.ClientID,
+				Role:      string(role.Role),
+				CreatedAt: role.CreatedAt,
+			})
+		}
+	}
+
+	json.NewEncoder(w).Encode(dto.UserAppMembershipsResponse{
+		UserID:      user.ID,
+		Email:       user.Email,
+		Name:        user.Name,
+		Memberships: memberships,
+		TotalCount:  len(memberships),
 	})
 }
 

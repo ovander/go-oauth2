@@ -47,6 +47,45 @@ This document describes the superadmin portal functionalities for managing all t
 
 ---
 
+## Multi-App User Model
+
+**Key Concept:** A single user can belong to multiple apps with different roles.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        USER: john@example.com               │
+├─────────────────────────────────────────────────────────────┤
+│  App Memberships:                                           │
+│  ├── App 1 (CRM System)      → Role: admin                  │
+│  ├── App 2 (HR Portal)       → Role: user                   │
+│  ├── App 3 (Finance App)     → Role: admin                  │
+│  └── App 4 (Support Desk)    → Role: user                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Data Model:**
+```
+users (1) ←──→ (N) user_app_roles (N) ←──→ (1) apps
+
+user_app_roles table:
+┌─────────┬────────┬────────┬─────────────┐
+│ user_id │ app_id │  role  │ invite_sent │
+├─────────┼────────┼────────┼─────────────┤
+│    5    │   1    │ admin  │    true     │
+│    5    │   2    │ user   │    true     │
+│    5    │   3    │ admin  │    true     │
+│    5    │   4    │ user   │    true     │
+└─────────┴────────┴────────┴─────────────┘
+```
+
+**Implications:**
+- Same user can be `admin` in some apps and `user` in others
+- Removing a user from one app doesn't affect their access to other apps
+- User account is separate from app memberships
+- Superadmin can view all of a user's app memberships
+
+---
+
 ## Prerequisites
 
 - Must be authenticated as **superadmin** via `/api/admin/login`
@@ -204,7 +243,53 @@ Superadmin can view and manage ALL users across all apps.
 
 ---
 
-### 2.3 Revoke User Tokens
+### 2.3 Get User's App Memberships
+
+**Endpoint:** `GET /api/admin/users/{id}/apps`
+
+**Description:** Returns all apps the user belongs to with their roles in each app.
+
+**Response:**
+```json
+{
+  "user_id": 5,
+  "email": "john@example.com",
+  "name": "John Doe",
+  "memberships": [
+    {
+      "app_id": 1,
+      "app_name": "CRM System",
+      "client_id": "crm-client-123",
+      "role": "admin",
+      "created_at": "2025-06-01T10:00:00Z"
+    },
+    {
+      "app_id": 2,
+      "app_name": "HR Portal",
+      "client_id": "hr-portal-456",
+      "role": "user",
+      "created_at": "2025-07-15T14:30:00Z"
+    },
+    {
+      "app_id": 3,
+      "app_name": "Finance App",
+      "client_id": "finance-789",
+      "role": "admin",
+      "created_at": "2025-08-20T09:00:00Z"
+    }
+  ],
+  "total_count": 3
+}
+```
+
+**Use Cases:**
+- View all apps a user has access to
+- Audit user permissions across apps
+- Identify users with admin access in multiple apps
+
+---
+
+### 2.4 Revoke User Tokens
 
 **Endpoint:** `POST /api/admin/users/{id}/revoke-tokens`
 
@@ -224,7 +309,7 @@ Superadmin can view and manage ALL users across all apps.
 
 ---
 
-### 2.4 Unlock User Account
+### 2.5 Unlock User Account
 
 **Endpoint:** `POST /api/admin/users/{id}/unlock`
 
@@ -416,6 +501,7 @@ Admin Portal (Superadmin Only)
 ├── Users (Global)
 │   ├── List all users (across all apps)
 │   ├── View user details
+│   │   └── View app memberships (all apps user belongs to)
 │   ├── Revoke tokens
 │   └── Unlock account
 ├── Superadmins
@@ -522,6 +608,23 @@ interface GlobalUserListResponse {
   page_size: number;
 }
 
+// User's app membership (for viewing all apps a user belongs to)
+interface UserAppMembership {
+  app_id: number;
+  app_name: string;
+  client_id: string;
+  role: 'admin' | 'user';
+  created_at: string;
+}
+
+interface UserAppMembershipsResponse {
+  user_id: number;
+  email: string;
+  name: string;
+  memberships: UserAppMembership[];
+  total_count: number;
+}
+
 // ==========================================
 // App User Types
 // ==========================================
@@ -619,6 +722,12 @@ class SuperadminUserService {
   async listAllUsers(page = 1, pageSize = 20): Promise<GlobalUserListResponse> {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
     const res = await fetch(`${this.baseUrl}/api/admin/users?${params}`, { headers: this.headers() });
+    return res.json();
+  }
+
+  // Get all apps a user belongs to with their roles
+  async getUserApps(userId: number): Promise<UserAppMembershipsResponse> {
+    const res = await fetch(`${this.baseUrl}/api/admin/users/${userId}/apps`, { headers: this.headers() });
     return res.json();
   }
 
@@ -738,6 +847,7 @@ class SuperadminUserService {
 ### Global User Management
 - [ ] List all users with pagination
 - [ ] View user details
+- [ ] View user's app memberships (all apps with roles)
 - [ ] Revoke user tokens
 - [ ] Unlock locked user
 

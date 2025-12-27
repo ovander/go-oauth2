@@ -362,12 +362,13 @@ func (s *authService) AdminLogin(ctx context.Context, req dto.AdminLoginRequest)
 		return nil, fmt.Errorf("%w: please verify your email first", ErrUserNotVerified)
 	}
 
-	// Only allow superadmins and admins to use admin portal login
-	if user.Role != model.UserRoleSuperadmin && user.Role != model.UserRoleAdmin {
+	// Only allow superadmins to use admin portal login
+	// App admins should use the regular /api/auth/login with app_client_id
+	if user.Role != model.UserRoleSuperadmin {
 		s.logSecurityEvent(ctx, model.SecurityEventLoginFailed, &user.ID, nil, false, map[string]interface{}{
 			"email":      user.Email,
 			"login_type": "admin_portal",
-			"reason":     "not_admin",
+			"reason":     "not_superadmin",
 		})
 		return nil, ErrNotAdmin
 	}

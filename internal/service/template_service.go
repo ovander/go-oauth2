@@ -3,6 +3,8 @@ package service
 import (
 	"bytes"
 	"html/template"
+	"io"
+	"log"
 	"net/http"
 	"strings"
 
@@ -11,14 +13,32 @@ import (
 
 // TemplateService handles rendering of HTML templates
 type TemplateService struct {
-	templates *template.Template
+	loginTemplate *template.Template
+	errorTemplate *template.Template
 }
 
 // NewTemplateService creates a new template service
 func NewTemplateService() *TemplateService {
+	// Parse login template with base
+	loginTmpl := template.Must(template.New("login").Parse(mustReadTemplate("templates/base.html")))
+	template.Must(loginTmpl.Parse(mustReadTemplate("templates/login.html")))
+
+	// Parse error template with base
+	errorTmpl := template.Must(template.New("error").Parse(mustReadTemplate("templates/base.html")))
+	template.Must(errorTmpl.Parse(mustReadTemplate("templates/error.html")))
+
 	return &TemplateService{
-		templates: web.Templates,
+		loginTemplate: loginTmpl,
+		errorTemplate: errorTmpl,
 	}
+}
+
+func mustReadTemplate(path string) string {
+	content, err := web.Templates.ReadFile(path)
+	if err != nil {
+		panic("failed to read template " + path + ": " + err.Error())
+	}
+	return string(content)
 }
 
 // LoginPageData contains data for the login page template
@@ -53,60 +73,27 @@ func (s *TemplateService) RenderLogin(w http.ResponseWriter, data LoginPageData)
 		data.Scopes = scopeDescriptions(data.Scope)
 	}
 
-	return s.render(w, "login.html", data)
+	return s.render(w, s.loginTemplate, data)
 }
 
 // RenderError renders the error page
 func (s *TemplateService) RenderError(w http.ResponseWriter, data ErrorPageData) error {
-	return s.render(w, "error.html", data)
+	return s.render(w, s.errorTemplate, data)
 }
 
-func (s *TemplateService) render(w http.ResponseWriter, name string, data interface{}) error {
+func (s *TemplateService) render(w http.ResponseWriter, tmpl *template.Template, data interface{}) error {
 	// First render to a buffer to catch errors before writing to response
 	var buf bytes.Buffer
-
-	// Execute base template with the specific template
-	err := s.templates.ExecuteTemplate(&buf, "base.html", data)
-	if err != nil {
-		return err
-	}
-
-	// Now render the specific template content
-	buf.Reset()
-	err = s.templates.ExecuteTemplate(&buf, name, data)
-	if err != nil {
+	if err := tmpl.ExecuteTemplate(&buf, "base.html", data); err != nil {
+		log.Printf("Template error: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return err
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-
-	// Combine base and content
-	return s.renderWithBase(w, name, data)
-}
-
-func (s *TemplateService) renderWithBase(w http.ResponseWriter, contentTemplate string, data interface{}) error {
-	// Create a new template that includes base
-	tmpl := template.Must(template.New("page").Parse(`
-{{template "base.html" .}}
-`))
-
-	// Clone and add the content template
-	tmpl, err := tmpl.AddParseTree("base.html", s.templates.Lookup("base.html").Tree)
-	if err != nil {
-		return err
-	}
-
-	contentTmpl := s.templates.Lookup(contentTemplate)
-	if contentTmpl != nil {
-		tmpl, err = tmpl.AddParseTree(contentTemplate, contentTmpl.Tree)
-		if err != nil {
-			return err
-		}
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	return tmpl.ExecuteTemplate(w, "base.html", data)
+	_, err := io.Copy(w, &buf)
+	return err
 }
 
 // scopeDescriptions converts scope strings to human-readable descriptions
@@ -119,6 +106,7 @@ func scopeDescriptions(scope string) []string {
 		"profile":        "Access your profile information",
 		"email":          "Access your email address",
 		"offline_access": "Maintain access when you're not using the app",
+		"api":            "Access API on your behalf",
 	}
 
 	for _, s := range scopes {

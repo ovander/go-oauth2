@@ -24,7 +24,7 @@ type AuthService interface {
 	ResetPassword(ctx context.Context, token, newPassword string) error
 	ChangePassword(ctx context.Context, userID uint, currentPassword, newPassword string) error
 	ValidateInviteToken(ctx context.Context, token string) (*dto.InviteValidationResponse, error)
-	AcceptInvite(ctx context.Context, token, password string) (*dto.LoginResponse, error)
+	AcceptInvite(ctx context.Context, token, name, password string) (*dto.LoginResponse, error)
 }
 
 type authService struct {
@@ -688,7 +688,7 @@ func (s *authService) ValidateInviteToken(ctx context.Context, token string) (*d
 }
 
 // AcceptInvite accepts an invite and creates/updates a user
-func (s *authService) AcceptInvite(ctx context.Context, token, password string) (*dto.LoginResponse, error) {
+func (s *authService) AcceptInvite(ctx context.Context, token, name, password string) (*dto.LoginResponse, error) {
 	claims, err := s.tokenService.VerifyInviteToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidToken, err)
@@ -722,12 +722,18 @@ func (s *authService) AcceptInvite(ctx context.Context, token, password string) 
 	}
 
 	now := time.Now()
+	// Use provided name or fall back to email
+	userName := name
+	if userName == "" {
+		userName = claims.Email
+	}
+
 	user, err := s.userRepo.FindByEmail(ctx, claims.Email)
 	if err != nil {
 		// Create new user
 		user = &model.User{
 			Email:          claims.Email,
-			Name:           claims.Email,
+			Name:           userName,
 			HashedPassword: hashedPassword,
 			Role:           model.UserRoleUser,
 			IsVerified:     true,
@@ -747,6 +753,9 @@ func (s *authService) AcceptInvite(ctx context.Context, token, password string) 
 		user.IsVerified = true
 		user.ConfirmedAt = &now
 		user.UpdatedAt = now
+		if userName != "" && userName != claims.Email {
+			user.Name = userName
+		}
 
 		if err := s.userRepo.Update(ctx, user); err != nil {
 			return nil, fmt.Errorf("failed to update user: %w", err)

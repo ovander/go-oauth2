@@ -42,6 +42,7 @@ type ResetPasswordRequest struct {
 
 type AcceptInviteRequest struct {
 	Token    string `json:"token"`
+	Name     string `json:"name"`
 	Password string `json:"password"`
 }
 

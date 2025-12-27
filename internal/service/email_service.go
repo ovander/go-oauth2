@@ -88,7 +88,7 @@ func (s *emailService) SendPasswordResetEmail(to, name, token string) error {
 func (s *emailService) SendInviteEmail(to, appName, token string) error {
 	data := map[string]string{
 		"AppName": appName,
-		"Link":    fmt.Sprintf("%s/api/auth/invite?token=%s", s.config.BaseURL, token),
+		"Link":    fmt.Sprintf("%s/auth/accept-invite?token=%s", s.config.BaseURL, token),
 		"BaseURL": s.config.BaseURL,
 	}
 

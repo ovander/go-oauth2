@@ -128,6 +128,15 @@ func newOAuthRouter(
 	})
 
 	// ==========================================
+	// Server-Rendered Auth Pages (HTML)
+	// ==========================================
+	r.Route("/auth", func(r chi.Router) {
+		// Accept invite - combined email verification + password setting
+		r.Get("/accept-invite", oauthHandler.AcceptInvitePage)
+		r.Post("/accept-invite", oauthHandler.AcceptInviteSubmit)
+	})
+
+	// ==========================================
 	// User-Facing API Routes (Authentication & Profile)
 	// ==========================================
 	r.Route("/api", func(r chi.Router) {

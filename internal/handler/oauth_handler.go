@@ -494,3 +494,105 @@ func writeOAuthError(w http.ResponseWriter, errorCode, description string, statu
 		ErrorDescription: description,
 	})
 }
+
+// GET /auth/accept-invite - Show the accept invite form
+func (h *OAuthHandler) AcceptInvitePage(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		h.templateService.RenderAcceptInvite(w, service.AcceptInvitePageData{
+			Valid: false,
+			Error: "Missing invitation token",
+		})
+		return
+	}
+
+	// Validate the token
+	validation, err := h.authService.ValidateInviteToken(r.Context(), token)
+	if err != nil || !validation.Valid {
+		h.templateService.RenderAcceptInvite(w, service.AcceptInvitePageData{
+			Valid: false,
+			Error: "This invitation link is invalid or has expired",
+		})
+		return
+	}
+
+	h.templateService.RenderAcceptInvite(w, service.AcceptInvitePageData{
+		Token:   token,
+		Email:   validation.Email,
+		AppName: validation.AppName,
+		Valid:   true,
+	})
+}
+
+// POST /auth/accept-invite - Process the accept invite form
+func (h *OAuthHandler) AcceptInviteSubmit(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		h.templateService.RenderAcceptInvite(w, service.AcceptInvitePageData{
+			Valid: false,
+			Error: "Failed to parse form",
+		})
+		return
+	}
+
+	token := r.FormValue("token")
+	name := r.FormValue("name")
+	password := r.FormValue("password")
+	confirmPassword := r.FormValue("confirm_password")
+
+	// Validate the token first to get app info for error display
+	validation, err := h.authService.ValidateInviteToken(r.Context(), token)
+	if err != nil || !validation.Valid {
+		h.templateService.RenderAcceptInvite(w, service.AcceptInvitePageData{
+			Valid: false,
+			Error: "This invitation link is invalid or has expired",
+		})
+		return
+	}
+
+	// Render with error helper
+	renderError := func(errMsg string) {
+		h.templateService.RenderAcceptInvite(w, service.AcceptInvitePageData{
+			Token:   token,
+			Email:   validation.Email,
+			Name:    name,
+			AppName: validation.AppName,
+			Valid:   true,
+			Error:   errMsg,
+		})
+	}
+
+	// Validate inputs
+	if name == "" {
+		renderError("Name is required")
+		return
+	}
+
+	if password == "" {
+		renderError("Password is required")
+		return
+	}
+
+	if len(password) < 8 {
+		renderError("Password must be at least 8 characters")
+		return
+	}
+
+	if password != confirmPassword {
+		renderError("Passwords do not match")
+		return
+	}
+
+	// Accept the invite
+	_, err = h.authService.AcceptInvite(r.Context(), token, name, password)
+	if err != nil {
+		renderError("Failed to complete setup: " + err.Error())
+		return
+	}
+
+	// Show success message
+	h.templateService.RenderAcceptInvite(w, service.AcceptInvitePageData{
+		AppName: validation.AppName,
+		Valid:   true,
+		Success: "Your account has been set up successfully! You can now log in with your email and password.",
+	})
+}

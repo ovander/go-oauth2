@@ -213,7 +213,7 @@ func (h *AuthHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response, err := h.authService.AcceptInvite(r.Context(), req.Token, req.Password)
+	response, err := h.authService.AcceptInvite(r.Context(), req.Token, req.Name, req.Password)
 	if err != nil {
 		writeError(w, err.Error(), http.StatusBadRequest)
 		return

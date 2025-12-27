@@ -13,8 +13,9 @@ import (
 
 // TemplateService handles rendering of HTML templates
 type TemplateService struct {
-	loginTemplate *template.Template
-	errorTemplate *template.Template
+	loginTemplate        *template.Template
+	errorTemplate        *template.Template
+	acceptInviteTemplate *template.Template
 }
 
 // NewTemplateService creates a new template service
@@ -27,9 +28,14 @@ func NewTemplateService() *TemplateService {
 	errorTmpl := template.Must(template.New("error").Parse(mustReadTemplate("templates/base.html")))
 	template.Must(errorTmpl.Parse(mustReadTemplate("templates/error.html")))
 
+	// Parse accept invite template with base
+	acceptInviteTmpl := template.Must(template.New("accept_invite").Parse(mustReadTemplate("templates/base.html")))
+	template.Must(acceptInviteTmpl.Parse(mustReadTemplate("templates/accept_invite.html")))
+
 	return &TemplateService{
-		loginTemplate: loginTmpl,
-		errorTemplate: errorTmpl,
+		loginTemplate:        loginTmpl,
+		errorTemplate:        errorTmpl,
+		acceptInviteTemplate: acceptInviteTmpl,
 	}
 }
 
@@ -66,6 +72,18 @@ type ErrorPageData struct {
 	ReturnURL   string
 }
 
+// AcceptInvitePageData contains data for the accept invite page template
+type AcceptInvitePageData struct {
+	Token   string
+	Email   string
+	Name    string
+	AppName string
+	Role    string
+	Valid   bool
+	Error   string
+	Success string
+}
+
 // RenderLogin renders the login page
 func (s *TemplateService) RenderLogin(w http.ResponseWriter, data LoginPageData) error {
 	// Parse scope string into descriptions
@@ -79,6 +97,11 @@ func (s *TemplateService) RenderLogin(w http.ResponseWriter, data LoginPageData)
 // RenderError renders the error page
 func (s *TemplateService) RenderError(w http.ResponseWriter, data ErrorPageData) error {
 	return s.render(w, s.errorTemplate, data)
+}
+
+// RenderAcceptInvite renders the accept invite page
+func (s *TemplateService) RenderAcceptInvite(w http.ResponseWriter, data AcceptInvitePageData) error {
+	return s.render(w, s.acceptInviteTemplate, data)
 }
 
 func (s *TemplateService) render(w http.ResponseWriter, tmpl *template.Template, data interface{}) error {

@@ -33,6 +33,7 @@ func NewRouters(
 	appUsersHandler *handler.AppUsersHandler,
 	profileHandler *handler.ProfileHandler,
 	adminHandler *handler.AdminHandler,
+	adminAuthHandler *handler.AdminAuthHandler,
 	healthHandler *handler.HealthHandler,
 	appLogsHandler *handler.AppLogsHandler,
 	tokenService *auth.TokenService,
@@ -42,7 +43,7 @@ func NewRouters(
 ) *Routers {
 	return &Routers{
 		OAuth: newOAuthRouter(authHandler, oauthHandler, profileHandler, healthHandler, tokenService, userRepo, config),
-		Admin: newAdminRouter(adminHandler, appUsersHandler, appLogsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config),
+		Admin: newAdminRouter(adminHandler, adminAuthHandler, appUsersHandler, appLogsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config),
 	}
 }
 
@@ -165,6 +166,7 @@ func newOAuthRouter(
 // This should be exposed on an internal port (e.g., 8081) behind a firewall
 func newAdminRouter(
 	adminHandler *handler.AdminHandler,
+	adminAuthHandler *handler.AdminAuthHandler,
 	appUsersHandler *handler.AppUsersHandler,
 	appLogsHandler *handler.AppLogsHandler,
 	healthHandler *handler.HealthHandler,
@@ -203,7 +205,13 @@ func newAdminRouter(
 	r.Get("/health/readiness", healthHandler.Readiness)
 
 	// ==========================================
-	// Admin API Routes
+	// Admin Authentication (public - no auth required)
+	// ==========================================
+	r.With(middleware.RateLimitMiddleware(config.LoginRateLimiter)).
+		Post("/api/admin/login", adminAuthHandler.Login)
+
+	// ==========================================
+	// Admin API Routes (protected)
 	// ==========================================
 	r.Route("/api/admin", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware(tokenService, userRepo))
@@ -272,6 +280,7 @@ func NewRouter(
 	appUsersHandler *handler.AppUsersHandler,
 	profileHandler *handler.ProfileHandler,
 	adminHandler *handler.AdminHandler,
+	adminAuthHandler *handler.AdminAuthHandler,
 	healthHandler *handler.HealthHandler,
 	appLogsHandler *handler.AppLogsHandler,
 	tokenService *auth.TokenService,
@@ -305,7 +314,7 @@ func NewRouter(
 	r.Mount("/", oauthRouter)
 
 	// Mount Admin router under /admin prefix (for single-port mode)
-	adminRouter := newAdminRouter(adminHandler, appUsersHandler, appLogsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config)
+	adminRouter := newAdminRouter(adminHandler, adminAuthHandler, appUsersHandler, appLogsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config)
 	r.Mount("/manage", adminRouter)
 
 	return r

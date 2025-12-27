@@ -80,8 +80,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Email == "" || req.Password == "" {
-		writeError(w, "email and password are required", http.StatusBadRequest)
+	if req.Email == "" || req.Password == "" || req.AppClientID == "" {
+		writeError(w, "email, password, and app_client_id are required", http.StatusBadRequest)
 		return
 	}
 

@@ -17,6 +17,12 @@ type LoginRequest struct {
 	AppClientID string `json:"app_client_id"`
 }
 
+// AdminLoginRequest is for admin portal login (no app context required)
+type AdminLoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }

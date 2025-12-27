@@ -10,6 +10,7 @@ var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrAccountLocked      = errors.New("account is locked")
 	ErrUserNotVerified    = errors.New("user email not verified")
+	ErrNotAdmin           = errors.New("admin access required")
 
 	// App errors
 	ErrAppNotFound        = errors.New("app not found")

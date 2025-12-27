@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -61,7 +60,6 @@ func AuthMiddleware(tokenService *auth.TokenService, userRepo repository.UserRep
 			}
 
 			// Add user info to context
-			fmt.Printf("[DEBUG] AuthMiddleware: storing user in context - ID=%d, Role=%s, Type=%T\n", user.ID, user.Role, user)
 			ctx := context.WithValue(r.Context(), contextkeys.UserIDKey, user.ID)
 			ctx = context.WithValue(ctx, contextkeys.UserRoleKey, string(user.Role))
 			ctx = context.WithValue(ctx, contextkeys.CurrentUserKey, user)

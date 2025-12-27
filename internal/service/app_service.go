@@ -97,7 +97,7 @@ func (s *appService) Create(ctx context.Context, req dto.CreateAppRequest, owner
 		ClientSecretHash: clientSecretHash,
 		Active:           true,
 		URL:              req.URL,
-		RedirectURIs:     req.RedirectURIs,
+		RedirectURIs:     model.StringArray(req.RedirectURIs),
 		OwnerID:          &ownerID,
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
@@ -123,7 +123,7 @@ func (s *appService) Update(ctx context.Context, id uint, req dto.UpdateAppReque
 		app.URL = req.URL
 	}
 	if req.RedirectURIs != nil {
-		app.RedirectURIs = req.RedirectURIs
+		app.RedirectURIs = model.StringArray(req.RedirectURIs)
 	}
 	if req.Active != nil {
 		app.Active = *req.Active

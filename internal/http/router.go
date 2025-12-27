@@ -216,6 +216,9 @@ func newAdminRouter(
 	r.Route("/api/admin", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware(tokenService, userRepo))
 
+		// Current admin profile
+		r.Get("/profile", adminAuthHandler.GetProfile)
+
 		// Stats and activity
 		r.Get("/stats", adminHandler.GetStats)
 		r.Get("/activity", adminHandler.GetActivity)

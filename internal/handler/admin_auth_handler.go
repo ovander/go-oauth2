@@ -5,23 +5,26 @@ import (
 	"net/http"
 
 	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovandermoten/go-oauth2/internal/middleware"
 	"github.com/ovandermoten/go-oauth2/internal/service"
 )
 
 // AdminAuthHandler handles authentication for the admin portal
 type AdminAuthHandler struct {
 	authService service.AuthService
+	userService service.UserService
 }
 
 // NewAdminAuthHandler creates a new admin auth handler
-func NewAdminAuthHandler(authService service.AuthService) *AdminAuthHandler {
+func NewAdminAuthHandler(authService service.AuthService, userService service.UserService) *AdminAuthHandler {
 	return &AdminAuthHandler{
 		authService: authService,
+		userService: userService,
 	}
 }
 
 // POST /api/admin/login
-// Admin portal login - only allows superadmins and admins
+// Admin portal login - only allows superadmins
 func (h *AdminAuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req dto.AdminLoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -52,4 +55,29 @@ func (h *AdminAuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(response)
+}
+
+// GET /api/admin/profile
+// Get the current admin's profile
+func (h *AdminAuthHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	user, err := h.userService.GetByID(r.Context(), userID)
+	if err != nil {
+		writeError(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	json.NewEncoder(w).Encode(dto.UserResponse{
+		ID:         user.ID,
+		Email:      user.Email,
+		Name:       user.Name,
+		Role:       string(user.Role),
+		IsVerified: user.IsVerified,
+		CreatedAt:  user.CreatedAt,
+	})
 }

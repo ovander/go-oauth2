@@ -71,7 +71,7 @@ func (s *emailService) SendVerificationEmail(to, name, token string) error {
 func (s *emailService) SendPasswordResetEmail(to, name, token string) error {
 	data := map[string]string{
 		"Name":    name,
-		"Link":    fmt.Sprintf("%s/reset-password?token=%s", s.config.BaseURL, token),
+		"Link":    fmt.Sprintf("%s/auth/reset-password?token=%s", s.config.BaseURL, token),
 		"BaseURL": s.config.BaseURL,
 	}
 

@@ -134,6 +134,12 @@ func newOAuthRouter(
 		// Accept invite - combined email verification + password setting
 		r.Get("/accept-invite", oauthHandler.AcceptInvitePage)
 		r.Post("/accept-invite", oauthHandler.AcceptInviteSubmit)
+
+		// Password reset flow
+		r.Get("/forgot-password", oauthHandler.ForgotPasswordPage)
+		r.Post("/forgot-password", oauthHandler.ForgotPasswordSubmit)
+		r.Get("/reset-password", oauthHandler.ResetPasswordPage)
+		r.Post("/reset-password", oauthHandler.ResetPasswordSubmit)
 	})
 
 	// ==========================================

@@ -596,3 +596,133 @@ func (h *OAuthHandler) AcceptInviteSubmit(w http.ResponseWriter, r *http.Request
 		Success: "Your account has been set up successfully! You can now log in with your email and password.",
 	})
 }
+
+// GET /auth/forgot-password - Show the forgot password form
+func (h *OAuthHandler) ForgotPasswordPage(w http.ResponseWriter, r *http.Request) {
+	h.templateService.RenderForgotPassword(w, service.ForgotPasswordPageData{})
+}
+
+// POST /auth/forgot-password - Process the forgot password form
+func (h *OAuthHandler) ForgotPasswordSubmit(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		h.templateService.RenderForgotPassword(w, service.ForgotPasswordPageData{
+			Error: "Failed to parse form",
+		})
+		return
+	}
+
+	email := r.FormValue("email")
+	if email == "" {
+		h.templateService.RenderForgotPassword(w, service.ForgotPasswordPageData{
+			Error: "Email is required",
+		})
+		return
+	}
+
+	// Request password reset - this always returns success to prevent email enumeration
+	_, _ = h.authService.RequestPasswordReset(r.Context(), email)
+
+	// Always show success message to prevent email enumeration
+	h.templateService.RenderForgotPassword(w, service.ForgotPasswordPageData{
+		Email:   email,
+		Success: "If an account exists with this email address, you will receive a password reset link shortly.",
+	})
+}
+
+// GET /auth/reset-password - Show the reset password form
+func (h *OAuthHandler) ResetPasswordPage(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		h.templateService.RenderResetPassword(w, service.ResetPasswordPageData{
+			Valid: false,
+			Error: "Missing reset token",
+		})
+		return
+	}
+
+	// Validate the token by attempting to parse it
+	email, valid := h.oauthService.ValidatePasswordResetToken(r.Context(), token)
+	if !valid {
+		h.templateService.RenderResetPassword(w, service.ResetPasswordPageData{
+			Valid: false,
+			Error: "This password reset link is invalid or has expired",
+		})
+		return
+	}
+
+	h.templateService.RenderResetPassword(w, service.ResetPasswordPageData{
+		Token: token,
+		Email: email,
+		Valid: true,
+	})
+}
+
+// POST /auth/reset-password - Process the reset password form
+func (h *OAuthHandler) ResetPasswordSubmit(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		h.templateService.RenderResetPassword(w, service.ResetPasswordPageData{
+			Valid: false,
+			Error: "Failed to parse form",
+		})
+		return
+	}
+
+	token := r.FormValue("token")
+	password := r.FormValue("password")
+	confirmPassword := r.FormValue("confirm_password")
+
+	// Validate the token first
+	email, valid := h.oauthService.ValidatePasswordResetToken(r.Context(), token)
+	if !valid {
+		h.templateService.RenderResetPassword(w, service.ResetPasswordPageData{
+			Valid: false,
+			Error: "This password reset link is invalid or has expired",
+		})
+		return
+	}
+
+	// Render with error helper
+	renderError := func(errMsg string) {
+		h.templateService.RenderResetPassword(w, service.ResetPasswordPageData{
+			Token: token,
+			Email: email,
+			Valid: true,
+			Error: errMsg,
+		})
+	}
+
+	// Validate inputs
+	if password == "" {
+		renderError("Password is required")
+		return
+	}
+
+	if len(password) < 8 {
+		renderError("Password must be at least 8 characters")
+		return
+	}
+
+	if password != confirmPassword {
+		renderError("Passwords do not match")
+		return
+	}
+
+	// Reset the password
+	if err := h.authService.ResetPassword(r.Context(), token, password); err != nil {
+		if err == service.ErrTokenAlreadyUsed {
+			h.templateService.RenderResetPassword(w, service.ResetPasswordPageData{
+				Valid: false,
+				Error: "This password reset link has already been used",
+			})
+			return
+		}
+		renderError("Failed to reset password: " + err.Error())
+		return
+	}
+
+	// Show success message
+	h.templateService.RenderResetPassword(w, service.ResetPasswordPageData{
+		Valid:   true,
+		Success: "Your password has been reset successfully!",
+	})
+}

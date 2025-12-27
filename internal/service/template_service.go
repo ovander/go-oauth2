@@ -13,9 +13,11 @@ import (
 
 // TemplateService handles rendering of HTML templates
 type TemplateService struct {
-	loginTemplate        *template.Template
-	errorTemplate        *template.Template
-	acceptInviteTemplate *template.Template
+	loginTemplate          *template.Template
+	errorTemplate          *template.Template
+	acceptInviteTemplate   *template.Template
+	forgotPasswordTemplate *template.Template
+	resetPasswordTemplate  *template.Template
 }
 
 // NewTemplateService creates a new template service
@@ -32,10 +34,20 @@ func NewTemplateService() *TemplateService {
 	acceptInviteTmpl := template.Must(template.New("accept_invite").Parse(mustReadTemplate("templates/base.html")))
 	template.Must(acceptInviteTmpl.Parse(mustReadTemplate("templates/accept_invite.html")))
 
+	// Parse forgot password template with base
+	forgotPasswordTmpl := template.Must(template.New("forgot_password").Parse(mustReadTemplate("templates/base.html")))
+	template.Must(forgotPasswordTmpl.Parse(mustReadTemplate("templates/forgot_password.html")))
+
+	// Parse reset password template with base
+	resetPasswordTmpl := template.Must(template.New("reset_password").Parse(mustReadTemplate("templates/base.html")))
+	template.Must(resetPasswordTmpl.Parse(mustReadTemplate("templates/reset_password.html")))
+
 	return &TemplateService{
-		loginTemplate:        loginTmpl,
-		errorTemplate:        errorTmpl,
-		acceptInviteTemplate: acceptInviteTmpl,
+		loginTemplate:          loginTmpl,
+		errorTemplate:          errorTmpl,
+		acceptInviteTemplate:   acceptInviteTmpl,
+		forgotPasswordTemplate: forgotPasswordTmpl,
+		resetPasswordTemplate:  resetPasswordTmpl,
 	}
 }
 
@@ -84,6 +96,22 @@ type AcceptInvitePageData struct {
 	Success string
 }
 
+// ForgotPasswordPageData contains data for the forgot password page template
+type ForgotPasswordPageData struct {
+	Email   string
+	Error   string
+	Success string
+}
+
+// ResetPasswordPageData contains data for the reset password page template
+type ResetPasswordPageData struct {
+	Token   string
+	Email   string
+	Valid   bool
+	Error   string
+	Success string
+}
+
 // RenderLogin renders the login page
 func (s *TemplateService) RenderLogin(w http.ResponseWriter, data LoginPageData) error {
 	// Parse scope string into descriptions
@@ -102,6 +130,16 @@ func (s *TemplateService) RenderError(w http.ResponseWriter, data ErrorPageData)
 // RenderAcceptInvite renders the accept invite page
 func (s *TemplateService) RenderAcceptInvite(w http.ResponseWriter, data AcceptInvitePageData) error {
 	return s.render(w, s.acceptInviteTemplate, data)
+}
+
+// RenderForgotPassword renders the forgot password page
+func (s *TemplateService) RenderForgotPassword(w http.ResponseWriter, data ForgotPasswordPageData) error {
+	return s.render(w, s.forgotPasswordTemplate, data)
+}
+
+// RenderResetPassword renders the reset password page
+func (s *TemplateService) RenderResetPassword(w http.ResponseWriter, data ResetPasswordPageData) error {
+	return s.render(w, s.resetPasswordTemplate, data)
 }
 
 func (s *TemplateService) render(w http.ResponseWriter, tmpl *template.Template, data interface{}) error {

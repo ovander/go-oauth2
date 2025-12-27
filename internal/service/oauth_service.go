@@ -42,6 +42,7 @@ type OAuthService interface {
 	GetUserInfo(ctx context.Context, userID uint, clientID string) (*dto.UserInfoResponse, error)
 	GetOpenIDConfiguration(issuer string) *dto.OpenIDConfiguration
 	GetJWKS() dto.JWKS
+	ValidatePasswordResetToken(ctx context.Context, token string) (email string, valid bool)
 }
 
 type oauthService struct {
@@ -451,6 +452,20 @@ func (s *oauthService) GetOpenIDConfiguration(issuer string) *dto.OpenIDConfigur
 // GetJWKS returns the JSON Web Key Set
 func (s *oauthService) GetJWKS() dto.JWKS {
 	return s.keyManager.GetJWKS()
+}
+
+// ValidatePasswordResetToken validates a password reset token and returns the email if valid
+func (s *oauthService) ValidatePasswordResetToken(ctx context.Context, token string) (string, bool) {
+	claims, err := s.tokenService.VerifyEmailToken(token)
+	if err != nil {
+		return "", false
+	}
+
+	if claims.Type != "password_reset" || claims.Action != "reset" {
+		return "", false
+	}
+
+	return claims.Email, true
 }
 
 func isValidResponseType(responseType string) bool {

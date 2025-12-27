@@ -177,7 +177,7 @@ func Bootstrap(cfg *config.Config) *App {
 	oauthHandler := handler.NewOAuthHandler(oauthService, authService, appService, templateService, cfg.OAuthIssuer)
 	appUsersHandler := handler.NewAppUsersHandler(userService, userAppRoleService, appService, adminLogService, emailService, tokenService)
 	profileHandler := handler.NewProfileHandler(userService)
-	adminHandler := handler.NewAdminHandler(appService, userService, userAppRoleService, adminLogService, appActivityLogService)
+	adminHandler := handler.NewAdminHandler(appService, userService, userAppRoleService, adminLogService, appActivityLogService, emailService)
 	adminAuthHandler := handler.NewAdminAuthHandler(authService, userService)
 	dashboardHandler := handler.NewDashboardHandler(db, userRepo, appRepo, userAppRoleRepo)
 	healthHandler := handler.NewHealthHandler(db)

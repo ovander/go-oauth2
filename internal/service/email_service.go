@@ -15,6 +15,7 @@ type EmailService interface {
 	SendPasswordResetEmail(to, name, token string) error
 	SendInviteEmail(to, appName, token string) error
 	SendWelcomeEmail(to, name string) error
+	SendAppCredentialsEmail(to, adminName, appName, clientID, clientSecret string) error
 }
 
 // SMTPConfig holds SMTP configuration
@@ -34,10 +35,11 @@ type emailService struct {
 }
 
 type emailTemplates struct {
-	verification  *template.Template
-	passwordReset *template.Template
-	invite        *template.Template
-	welcome       *template.Template
+	verification   *template.Template
+	passwordReset  *template.Template
+	invite         *template.Template
+	welcome        *template.Template
+	appCredentials *template.Template
 }
 
 // NewEmailService creates a new email service
@@ -110,6 +112,25 @@ func (s *emailService) SendWelcomeEmail(to, name string) error {
 	body, err := s.renderTemplate(s.templates.welcome, data)
 	if err != nil {
 		return fmt.Errorf("failed to render welcome email: %w", err)
+	}
+
+	return s.send(to, subject, body)
+}
+
+// SendAppCredentialsEmail sends app credentials to the admin
+func (s *emailService) SendAppCredentialsEmail(to, adminName, appName, clientID, clientSecret string) error {
+	data := map[string]string{
+		"AdminName":    adminName,
+		"AppName":      appName,
+		"ClientID":     clientID,
+		"ClientSecret": clientSecret,
+		"BaseURL":      s.config.BaseURL,
+	}
+
+	subject := fmt.Sprintf("Your OAuth2 credentials for %s", appName)
+	body, err := s.renderTemplate(s.templates.appCredentials, data)
+	if err != nil {
+		return fmt.Errorf("failed to render app credentials email: %w", err)
 	}
 
 	return s.send(to, subject, body)
@@ -229,10 +250,11 @@ func (s *emailService) sendWithClient(client *smtp.Client, auth smtp.Auth, to st
 
 func parseEmailTemplates() *emailTemplates {
 	return &emailTemplates{
-		verification:  template.Must(template.New("verification").Parse(verificationEmailTemplate)),
-		passwordReset: template.Must(template.New("passwordReset").Parse(passwordResetEmailTemplate)),
-		invite:        template.Must(template.New("invite").Parse(inviteEmailTemplate)),
-		welcome:       template.Must(template.New("welcome").Parse(welcomeEmailTemplate)),
+		verification:   template.Must(template.New("verification").Parse(verificationEmailTemplate)),
+		passwordReset:  template.Must(template.New("passwordReset").Parse(passwordResetEmailTemplate)),
+		invite:         template.Must(template.New("invite").Parse(inviteEmailTemplate)),
+		welcome:        template.Must(template.New("welcome").Parse(welcomeEmailTemplate)),
+		appCredentials: template.Must(template.New("appCredentials").Parse(appCredentialsEmailTemplate)),
 	}
 }
 
@@ -392,6 +414,65 @@ const welcomeEmailTemplate = `<!DOCTYPE html>
             <p>Your email has been verified and your account is now active!</p>
             <p>You can now log in and start using all the features available to you.</p>
             <p>Thank you for joining us!</p>
+        </div>
+        <div class="footer">
+            <p>This email was sent from {{.BaseURL}}</p>
+        </div>
+    </div>
+</body>
+</html>`
+
+const appCredentialsEmailTemplate = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your OAuth2 App Credentials</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+        .container { background: #f9fafb; border-radius: 8px; padding: 40px; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { color: #4f46e5; margin: 0; }
+        .content { background: white; border-radius: 8px; padding: 30px; margin-bottom: 20px; }
+        .footer { text-align: center; color: #6b7280; font-size: 14px; }
+        .app-name { font-size: 24px; font-weight: bold; color: #4f46e5; }
+        .credentials { background: #1e293b; border-radius: 8px; padding: 20px; margin: 20px 0; }
+        .credentials-row { display: flex; margin-bottom: 12px; }
+        .credentials-row:last-child { margin-bottom: 0; }
+        .credentials-label { color: #94a3b8; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+        .credentials-value { color: #f1f5f9; font-family: 'SF Mono', Monaco, 'Courier New', monospace; font-size: 14px; word-break: break-all; background: #0f172a; padding: 8px 12px; border-radius: 4px; }
+        .warning { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; margin-top: 20px; }
+        .warning strong { color: #92400e; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Your OAuth2 Credentials</h1>
+        </div>
+        <div class="content">
+            <p>Hi {{.AdminName}},</p>
+            <p>Your application <span class="app-name">{{.AppName}}</span> has been created successfully!</p>
+            <p>Here are your OAuth2 credentials:</p>
+            <div class="credentials">
+                <div class="credentials-row">
+                    <div style="flex: 1;">
+                        <div class="credentials-label">Client ID</div>
+                        <div class="credentials-value">{{.ClientID}}</div>
+                    </div>
+                </div>
+                <div class="credentials-row">
+                    <div style="flex: 1;">
+                        <div class="credentials-label">Client Secret</div>
+                        <div class="credentials-value">{{.ClientSecret}}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="warning">
+                <strong>Important Security Notice:</strong><br>
+                Store these credentials securely. The client secret will not be shown again and cannot be retrieved. If you lose it, you will need to regenerate a new secret.
+            </div>
+            <p style="margin-top: 20px;">Use these credentials to configure OAuth2 authentication in your application.</p>
         </div>
         <div class="footer">
             <p>This email was sent from {{.BaseURL}}</p>

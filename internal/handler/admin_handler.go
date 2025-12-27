@@ -19,6 +19,7 @@ type AdminHandler struct {
 	userAppRoleService service.UserAppRoleService
 	adminLogService    service.AdminLogService
 	appActivityService service.AppActivityLogService
+	emailService       service.EmailService
 }
 
 func NewAdminHandler(
@@ -27,6 +28,7 @@ func NewAdminHandler(
 	userAppRoleService service.UserAppRoleService,
 	adminLogService service.AdminLogService,
 	appActivityService service.AppActivityLogService,
+	emailService service.EmailService,
 ) *AdminHandler {
 	return &AdminHandler{
 		appService:         appService,
@@ -34,6 +36,7 @@ func NewAdminHandler(
 		userAppRoleService: userAppRoleService,
 		adminLogService:    adminLogService,
 		appActivityService: appActivityService,
+		emailService:       emailService,
 	}
 }
 
@@ -137,6 +140,15 @@ func (h *AdminHandler) CreateApp(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	// Send credentials email to admin
+	if h.emailService != nil {
+		admin, adminErr := h.userService.GetByID(r.Context(), userID)
+		if adminErr == nil && admin != nil {
+			// Email sending is best-effort, don't fail the request if it fails
+			_ = h.emailService.SendAppCredentialsEmail(admin.Email, admin.Name, app.Name, app.ClientID, clientSecret)
+		}
 	}
 
 	w.WriteHeader(http.StatusCreated)
@@ -285,6 +297,14 @@ func (h *AdminHandler) RotateSecret(w http.ResponseWriter, r *http.Request) {
 		h.appActivityService.LogEvent(r.Context(), uint(appID), &userID, model.EventTypeSecretRotated, model.EventCategoryAdmin, map[string]interface{}{
 			"rotated_by": userID,
 		}, middleware.GetClientIP(r), r.UserAgent(), true)
+	}
+
+	// Send new credentials email to admin
+	if h.emailService != nil {
+		admin, adminErr := h.userService.GetByID(r.Context(), userID)
+		if adminErr == nil && admin != nil {
+			_ = h.emailService.SendAppCredentialsEmail(admin.Email, admin.Name, updatedApp.Name, updatedApp.ClientID, newSecret)
+		}
 	}
 
 	json.NewEncoder(w).Encode(dto.AppWithSecretResponse{

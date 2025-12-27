@@ -148,10 +148,15 @@ func Bootstrap(cfg *config.Config) *App {
 	)
 
 	// ==========================================
+	// Template Service
+	// ==========================================
+	templateService := service.NewTemplateService()
+
+	// ==========================================
 	// Handlers
 	// ==========================================
 	authHandler := handler.NewAuthHandler(authService, cfg.Environment, cfg.OAuthIssuer)
-	oauthHandler := handler.NewOAuthHandler(oauthService, cfg.OAuthIssuer)
+	oauthHandler := handler.NewOAuthHandler(oauthService, authService, appService, templateService, cfg.OAuthIssuer)
 	appUsersHandler := handler.NewAppUsersHandler(userService, userAppRoleService, adminLogService, tokenService)
 	profileHandler := handler.NewProfileHandler(userService)
 	adminHandler := handler.NewAdminHandler(appService, userService, userAppRoleService, adminLogService, appActivityLogService)

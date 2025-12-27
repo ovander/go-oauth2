@@ -1,0 +1,73 @@
+{{define "title"}}Sign In - OAuth2 Server{{end}}
+
+{{define "content"}}
+<div class="login-card">
+    <div class="login-header">
+        <div class="logo">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="24" cy="24" r="22" stroke="currentColor" stroke-width="2" fill="none"/>
+                <path d="M24 12v24M12 24h24" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+        </div>
+        <h1>Sign In</h1>
+    </div>
+
+    {{if .AppName}}
+    <p class="app-info">
+        <strong>{{.AppName}}</strong> is requesting access to your account
+    </p>
+    {{end}}
+
+    {{if .Error}}
+    <div class="alert alert-error">
+        {{.Error}}
+    </div>
+    {{end}}
+
+    <form action="/oauth/authorize" method="POST" class="login-form">
+        <!-- Preserve OAuth parameters -->
+        <input type="hidden" name="client_id" value="{{.ClientID}}">
+        <input type="hidden" name="redirect_uri" value="{{.RedirectURI}}">
+        <input type="hidden" name="response_type" value="{{.ResponseType}}">
+        <input type="hidden" name="scope" value="{{.Scope}}">
+        <input type="hidden" name="state" value="{{.State}}">
+        {{if .CodeChallenge}}
+        <input type="hidden" name="code_challenge" value="{{.CodeChallenge}}">
+        <input type="hidden" name="code_challenge_method" value="{{.CodeChallengeMethod}}">
+        {{end}}
+        {{if .Nonce}}
+        <input type="hidden" name="nonce" value="{{.Nonce}}">
+        {{end}}
+
+        <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email"
+                   value="{{.Email}}" required autofocus
+                   placeholder="you@example.com">
+        </div>
+
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required
+                   placeholder="Enter your password">
+        </div>
+
+        <button type="submit" class="btn btn-primary">Sign In</button>
+
+        <div class="form-links">
+            <a href="/forgot-password{{if .ClientID}}?client_id={{.ClientID}}{{end}}">Forgot password?</a>
+        </div>
+    </form>
+
+    {{if .Scopes}}
+    <div class="scopes-info">
+        <p>This app will be able to:</p>
+        <ul>
+            {{range .Scopes}}
+            <li>{{.}}</li>
+            {{end}}
+        </ul>
+    </div>
+    {{end}}
+</div>
+{{end}}

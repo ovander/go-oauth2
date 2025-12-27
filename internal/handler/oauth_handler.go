@@ -14,28 +14,32 @@ import (
 )
 
 type OAuthHandler struct {
-	oauthService service.OAuthService
-	issuer       string
+	oauthService    service.OAuthService
+	authService     service.AuthService
+	appService      service.AppService
+	templateService *service.TemplateService
+	issuer          string
 }
 
-func NewOAuthHandler(oauthService service.OAuthService, issuer string) *OAuthHandler {
+func NewOAuthHandler(
+	oauthService service.OAuthService,
+	authService service.AuthService,
+	appService service.AppService,
+	templateService *service.TemplateService,
+	issuer string,
+) *OAuthHandler {
 	return &OAuthHandler{
-		oauthService: oauthService,
-		issuer:       issuer,
+		oauthService:    oauthService,
+		authService:     authService,
+		appService:      appService,
+		templateService: templateService,
+		issuer:          issuer,
 	}
 }
 
 // GET /oauth/authorize
 func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
-	// Check if user is authenticated
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
-	if !ok {
-		// Redirect to login
-		loginURL := h.issuer + "/auth/login?return_to=" + url.QueryEscape(r.URL.String())
-		http.Redirect(w, r, loginURL, http.StatusFound)
-		return
-	}
-
+	// Parse OAuth parameters
 	req := dto.AuthorizeRequest{
 		ResponseType:        r.URL.Query().Get("response_type"),
 		ClientID:            r.URL.Query().Get("client_id"),
@@ -47,8 +51,46 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		CodeChallengeMethod: r.URL.Query().Get("code_challenge_method"),
 	}
 
-	if req.ResponseType == "" || req.ClientID == "" || req.RedirectURI == "" {
-		writeOAuthError(w, "invalid_request", "response_type, client_id, and redirect_uri are required", http.StatusBadRequest)
+	// Validate required parameters
+	if req.ClientID == "" {
+		h.renderOAuthError(w, "invalid_request", "client_id is required", "")
+		return
+	}
+
+	// Get app details for display
+	app, err := h.appService.GetByClientID(r.Context(), req.ClientID)
+	if err != nil {
+		h.renderOAuthError(w, "invalid_client", "Unknown client", "")
+		return
+	}
+
+	// Validate redirect URI
+	if req.RedirectURI == "" || !app.HasRedirectURI(req.RedirectURI) {
+		h.renderOAuthError(w, "invalid_request", "Invalid or missing redirect_uri", "")
+		return
+	}
+
+	// Check if user is authenticated
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		// Render login page
+		h.templateService.RenderLogin(w, service.LoginPageData{
+			AppName:             app.Name,
+			ClientID:            req.ClientID,
+			RedirectURI:         req.RedirectURI,
+			ResponseType:        req.ResponseType,
+			Scope:               req.Scope,
+			State:               req.State,
+			CodeChallenge:       req.CodeChallenge,
+			CodeChallengeMethod: req.CodeChallengeMethod,
+			Nonce:               req.Nonce,
+		})
+		return
+	}
+
+	// User is authenticated - generate authorization code
+	if req.ResponseType == "" {
+		h.redirectWithError(w, r, req.RedirectURI, req.State, "invalid_request", "response_type is required")
 		return
 	}
 
@@ -56,13 +98,13 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch err {
 		case service.ErrInvalidRedirectURI:
-			writeOAuthError(w, "invalid_request", "invalid redirect_uri", http.StatusBadRequest)
+			h.redirectWithError(w, r, req.RedirectURI, req.State, "invalid_request", "invalid redirect_uri")
 		case service.ErrAppNotFound:
-			writeOAuthError(w, "invalid_client", "client not found", http.StatusBadRequest)
+			h.redirectWithError(w, r, req.RedirectURI, req.State, "invalid_client", "client not found")
 		case service.ErrRoleNotFound:
-			writeOAuthError(w, "access_denied", "user does not have access to this application", http.StatusForbidden)
+			h.redirectWithError(w, r, req.RedirectURI, req.State, "access_denied", "user does not have access to this application")
 		default:
-			writeOAuthError(w, "server_error", err.Error(), http.StatusInternalServerError)
+			h.redirectWithError(w, r, req.RedirectURI, req.State, "server_error", err.Error())
 		}
 		return
 	}
@@ -70,7 +112,7 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	// Build redirect URL with code
 	redirectURL, err := url.Parse(req.RedirectURI)
 	if err != nil {
-		writeOAuthError(w, "server_error", "failed to parse redirect URI", http.StatusInternalServerError)
+		h.redirectWithError(w, r, req.RedirectURI, req.State, "server_error", "failed to parse redirect URI")
 		return
 	}
 
@@ -78,6 +120,146 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	query.Set("code", code)
 	if req.State != "" {
 		query.Set("state", req.State)
+	}
+	redirectURL.RawQuery = query.Encode()
+
+	http.Redirect(w, r, redirectURL.String(), http.StatusFound)
+}
+
+// POST /oauth/authorize - Handle login form submission
+func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		h.renderOAuthError(w, "invalid_request", "Failed to parse form", "")
+		return
+	}
+
+	// Extract OAuth parameters from form
+	req := dto.AuthorizeRequest{
+		ResponseType:        r.FormValue("response_type"),
+		ClientID:            r.FormValue("client_id"),
+		RedirectURI:         r.FormValue("redirect_uri"),
+		Scope:               r.FormValue("scope"),
+		State:               r.FormValue("state"),
+		Nonce:               r.FormValue("nonce"),
+		CodeChallenge:       r.FormValue("code_challenge"),
+		CodeChallengeMethod: r.FormValue("code_challenge_method"),
+	}
+
+	email := r.FormValue("email")
+	password := r.FormValue("password")
+
+	// Get app details
+	app, err := h.appService.GetByClientID(r.Context(), req.ClientID)
+	if err != nil {
+		h.renderOAuthError(w, "invalid_client", "Unknown client", "")
+		return
+	}
+
+	// Validate redirect URI
+	if req.RedirectURI == "" || !app.HasRedirectURI(req.RedirectURI) {
+		h.renderOAuthError(w, "invalid_request", "Invalid redirect_uri", "")
+		return
+	}
+
+	// Helper to re-render login with error
+	renderLoginError := func(errorMsg string) {
+		h.templateService.RenderLogin(w, service.LoginPageData{
+			AppName:             app.Name,
+			ClientID:            req.ClientID,
+			RedirectURI:         req.RedirectURI,
+			ResponseType:        req.ResponseType,
+			Scope:               req.Scope,
+			State:               req.State,
+			CodeChallenge:       req.CodeChallenge,
+			CodeChallengeMethod: req.CodeChallengeMethod,
+			Nonce:               req.Nonce,
+			Email:               email,
+			Error:               errorMsg,
+		})
+	}
+
+	// Validate credentials
+	if email == "" || password == "" {
+		renderLoginError("Email and password are required")
+		return
+	}
+
+	// Authenticate user
+	loginReq := dto.LoginRequest{
+		Email:       email,
+		Password:    password,
+		AppClientID: req.ClientID,
+	}
+
+	loginResp, err := h.authService.Login(r.Context(), loginReq)
+	if err != nil {
+		switch err {
+		case service.ErrInvalidCredentials:
+			renderLoginError("Invalid email or password")
+		case service.ErrUserNotVerified:
+			renderLoginError("Please verify your email address first")
+		case service.ErrAccountLocked:
+			renderLoginError("Your account has been locked. Please try again later")
+		case service.ErrRoleNotFound:
+			renderLoginError("You do not have access to this application")
+		default:
+			renderLoginError("Login failed. Please try again")
+		}
+		return
+	}
+
+	// Generate authorization code
+	code, err := h.oauthService.Authorize(r.Context(), req, loginResp.UserID)
+	if err != nil {
+		switch err {
+		case service.ErrRoleNotFound:
+			renderLoginError("You do not have access to this application")
+		default:
+			renderLoginError("Failed to authorize. Please try again")
+		}
+		return
+	}
+
+	// Build redirect URL with code
+	redirectURL, err := url.Parse(req.RedirectURI)
+	if err != nil {
+		renderLoginError("Failed to process redirect")
+		return
+	}
+
+	query := redirectURL.Query()
+	query.Set("code", code)
+	if req.State != "" {
+		query.Set("state", req.State)
+	}
+	redirectURL.RawQuery = query.Encode()
+
+	http.Redirect(w, r, redirectURL.String(), http.StatusFound)
+}
+
+// renderOAuthError renders the error page
+func (h *OAuthHandler) renderOAuthError(w http.ResponseWriter, errorCode, message, returnURL string) {
+	h.templateService.RenderError(w, service.ErrorPageData{
+		Title:     "Authorization Error",
+		Message:   message,
+		ErrorCode: errorCode,
+		ReturnURL: returnURL,
+	})
+}
+
+// redirectWithError redirects to the client with an error
+func (h *OAuthHandler) redirectWithError(w http.ResponseWriter, r *http.Request, redirectURI, state, errorCode, description string) {
+	redirectURL, err := url.Parse(redirectURI)
+	if err != nil {
+		h.renderOAuthError(w, errorCode, description, "")
+		return
+	}
+
+	query := redirectURL.Query()
+	query.Set("error", errorCode)
+	query.Set("error_description", description)
+	if state != "" {
+		query.Set("state", state)
 	}
 	redirectURL.RawQuery = query.Encode()
 

@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
 	"github.com/ovandermoten/go-oauth2/internal/dto"
 	"github.com/ovandermoten/go-oauth2/internal/middleware"
 	"github.com/ovandermoten/go-oauth2/internal/model"
@@ -93,7 +94,7 @@ func (h *AdminHandler) GetApp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check ownership or global admin
-	user, _ := r.Context().Value("current_user").(*model.User)
+	user, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
 	if app.OwnerID != nil && *app.OwnerID != userID {
 		if user == nil || !user.IsGlobalAdmin() {
 			writeError(w, "forbidden", http.StatusForbidden)
@@ -175,7 +176,7 @@ func (h *AdminHandler) UpdateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, _ := r.Context().Value("current_user").(*model.User)
+	user, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
 	if app.OwnerID != nil && *app.OwnerID != userID {
 		if user == nil || !user.IsGlobalAdmin() {
 			writeError(w, "forbidden", http.StatusForbidden)
@@ -228,7 +229,7 @@ func (h *AdminHandler) DeleteApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, _ := r.Context().Value("current_user").(*model.User)
+	user, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
 	if app.OwnerID != nil && *app.OwnerID != userID {
 		if user == nil || !user.IsGlobalAdmin() {
 			writeError(w, "forbidden", http.StatusForbidden)
@@ -265,7 +266,7 @@ func (h *AdminHandler) RotateSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, _ := r.Context().Value("current_user").(*model.User)
+	user, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
 	if app.OwnerID != nil && *app.OwnerID != userID {
 		if user == nil || !user.IsGlobalAdmin() {
 			writeError(w, "forbidden", http.StatusForbidden)
@@ -334,7 +335,7 @@ func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if user is global admin
-	user, _ := r.Context().Value("current_user").(*model.User)
+	user, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
 	if user == nil || !user.IsGlobalAdmin() {
 		writeError(w, "forbidden: global admin required", http.StatusForbidden)
 		return
@@ -384,7 +385,7 @@ func (h *AdminHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if user is global admin
-	currentUser, _ := r.Context().Value("current_user").(*model.User)
+	currentUser, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
 	if currentUser == nil || !currentUser.IsGlobalAdmin() {
 		writeError(w, "forbidden: global admin required", http.StatusForbidden)
 		return
@@ -422,7 +423,7 @@ func (h *AdminHandler) GetUserApps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if user is global admin
-	currentUser, _ := r.Context().Value("current_user").(*model.User)
+	currentUser, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
 	if currentUser == nil || !currentUser.IsGlobalAdmin() {
 		writeError(w, "forbidden: global admin required", http.StatusForbidden)
 		return
@@ -479,7 +480,7 @@ func (h *AdminHandler) RevokeUserTokens(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Check if user is global admin
-	currentUser, _ := r.Context().Value("current_user").(*model.User)
+	currentUser, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
 	if currentUser == nil || !currentUser.IsGlobalAdmin() {
 		writeError(w, "forbidden: global admin required", http.StatusForbidden)
 		return
@@ -525,7 +526,7 @@ func (h *AdminHandler) UnlockUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if user is global admin
-	currentUser, _ := r.Context().Value("current_user").(*model.User)
+	currentUser, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
 	if currentUser == nil || !currentUser.IsGlobalAdmin() {
 		writeError(w, "forbidden: global admin required", http.StatusForbidden)
 		return

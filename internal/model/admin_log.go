@@ -14,6 +14,9 @@ const (
 	AdminActionResetPassword      AdminAction = "reset_password"
 	AdminActionRevokeTokens       AdminAction = "revoke_tokens"
 	AdminActionUnlockUser         AdminAction = "unlock_user"
+	AdminActionCreateSuperadmin   AdminAction = "create_superadmin"
+	AdminActionUpdateSuperadmin   AdminAction = "update_superadmin"
+	AdminActionDeleteSuperadmin   AdminAction = "delete_superadmin"
 )
 
 type AdminLog struct {

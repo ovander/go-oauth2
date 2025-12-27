@@ -25,6 +25,13 @@ type UserService interface {
 	IncrementTokenVersion(ctx context.Context, userID uint) error
 	RevokeTokens(ctx context.Context, userID uint) error
 	Unlock(ctx context.Context, userID uint) error
+
+	// Superadmin management
+	ListSuperadmins(ctx context.Context) ([]model.User, error)
+	CountSuperadmins(ctx context.Context) (int64, error)
+	CreateSuperadmin(ctx context.Context, req dto.CreateSuperadminRequest) (*model.User, error)
+	UpdateSuperadmin(ctx context.Context, id uint, req dto.UpdateSuperadminRequest) (*model.User, error)
+	DeleteSuperadmin(ctx context.Context, id uint, currentUserID uint) error
 }
 
 type userService struct {
@@ -279,4 +286,123 @@ func (s *userService) Unlock(ctx context.Context, userID uint) error {
 	user.UpdatedAt = time.Now()
 
 	return s.repo.Update(ctx, user)
+}
+
+// Superadmin management
+
+func (s *userService) ListSuperadmins(ctx context.Context) ([]model.User, error) {
+	return s.repo.FindByRole(ctx, model.UserRoleSuperadmin)
+}
+
+func (s *userService) CountSuperadmins(ctx context.Context) (int64, error) {
+	return s.repo.CountByRole(ctx, model.UserRoleSuperadmin)
+}
+
+func (s *userService) CreateSuperadmin(ctx context.Context, req dto.CreateSuperadminRequest) (*model.User, error) {
+	// Check if email already exists
+	existing, err := s.repo.FindByEmail(ctx, req.Email)
+	if err == nil && existing != nil {
+		return nil, ErrEmailAlreadyExists
+	}
+
+	// Validate password
+	if err := auth.ValidatePassword(req.Password); err != nil {
+		return nil, err
+	}
+
+	// Hash password
+	hashedPassword, err := auth.HashPassword(req.Password)
+	if err != nil {
+		return nil, err
+	}
+
+	user := &model.User{
+		Email:          req.Email,
+		Name:           req.Name,
+		HashedPassword: hashedPassword,
+		Role:           model.UserRoleSuperadmin,
+		IsVerified:     true, // Superadmins are auto-verified
+		TokenVersion:   1,
+		Source:         "admin",
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+	}
+
+	if err := s.repo.Create(ctx, user); err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func (s *userService) UpdateSuperadmin(ctx context.Context, id uint, req dto.UpdateSuperadminRequest) (*model.User, error) {
+	user, err := s.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify the user is a superadmin
+	if user.Role != model.UserRoleSuperadmin {
+		return nil, ErrNotAdmin
+	}
+
+	if req.Name != nil {
+		user.Name = *req.Name
+	}
+	if req.Email != nil {
+		// Check if new email already exists
+		existing, err := s.repo.FindByEmail(ctx, *req.Email)
+		if err == nil && existing != nil && existing.ID != id {
+			return nil, ErrEmailAlreadyExists
+		}
+		user.Email = *req.Email
+	}
+	if req.Password != nil {
+		// Validate password
+		if err := auth.ValidatePassword(*req.Password); err != nil {
+			return nil, err
+		}
+		// Hash password
+		hashedPassword, err := auth.HashPassword(*req.Password)
+		if err != nil {
+			return nil, err
+		}
+		user.HashedPassword = hashedPassword
+	}
+
+	user.UpdatedAt = time.Now()
+
+	if err := s.repo.Update(ctx, user); err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func (s *userService) DeleteSuperadmin(ctx context.Context, id uint, currentUserID uint) error {
+	// Cannot delete yourself
+	if id == currentUserID {
+		return ErrCannotDeleteSelf
+	}
+
+	user, err := s.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// Verify the user is a superadmin
+	if user.Role != model.UserRoleSuperadmin {
+		return ErrNotAdmin
+	}
+
+	// Cannot delete the last superadmin
+	count, err := s.CountSuperadmins(ctx)
+	if err != nil {
+		return err
+	}
+	if count <= 1 {
+		return ErrCannotDeleteLastSuperadmin
+	}
+
+	return s.repo.Delete(ctx, id)
 }

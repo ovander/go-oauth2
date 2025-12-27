@@ -257,6 +257,18 @@ func newAdminRouter(
 			r.Get("/login-trends", dashboardHandler.GetLoginTrends)
 			r.Get("/app-usage", dashboardHandler.GetAppUsage)
 		})
+
+		// Superadmin management
+		r.Route("/superadmins", func(r chi.Router) {
+			r.Get("/", adminHandler.ListSuperadmins)
+			r.Post("/", adminHandler.CreateSuperadmin)
+
+			r.Route("/{id}", func(r chi.Router) {
+				r.Get("/", adminHandler.GetSuperadmin)
+				r.Put("/", adminHandler.UpdateSuperadmin)
+				r.Delete("/", adminHandler.DeleteSuperadmin)
+			})
+		})
 	})
 
 	// ==========================================

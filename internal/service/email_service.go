@@ -7,6 +7,8 @@ import (
 	"html/template"
 	"net/smtp"
 	"strings"
+
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
 // EmailService handles sending emails via SMTP
@@ -52,6 +54,11 @@ func NewEmailService(config SMTPConfig) EmailService {
 
 // SendVerificationEmail sends an email verification link
 func (s *emailService) SendVerificationEmail(to, name, token string) error {
+	logger.WithFields(logger.Fields{
+		"email_type": "verification",
+		"to":         to,
+	}).Info("📧 Sending verification email")
+
 	data := map[string]string{
 		"Name":    name,
 		"Link":    fmt.Sprintf("%s/api/auth/verify-email?token=%s", s.config.BaseURL, token),
@@ -61,14 +68,37 @@ func (s *emailService) SendVerificationEmail(to, name, token string) error {
 	subject := "Verify your email address"
 	body, err := s.renderTemplate(s.templates.verification, data)
 	if err != nil {
+		logger.WithFields(logger.Fields{
+			"email_type": "verification",
+			"to":         to,
+			"error":      err.Error(),
+		}).Error("📧 Failed to render verification email template")
 		return fmt.Errorf("failed to render verification email: %w", err)
 	}
 
-	return s.send(to, subject, body)
+	if err := s.send(to, subject, body); err != nil {
+		logger.WithFields(logger.Fields{
+			"email_type": "verification",
+			"to":         to,
+			"error":      err.Error(),
+		}).Error("📧 Failed to send verification email")
+		return err
+	}
+
+	logger.WithFields(logger.Fields{
+		"email_type": "verification",
+		"to":         to,
+	}).Info("📧 Verification email sent successfully")
+	return nil
 }
 
 // SendPasswordResetEmail sends a password reset link
 func (s *emailService) SendPasswordResetEmail(to, name, token string) error {
+	logger.WithFields(logger.Fields{
+		"email_type": "password_reset",
+		"to":         to,
+	}).Info("📧 Sending password reset email")
+
 	data := map[string]string{
 		"Name":    name,
 		"Link":    fmt.Sprintf("%s/auth/reset-password?token=%s", s.config.BaseURL, token),
@@ -78,14 +108,38 @@ func (s *emailService) SendPasswordResetEmail(to, name, token string) error {
 	subject := "Reset your password"
 	body, err := s.renderTemplate(s.templates.passwordReset, data)
 	if err != nil {
+		logger.WithFields(logger.Fields{
+			"email_type": "password_reset",
+			"to":         to,
+			"error":      err.Error(),
+		}).Error("📧 Failed to render password reset email template")
 		return fmt.Errorf("failed to render password reset email: %w", err)
 	}
 
-	return s.send(to, subject, body)
+	if err := s.send(to, subject, body); err != nil {
+		logger.WithFields(logger.Fields{
+			"email_type": "password_reset",
+			"to":         to,
+			"error":      err.Error(),
+		}).Error("📧 Failed to send password reset email")
+		return err
+	}
+
+	logger.WithFields(logger.Fields{
+		"email_type": "password_reset",
+		"to":         to,
+	}).Info("📧 Password reset email sent successfully")
+	return nil
 }
 
 // SendInviteEmail sends an invitation to join an app
 func (s *emailService) SendInviteEmail(to, appName, token string) error {
+	logger.WithFields(logger.Fields{
+		"email_type": "invite",
+		"to":         to,
+		"app_name":   appName,
+	}).Info("📧 Sending invite email")
+
 	data := map[string]string{
 		"AppName": appName,
 		"Link":    fmt.Sprintf("%s/auth/accept-invite?token=%s", s.config.BaseURL, token),
@@ -95,14 +149,40 @@ func (s *emailService) SendInviteEmail(to, appName, token string) error {
 	subject := fmt.Sprintf("You've been invited to %s", appName)
 	body, err := s.renderTemplate(s.templates.invite, data)
 	if err != nil {
+		logger.WithFields(logger.Fields{
+			"email_type": "invite",
+			"to":         to,
+			"app_name":   appName,
+			"error":      err.Error(),
+		}).Error("📧 Failed to render invite email template")
 		return fmt.Errorf("failed to render invite email: %w", err)
 	}
 
-	return s.send(to, subject, body)
+	if err := s.send(to, subject, body); err != nil {
+		logger.WithFields(logger.Fields{
+			"email_type": "invite",
+			"to":         to,
+			"app_name":   appName,
+			"error":      err.Error(),
+		}).Error("📧 Failed to send invite email")
+		return err
+	}
+
+	logger.WithFields(logger.Fields{
+		"email_type": "invite",
+		"to":         to,
+		"app_name":   appName,
+	}).Info("📧 Invite email sent successfully")
+	return nil
 }
 
 // SendWelcomeEmail sends a welcome email after verification
 func (s *emailService) SendWelcomeEmail(to, name string) error {
+	logger.WithFields(logger.Fields{
+		"email_type": "welcome",
+		"to":         to,
+	}).Info("📧 Sending welcome email")
+
 	data := map[string]string{
 		"Name":    name,
 		"BaseURL": s.config.BaseURL,
@@ -111,14 +191,39 @@ func (s *emailService) SendWelcomeEmail(to, name string) error {
 	subject := "Welcome!"
 	body, err := s.renderTemplate(s.templates.welcome, data)
 	if err != nil {
+		logger.WithFields(logger.Fields{
+			"email_type": "welcome",
+			"to":         to,
+			"error":      err.Error(),
+		}).Error("📧 Failed to render welcome email template")
 		return fmt.Errorf("failed to render welcome email: %w", err)
 	}
 
-	return s.send(to, subject, body)
+	if err := s.send(to, subject, body); err != nil {
+		logger.WithFields(logger.Fields{
+			"email_type": "welcome",
+			"to":         to,
+			"error":      err.Error(),
+		}).Error("📧 Failed to send welcome email")
+		return err
+	}
+
+	logger.WithFields(logger.Fields{
+		"email_type": "welcome",
+		"to":         to,
+	}).Info("📧 Welcome email sent successfully")
+	return nil
 }
 
 // SendAppCredentialsEmail sends app credentials to the admin
 func (s *emailService) SendAppCredentialsEmail(to, adminName, appName, clientID, clientSecret string) error {
+	logger.WithFields(logger.Fields{
+		"email_type": "app_credentials",
+		"to":         to,
+		"app_name":   appName,
+		"client_id":  clientID,
+	}).Info("📧 Sending app credentials email")
+
 	data := map[string]string{
 		"AdminName":    adminName,
 		"AppName":      appName,
@@ -130,10 +235,32 @@ func (s *emailService) SendAppCredentialsEmail(to, adminName, appName, clientID,
 	subject := fmt.Sprintf("Your OAuth2 credentials for %s", appName)
 	body, err := s.renderTemplate(s.templates.appCredentials, data)
 	if err != nil {
+		logger.WithFields(logger.Fields{
+			"email_type": "app_credentials",
+			"to":         to,
+			"app_name":   appName,
+			"error":      err.Error(),
+		}).Error("📧 Failed to render app credentials email template")
 		return fmt.Errorf("failed to render app credentials email: %w", err)
 	}
 
-	return s.send(to, subject, body)
+	if err := s.send(to, subject, body); err != nil {
+		logger.WithFields(logger.Fields{
+			"email_type": "app_credentials",
+			"to":         to,
+			"app_name":   appName,
+			"error":      err.Error(),
+		}).Error("📧 Failed to send app credentials email")
+		return err
+	}
+
+	logger.WithFields(logger.Fields{
+		"email_type": "app_credentials",
+		"to":         to,
+		"app_name":   appName,
+		"client_id":  clientID,
+	}).Info("📧 App credentials email sent successfully")
+	return nil
 }
 
 func (s *emailService) renderTemplate(tmpl *template.Template, data interface{}) (string, error) {
@@ -164,19 +291,41 @@ func (s *emailService) send(to, subject, htmlBody string) error {
 	// Connect to SMTP server
 	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
 
+	logger.WithFields(logger.Fields{
+		"smtp_host":     s.config.Host,
+		"smtp_port":     s.config.Port,
+		"smtp_security": s.config.Security,
+		"from":          s.config.From,
+		"to":            to,
+		"subject":       subject,
+	}).Debug("📧 Connecting to SMTP server")
+
 	var auth smtp.Auth
 	if s.config.Username != "" {
 		auth = smtp.PlainAuth("", s.config.Username, s.config.Password, s.config.Host)
 	}
 
+	var err error
 	switch strings.ToLower(s.config.Security) {
 	case "ssl", "tls":
-		return s.sendWithTLS(addr, auth, to, msg.Bytes())
+		err = s.sendWithTLS(addr, auth, to, msg.Bytes())
 	case "starttls":
-		return s.sendWithStartTLS(addr, auth, to, msg.Bytes())
+		err = s.sendWithStartTLS(addr, auth, to, msg.Bytes())
 	default:
-		return smtp.SendMail(addr, auth, s.config.From, []string{to}, msg.Bytes())
+		err = smtp.SendMail(addr, auth, s.config.From, []string{to}, msg.Bytes())
 	}
+
+	if err != nil {
+		logger.WithFields(logger.Fields{
+			"smtp_host": s.config.Host,
+			"smtp_port": s.config.Port,
+			"to":        to,
+			"error":     err.Error(),
+		}).Error("📧 SMTP send failed")
+		return err
+	}
+
+	return nil
 }
 
 func (s *emailService) sendWithTLS(addr string, auth smtp.Auth, to string, msg []byte) error {

@@ -65,9 +65,13 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate redirect URI
-	if req.RedirectURI == "" || !app.HasRedirectURI(req.RedirectURI) {
-		h.renderOAuthError(w, "invalid_request", "Invalid or missing redirect_uri", "")
+	// Validate redirect URI - check for dangerous schemes and ensure it's registered
+	if req.RedirectURI == "" {
+		h.renderOAuthError(w, "invalid_request", "redirect_uri is required", "")
+		return
+	}
+	if err := auth.ValidateRedirectURI(req.RedirectURI, app.RedirectURIs, false); err != nil {
+		h.renderOAuthError(w, "invalid_request", "Invalid redirect_uri: "+err.Error(), "")
 		return
 	}
 
@@ -156,9 +160,13 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate redirect URI
-	if req.RedirectURI == "" || !app.HasRedirectURI(req.RedirectURI) {
-		h.renderOAuthError(w, "invalid_request", "Invalid redirect_uri", "")
+	// Validate redirect URI - check for dangerous schemes and ensure it's registered
+	if req.RedirectURI == "" {
+		h.renderOAuthError(w, "invalid_request", "redirect_uri is required", "")
+		return
+	}
+	if err := auth.ValidateRedirectURI(req.RedirectURI, app.RedirectURIs, false); err != nil {
+		h.renderOAuthError(w, "invalid_request", "Invalid redirect_uri: "+err.Error(), "")
 		return
 	}
 

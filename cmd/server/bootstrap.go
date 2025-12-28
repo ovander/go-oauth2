@@ -32,6 +32,8 @@ type App struct {
 	codeStore         *auth.CodeStore
 	loginRateLimiter  *middleware.RateLimiter
 	signupRateLimiter *middleware.RateLimiter
+	autoDefense       *service.AutoDefenseService
+	ipBlockChecker    *middleware.IPBlockChecker
 }
 
 // Stop gracefully stops all background goroutines
@@ -44,6 +46,12 @@ func (a *App) Stop() {
 	}
 	if a.signupRateLimiter != nil {
 		a.signupRateLimiter.Stop()
+	}
+	if a.autoDefense != nil {
+		a.autoDefense.Stop()
+	}
+	if a.ipBlockChecker != nil {
+		a.ipBlockChecker.Stop()
 	}
 }
 
@@ -193,6 +201,32 @@ func Bootstrap(cfg *config.Config) *App {
 	monitoringHandler := handler.NewMonitoringHandler(db, alertRuleRepo, triggeredAlertRepo, blockedIPRepo, securityAuditRepo)
 
 	// ==========================================
+	// Auto-Defense System (automatic IP blocking)
+	// ==========================================
+	autoDefense := service.NewAutoDefenseService(
+		blockedIPRepo,
+		securityAuditRepo,
+		service.DefaultAutoDefenseConfig(),
+	)
+	logger.Info("✅ Auto-defense system initialized")
+
+	// IP Block Checker (middleware cache)
+	ipBlockChecker := middleware.NewIPBlockChecker(
+		blockedIPRepo,
+		middleware.DefaultIPBlockCheckerConfig(),
+	)
+	logger.Info("✅ IP block checker initialized")
+
+	// Connect auto-defense to IP block checker for immediate cache invalidation
+	autoDefense.SetOnBlockCallback(func(ip string) {
+		ipBlockChecker.InvalidateCache()
+	})
+
+	// Wire auto-defense to auth handlers
+	authHandler.SetAutoDefenseService(autoDefense)
+	adminAuthHandler.SetAutoDefenseService(autoDefense)
+
+	// ==========================================
 	// Rate Limiters (with graceful shutdown support)
 	// ==========================================
 	loginRateLimiter := middleware.NewRateLimiterWithConfig(middleware.RateLimiterConfig{
@@ -216,6 +250,7 @@ func Bootstrap(cfg *config.Config) *App {
 		AllowedOrigins:    []string{"*"}, // Configure in production
 		LoginRateLimiter:  loginRateLimiter,
 		SignupRateLimiter: signupRateLimiter,
+		IPBlockChecker:    ipBlockChecker,
 	}
 
 	// ==========================================
@@ -265,5 +300,7 @@ func Bootstrap(cfg *config.Config) *App {
 		codeStore:         codeStore,
 		loginRateLimiter:  loginRateLimiter,
 		signupRateLimiter: signupRateLimiter,
+		autoDefense:       autoDefense,
+		ipBlockChecker:    ipBlockChecker,
 	}
 }

@@ -1825,10 +1825,272 @@ The monitoring app should include a dedicated "Attacks" dashboard view showing:
 
 ---
 
+## Built-in Automatic Defense System
+
+The OAuth2 server includes automatic defense mechanisms that operate **without manual intervention**, protecting the system even when administrators cannot access the monitoring dashboard during an ongoing attack.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      OAuth2 Server Request Flow                         │
+│                                                                         │
+│  Request → [IP Block Check] → [Rate Limiter] → [Handler] → Response    │
+│                  ↓                   ↓             ↓                    │
+│           ┌─────┴─────┐      ┌──────┴──────┐  ┌───┴───┐                │
+│           │ Blocked   │      │ Rate Limit  │  │ Auth  │                │
+│           │ IPs Cache │      │ Exceeded    │  │ Fail  │                │
+│           └─────┬─────┘      └──────┬──────┘  └───┬───┘                │
+│                 │                   │             │                     │
+│                 └───────────────────┴─────────────┘                     │
+│                                     │                                   │
+│                          ┌──────────┴──────────┐                       │
+│                          │ Auto-Defense Service │                       │
+│                          └──────────┬──────────┘                       │
+│                                     │                                   │
+│                    ┌────────────────┼────────────────┐                 │
+│                    ↓                ↓                ↓                 │
+│              [Track Failures] [Block IP] [Log Security Event]         │
+│                    │                │                │                 │
+│                    └────────────────┴────────────────┘                 │
+│                                     │                                   │
+│                              blocked_ips                                │
+│                              (Database)                                 │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Automatic Defense Components
+
+#### 1. IP Block Middleware (`internal/middleware/ip_blocking.go`)
+
+**Purpose:** Blocks all requests from IPs that have been flagged as malicious.
+
+**How it works:**
+- Runs as the first middleware in the request chain
+- Maintains an in-memory cache of blocked IPs (refreshed every 60s)
+- Returns `403 Forbidden` immediately for blocked IPs
+- Cache invalidated instantly when new IPs are blocked
+
+```go
+type IPBlockChecker struct {
+    repo        BlockedIPRepository
+    cache       map[string]cacheEntry  // In-memory for speed
+    cacheTTL    time.Duration          // 30 seconds default
+    refreshChan chan struct{}          // Immediate invalidation
+}
+```
+
+**Response for blocked IPs:**
+```json
+{
+  "error": "access_denied",
+  "error_description": "your IP address has been blocked"
+}
+```
+
+---
+
+#### 2. Auto-Defense Service (`internal/service/auto_defense.go`)
+
+**Purpose:** Automatically detects and responds to attacks without human intervention.
+
+**Thresholds (configurable):**
+
+| Parameter | Default Value | Description |
+|-----------|---------------|-------------|
+| `FailedLoginThreshold` | 10 | Block after this many failures |
+| `FailedLoginWindow` | 10 minutes | Time window for counting failures |
+| `InitialBlockDuration` | 15 minutes | First offense block duration |
+| `MaxBlockDuration` | 24 hours | Maximum block duration |
+| `BlockEscalationMultiplier` | 2.0x | Doubles on each repeat offense |
+| `BruteForceThreshold` | 20 | Rapid failures = brute force |
+| `BruteForceWindow` | 30 seconds | Brute force detection window |
+
+**Escalating Block Durations:**
+
+| Offense | Block Duration |
+|---------|----------------|
+| 1st offense | 15 minutes |
+| 2nd offense | 30 minutes |
+| 3rd offense | 1 hour |
+| 4th offense | 2 hours |
+| 5th offense | 4 hours |
+| 6th+ offense | 24 hours (max) |
+
+**Brute force detection:** If 20+ failed logins occur within 30 seconds, the IP is immediately blocked for at least 1 hour.
+
+---
+
+#### 3. Existing Rate Limiting
+
+**Purpose:** Prevents request flooding.
+
+| Endpoint | Default Limit | Window |
+|----------|---------------|--------|
+| `/api/auth/login` | Configurable | Configurable |
+| `/api/auth/signup` | Configurable | Configurable |
+| `/api/admin/login` | Configurable | Configurable |
+
+**Response when rate limited:**
+```json
+{
+  "error": "too_many_requests",
+  "error_description": "rate limit exceeded"
+}
+```
+
+Headers returned:
+- `Retry-After`: Seconds until limit resets
+- `X-RateLimit-Limit`: Total requests allowed
+- `X-RateLimit-Remaining`: Requests remaining
+- `X-RateLimit-Reset`: Unix timestamp of reset
+
+---
+
+#### 4. Account Lockout (Existing)
+
+**Purpose:** Protects individual accounts from brute force.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `MaxFailedAttempts` | 5 | Lock account after failures |
+| `LockoutDuration` | 30 minutes | How long account stays locked |
+
+**Difference from IP blocking:**
+- Account lockout protects a specific user account
+- IP blocking protects the entire system from a malicious IP
+- Both work together for defense in depth
+
+---
+
+### Automatic Defense Flow
+
+```
+Failed Login Attempt
+         │
+         ▼
+┌─────────────────────┐
+│ Record in Memory    │  ← IP record with timestamps
+└─────────────────────┘
+         │
+         ▼
+┌─────────────────────┐      ┌─────────────────────┐
+│ Brute Force Check   │──Yes─│ Block IP (1hr min)  │
+│ (20 in 30 seconds?) │      │ Log: "brute_force"  │
+└─────────────────────┘      └─────────────────────┘
+         │ No
+         ▼
+┌─────────────────────┐      ┌─────────────────────┐
+│ Threshold Check     │──Yes─│ Block IP (escalating)│
+│ (10 in 10 minutes?) │      │ Log: "threshold"     │
+└─────────────────────┘      └─────────────────────┘
+         │ No
+         ▼
+    Continue (allow)
+```
+
+---
+
+### Security Event Logging
+
+All automatic blocks are logged to the `security_audit_logs` table:
+
+```json
+{
+  "event_type": "auto_ip_block",
+  "severity": "critical",
+  "ip_address": "203.0.113.50",
+  "details": {
+    "reason": "brute_force_attack",
+    "offense_count": 2,
+    "duration_secs": 1800,
+    "expires_at": "2024-01-15T11:00:00Z",
+    "is_brute_force": true
+  }
+}
+```
+
+---
+
+### Integration with Monitoring App
+
+When an IP is automatically blocked:
+
+1. **Immediate:** Request blocking takes effect within milliseconds
+2. **Cache Invalidation:** IP block cache refreshed immediately
+3. **Security Log:** Event logged to `security_audit_logs`
+4. **Dashboard:** Appears in `/api/admin/security/blocked-ips`
+5. **Alerts:** Can trigger configured alert rules
+
+---
+
+### Manual Override
+
+Administrators can still:
+
+- **View blocked IPs:** `GET /api/admin/security/blocked-ips`
+- **Unblock an IP:** `DELETE /api/admin/security/blocked-ips/:id`
+- **Block an IP manually:** `POST /api/admin/security/blocked-ips`
+- **View auto-block logs:** `GET /api/admin/security/events?event_type=auto_ip_block`
+
+---
+
+### Configuration
+
+Auto-defense is initialized in `bootstrap.go`:
+
+```go
+autoDefense := service.NewAutoDefenseService(
+    blockedIPRepo,
+    securityAuditRepo,
+    service.DefaultAutoDefenseConfig(),
+)
+
+// Connect to IP block checker for immediate cache invalidation
+autoDefense.SetOnBlockCallback(func(ip string) {
+    ipBlockChecker.InvalidateCache()
+})
+
+// Wire to auth handlers
+authHandler.SetAutoDefenseService(autoDefense)
+adminAuthHandler.SetAutoDefenseService(autoDefense)
+```
+
+To customize thresholds, modify `DefaultAutoDefenseConfig()` or pass a custom config:
+
+```go
+customConfig := service.AutoDefenseConfig{
+    FailedLoginThreshold:      5,               // More aggressive
+    FailedLoginWindow:         5 * time.Minute,
+    InitialBlockDuration:      30 * time.Minute,
+    MaxBlockDuration:          48 * time.Hour,
+    BlockEscalationMultiplier: 3.0,             // Faster escalation
+    BruteForceThreshold:       10,              // Lower threshold
+    BruteForceWindow:          15 * time.Second,
+}
+```
+
+---
+
+### Summary: Defense Layers
+
+| Layer | Component | Trigger | Effect |
+|-------|-----------|---------|--------|
+| 1 | IP Block Middleware | Blocked IP in database | 403 immediately |
+| 2 | Rate Limiter | Request volume exceeded | 429 Too Many Requests |
+| 3 | Auto-Defense | 10 failures in 10 min | Add to blocked IPs |
+| 4 | Auto-Defense | 20 failures in 30 sec | Add to blocked IPs (brute force) |
+| 5 | Account Lockout | 5 failures per account | Account locked |
+
+**Key Benefit:** The server can defend itself even when administrators cannot access it due to an ongoing attack. The automatic defenses continue to operate and will block attacking IPs, preventing service degradation.
+
+---
+
 ## Notes
 
 - This monitoring app complements the Security Testing SPA
 - Testing SPA validates OAuth2 compliance; Monitoring App provides ongoing visibility
 - Both apps share the same authentication mechanism (admin JWT tokens)
 - Consider deploying on internal network only for production
+- **NEW:** Server now includes automatic IP blocking that operates without admin intervention
 

@@ -18,6 +18,7 @@ type RouterConfig struct {
 	AllowedOrigins    []string
 	LoginRateLimiter  *middleware.RateLimiter
 	SignupRateLimiter *middleware.RateLimiter
+	IPBlockChecker    *middleware.IPBlockChecker // Optional: nil disables IP blocking
 }
 
 // Routers holds both the OAuth and Admin routers for separate port binding
@@ -71,6 +72,11 @@ func newOAuthRouter(
 	r.Use(chimiddleware.Timeout(60 * time.Second))
 	r.Use(middleware.CorrelationID())
 	r.Use(middleware.SecurityHeaders())
+
+	// IP Blocking middleware (automatic defense)
+	if config.IPBlockChecker != nil {
+		r.Use(middleware.IPBlockMiddleware(config.IPBlockChecker))
+	}
 
 	// CORS for public OAuth endpoints
 	r.Use(cors.Handler(cors.Options{
@@ -213,6 +219,11 @@ func newAdminRouter(
 	r.Use(chimiddleware.Timeout(60 * time.Second))
 	r.Use(middleware.CorrelationID())
 	r.Use(middleware.SecurityHeaders())
+
+	// IP Blocking middleware (automatic defense)
+	if config.IPBlockChecker != nil {
+		r.Use(middleware.IPBlockMiddleware(config.IPBlockChecker))
+	}
 
 	// More restrictive CORS for admin API (internal use only)
 	r.Use(cors.Handler(cors.Options{

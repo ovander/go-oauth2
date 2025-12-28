@@ -10,10 +10,11 @@ import (
 )
 
 type AuthHandler struct {
-	authService service.AuthService
-	userService service.UserService
-	environment string
-	issuer      string
+	authService     service.AuthService
+	userService     service.UserService
+	autoDefense     *service.AutoDefenseService
+	environment     string
+	issuer          string
 }
 
 func NewAuthHandler(authService service.AuthService, userService service.UserService, environment, issuer string) *AuthHandler {
@@ -23,6 +24,11 @@ func NewAuthHandler(authService service.AuthService, userService service.UserSer
 		environment: environment,
 		issuer:      issuer,
 	}
+}
+
+// SetAutoDefenseService sets the auto-defense service for IP-based threat detection
+func (h *AuthHandler) SetAutoDefenseService(autoDefense *service.AutoDefenseService) {
+	h.autoDefense = autoDefense
 }
 
 // POST /api/auth/signup
@@ -87,8 +93,16 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	clientIP := middleware.GetClientIP(r)
+	userAgent := r.Header.Get("User-Agent")
+
 	response, err := h.authService.Login(r.Context(), req)
 	if err != nil {
+		// Record failed login for auto-defense
+		if h.autoDefense != nil {
+			h.autoDefense.RecordFailedLogin(r.Context(), clientIP, userAgent)
+		}
+
 		switch err {
 		case service.ErrAccountLocked:
 			writeError(w, "account is locked", http.StatusForbidden)
@@ -100,6 +114,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			writeError(w, err.Error(), http.StatusBadRequest)
 		}
 		return
+	}
+
+	// Record successful login (clears failed attempt tracking)
+	if h.autoDefense != nil {
+		h.autoDefense.RecordSuccessfulLogin(clientIP)
 	}
 
 	json.NewEncoder(w).Encode(response)

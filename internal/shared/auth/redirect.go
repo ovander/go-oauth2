@@ -8,12 +8,13 @@ import (
 
 // Redirect URI validation errors
 var (
-	ErrRedirectURIEmpty         = errors.New("redirect URI cannot be empty")
-	ErrRedirectURIInvalidURL    = errors.New("redirect URI is not a valid URL")
-	ErrRedirectURIHasFragment   = errors.New("redirect URI must not contain a fragment")
-	ErrRedirectURINotHTTPS      = errors.New("redirect URI must use HTTPS in production")
-	ErrRedirectURINotRegistered = errors.New("redirect URI is not registered for this client")
-	ErrRedirectURIPathTraversal = errors.New("redirect URI contains path traversal")
+	ErrRedirectURIEmpty           = errors.New("redirect URI cannot be empty")
+	ErrRedirectURIInvalidURL      = errors.New("redirect URI is not a valid URL")
+	ErrRedirectURIHasFragment     = errors.New("redirect URI must not contain a fragment")
+	ErrRedirectURINotHTTPS        = errors.New("redirect URI must use HTTPS in production")
+	ErrRedirectURINotRegistered   = errors.New("redirect URI is not registered for this client")
+	ErrRedirectURIPathTraversal   = errors.New("redirect URI contains path traversal")
+	ErrRedirectURIDangerousScheme = errors.New("redirect URI uses a dangerous scheme")
 )
 
 // ValidateRedirectURI validates a redirect URI according to OAuth 2.0 security best practices
@@ -27,6 +28,11 @@ func ValidateRedirectURI(uri string, registeredURIs []string, requireHTTPS bool)
 	parsedURI, err := url.Parse(uri)
 	if err != nil {
 		return ErrRedirectURIInvalidURL
+	}
+
+	// Check for dangerous schemes (XSS prevention)
+	if isDangerousScheme(parsedURI.Scheme) {
+		return ErrRedirectURIDangerousScheme
 	}
 
 	// Check for fragment (not allowed per RFC 6749)
@@ -74,6 +80,23 @@ func ValidateRedirectURIStrict(uri string, registeredURIs []string) error {
 func isLocalhostURI(u *url.URL) bool {
 	host := strings.ToLower(u.Hostname())
 	return host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]"
+}
+
+// isDangerousScheme checks if the URI scheme could be used for XSS or other attacks
+func isDangerousScheme(scheme string) bool {
+	dangerousSchemes := []string{
+		"javascript",
+		"data",
+		"vbscript",
+		"file",
+	}
+	lowerScheme := strings.ToLower(scheme)
+	for _, dangerous := range dangerousSchemes {
+		if lowerScheme == dangerous {
+			return true
+		}
+	}
+	return false
 }
 
 // containsPathTraversal checks for path traversal sequences
@@ -148,6 +171,11 @@ func IsValidRedirectURIFormat(uri string) error {
 	// Must have a scheme
 	if parsedURI.Scheme == "" {
 		return errors.New("redirect URI must have a scheme (http or https)")
+	}
+
+	// Check for dangerous schemes (XSS prevention)
+	if isDangerousScheme(parsedURI.Scheme) {
+		return ErrRedirectURIDangerousScheme
 	}
 
 	// Must have a host

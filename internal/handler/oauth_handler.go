@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -318,19 +319,19 @@ func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 
 	response, err := h.oauthService.Token(r.Context(), req, clientID, clientSecret)
 	if err != nil {
-		switch err {
-		case service.ErrInvalidGrantType:
+		switch {
+		case errors.Is(err, service.ErrInvalidGrantType):
 			writeOAuthError(w, "unsupported_grant_type", "unsupported grant type", http.StatusBadRequest)
-		case service.ErrInvalidCode:
+		case errors.Is(err, service.ErrInvalidCode):
 			writeOAuthError(w, "invalid_grant", "invalid authorization code", http.StatusBadRequest)
-		case service.ErrCodeExpired:
+		case errors.Is(err, service.ErrCodeExpired):
 			writeOAuthError(w, "invalid_grant", "authorization code expired", http.StatusBadRequest)
-		case service.ErrInvalidCredentials:
+		case errors.Is(err, service.ErrInvalidCredentials):
 			writeOAuthError(w, "invalid_client", "invalid client credentials", http.StatusUnauthorized)
-		case service.ErrPKCEVerificationFail:
+		case errors.Is(err, service.ErrPKCEVerificationFail):
 			writeOAuthError(w, "invalid_grant", "PKCE verification failed", http.StatusBadRequest)
-		case service.ErrInvalidToken:
-			writeOAuthError(w, "invalid_grant", "invalid refresh token", http.StatusBadRequest)
+		case errors.Is(err, service.ErrInvalidToken):
+			writeOAuthError(w, "invalid_grant", "invalid or expired refresh token", http.StatusBadRequest)
 		default:
 			writeOAuthError(w, "server_error", err.Error(), http.StatusInternalServerError)
 		}

@@ -158,6 +158,8 @@ func (h *MonitoringHandler) GetThreatMetrics(w http.ResponseWriter, r *http.Requ
 
 	var since time.Time
 	switch timeRange {
+	case "15m":
+		since = time.Now().Add(-15 * time.Minute)
 	case "1h":
 		since = time.Now().Add(-1 * time.Hour)
 	case "24h":
@@ -1128,6 +1130,8 @@ func (h *MonitoringHandler) GetGeoAnalytics(w http.ResponseWriter, r *http.Reque
 
 	var since time.Time
 	switch period {
+	case "15m":
+		since = time.Now().Add(-15 * time.Minute)
 	case "1h":
 		since = time.Now().Add(-1 * time.Hour)
 	case "24h":

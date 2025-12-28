@@ -366,29 +366,55 @@ func (h *OAuthHandler) UserInfo(w http.ResponseWriter, r *http.Request) {
 
 // POST /oauth/introspect
 func (h *OAuthHandler) Introspect(w http.ResponseWriter, r *http.Request) {
-	// Client authentication required
+	var req dto.IntrospectRequest
+	contentType := r.Header.Get("Content-Type")
+
+	// Support both JSON and form-urlencoded formats
+	if strings.Contains(contentType, "application/json") {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeOAuthError(w, "invalid_request", "failed to parse JSON body", http.StatusBadRequest)
+			return
+		}
+	} else {
+		if err := r.ParseForm(); err != nil {
+			writeOAuthError(w, "invalid_request", "failed to parse form", http.StatusBadRequest)
+			return
+		}
+		req = dto.IntrospectRequest{
+			Token:        r.FormValue("token"),
+			ClientID:     r.FormValue("client_id"),
+			ClientSecret: r.FormValue("client_secret"),
+		}
+	}
+
+	// Extract client credentials (from header or body)
 	clientID, clientSecret := extractClientCredentials(r)
+	if req.ClientID != "" {
+		clientID = req.ClientID
+	}
+	if req.ClientSecret != "" {
+		clientSecret = req.ClientSecret
+	}
+
+	// Client authentication required
 	if clientID == "" {
 		writeOAuthError(w, "invalid_client", "client authentication required", http.StatusUnauthorized)
 		return
 	}
 
-	// Parse form
-	if err := r.ParseForm(); err != nil {
-		writeOAuthError(w, "invalid_request", "failed to parse form", http.StatusBadRequest)
-		return
-	}
-
-	token := r.FormValue("token")
-	if token == "" {
+	if req.Token == "" {
 		writeOAuthError(w, "invalid_request", "token is required", http.StatusBadRequest)
 		return
 	}
 
-	// Validate client credentials (simplified - in production, check against DB)
-	_ = clientSecret // TODO: Validate client secret
+	// Validate client credentials
+	_, err := h.appService.ValidateClientCredentials(r.Context(), clientID, clientSecret)
+	if err != nil {
+		writeOAuthError(w, "invalid_client", "invalid client credentials", http.StatusUnauthorized)
+		return
+	}
 
-	response, err := h.oauthService.Introspect(r.Context(), token)
+	response, err := h.oauthService.Introspect(r.Context(), req.Token)
 	if err != nil {
 		json.NewEncoder(w).Encode(dto.IntrospectResponse{Active: false})
 		return
@@ -399,22 +425,39 @@ func (h *OAuthHandler) Introspect(w http.ResponseWriter, r *http.Request) {
 
 // POST /oauth/revoke
 func (h *OAuthHandler) Revoke(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
-	if !ok {
-		// Parse form for token-based revocation
+	var req dto.RevokeRequest
+	contentType := r.Header.Get("Content-Type")
+
+	// Support both JSON and form-urlencoded formats
+	if strings.Contains(contentType, "application/json") {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusOK) // RFC 7009: always return 200
+			return
+		}
+	} else {
 		if err := r.ParseForm(); err != nil {
 			w.WriteHeader(http.StatusOK) // RFC 7009: always return 200
 			return
 		}
-		// For now, just return success
+		req = dto.RevokeRequest{
+			Token:         r.FormValue("token"),
+			TokenTypeHint: r.FormValue("token_type_hint"),
+			ClientID:      r.FormValue("client_id"),
+			ClientSecret:  r.FormValue("client_secret"),
+		}
+	}
+
+	// Try to get user from context (authenticated request)
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if ok {
+		if err := h.oauthService.Revoke(r.Context(), req.Token, userID); err != nil {
+			// RFC 7009: always return 200 for revocation
+		}
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 
-	if err := h.oauthService.Revoke(r.Context(), "", userID); err != nil {
-		// RFC 7009: always return 200 for revocation
-	}
-
+	// For unauthenticated requests, we still return 200 per RFC 7009
 	w.WriteHeader(http.StatusOK)
 }
 

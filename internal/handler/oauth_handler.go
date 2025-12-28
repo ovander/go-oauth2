@@ -273,24 +273,42 @@ func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Content-Type", "application/json")
 
-	// Parse form data
-	if err := r.ParseForm(); err != nil {
-		writeOAuthError(w, "invalid_request", "failed to parse form", http.StatusBadRequest)
-		return
+	var req dto.TokenRequest
+	contentType := r.Header.Get("Content-Type")
+
+	// Support both JSON and form-urlencoded formats
+	if strings.Contains(contentType, "application/json") {
+		// Parse JSON body
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeOAuthError(w, "invalid_request", "failed to parse JSON body", http.StatusBadRequest)
+			return
+		}
+	} else {
+		// Parse form data (standard OAuth2)
+		if err := r.ParseForm(); err != nil {
+			writeOAuthError(w, "invalid_request", "failed to parse form", http.StatusBadRequest)
+			return
+		}
+		req = dto.TokenRequest{
+			GrantType:    r.FormValue("grant_type"),
+			Code:         r.FormValue("code"),
+			RedirectURI:  r.FormValue("redirect_uri"),
+			ClientID:     r.FormValue("client_id"),
+			ClientSecret: r.FormValue("client_secret"),
+			RefreshToken: r.FormValue("refresh_token"),
+			CodeVerifier: r.FormValue("code_verifier"),
+			Scope:        r.FormValue("scope"),
+		}
 	}
 
-	// Extract client credentials
+	// Extract client credentials (from header or body)
 	clientID, clientSecret := extractClientCredentials(r)
-
-	req := dto.TokenRequest{
-		GrantType:    r.FormValue("grant_type"),
-		Code:         r.FormValue("code"),
-		RedirectURI:  r.FormValue("redirect_uri"),
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		RefreshToken: r.FormValue("refresh_token"),
-		CodeVerifier: r.FormValue("code_verifier"),
-		Scope:        r.FormValue("scope"),
+	// Override with body values if provided
+	if req.ClientID != "" {
+		clientID = req.ClientID
+	}
+	if req.ClientSecret != "" {
+		clientSecret = req.ClientSecret
 	}
 
 	if req.GrantType == "" {

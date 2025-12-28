@@ -200,6 +200,21 @@ func Bootstrap(cfg *config.Config) *App {
 	templateService := service.NewTemplateService()
 
 	// ==========================================
+	// GeoIP Service
+	// ==========================================
+	var geoIPService service.GeoIPService
+	if cfg.GeoIPCityDBPath != "" {
+		geoIPService = service.NewGeoIPService(service.GeoIPConfig{
+			CityDBPath: cfg.GeoIPCityDBPath,
+			ASNDBPath:  cfg.GeoIPASNDBPath,
+		})
+		logger.Info("GeoIP service initialized")
+	} else {
+		geoIPService = service.NewGeoIPServiceDisabled()
+		logger.Info("GeoIP service running in fallback mode (no database configured)")
+	}
+
+	// ==========================================
 	// Handlers
 	// ==========================================
 	authHandler := handler.NewAuthHandler(authService, userService, cfg.Environment, cfg.OAuthIssuer)
@@ -211,7 +226,7 @@ func Bootstrap(cfg *config.Config) *App {
 	dashboardHandler := handler.NewDashboardHandler(db, userRepo, appRepo, userAppRoleRepo)
 	healthHandler := handler.NewHealthHandler(db)
 	appLogsHandler := handler.NewAppLogsHandler(appActivityLogService)
-	monitoringHandler := handler.NewMonitoringHandler(db, alertRuleRepo, triggeredAlertRepo, blockedIPRepo, securityAuditRepo)
+	monitoringHandler := handler.NewMonitoringHandler(db, alertRuleRepo, triggeredAlertRepo, blockedIPRepo, securityAuditRepo, geoIPService)
 
 	// ==========================================
 	// Auto-Defense System (automatic IP blocking)

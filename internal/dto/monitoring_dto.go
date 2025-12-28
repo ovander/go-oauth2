@@ -307,10 +307,11 @@ type GeoAnomaly struct {
 
 // GeoAnalyticsResponse contains geographic analytics
 type GeoAnalyticsResponse struct {
-	Period    string            `json:"period"`
-	ByCountry []GeoCountryStats `json:"by_country"`
-	ByCity    []GeoCityStats    `json:"by_city"`
-	Anomalies []GeoAnomaly      `json:"anomalies"`
+	Period        string            `json:"period"`
+	GeoConfigured bool              `json:"geo_configured"`
+	ByCountry     []GeoCountryStats `json:"by_country"`
+	ByCity        []GeoCityStats    `json:"by_city"`
+	Anomalies     []GeoAnomaly      `json:"anomalies"`
 }
 
 // ==========================================

@@ -55,6 +55,10 @@ type Config struct {
 
 	// Keys
 	KeysPath string
+
+	// GeoIP
+	GeoIPCityDBPath string // Path to GeoLite2-City.mmdb
+	GeoIPASNDBPath  string // Path to GeoLite2-ASN.mmdb (optional)
 }
 
 // Load loads configuration from environment variables
@@ -107,6 +111,10 @@ func Load() *Config {
 
 		// Keys
 		KeysPath: getEnv("KEYS_PATH", "keys"),
+
+		// GeoIP
+		GeoIPCityDBPath: getEnv("GEOIP_CITY_DB", ""),
+		GeoIPASNDBPath:  getEnv("GEOIP_ASN_DB", ""),
 	}
 
 	return cfg

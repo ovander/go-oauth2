@@ -13,6 +13,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/middleware"
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
+	"github.com/ovandermoten/go-oauth2/internal/service"
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
 	"gorm.io/gorm"
 )
@@ -24,6 +25,7 @@ type MonitoringHandler struct {
 	triggeredAlertRepo  repository.TriggeredAlertRepository
 	blockedIPRepo       repository.BlockedIPRepository
 	securityAuditRepo   repository.SecurityAuditLogRepository
+	geoIPService        service.GeoIPService
 }
 
 // NewMonitoringHandler creates a new monitoring handler
@@ -33,6 +35,7 @@ func NewMonitoringHandler(
 	triggeredAlertRepo repository.TriggeredAlertRepository,
 	blockedIPRepo repository.BlockedIPRepository,
 	securityAuditRepo repository.SecurityAuditLogRepository,
+	geoIPService service.GeoIPService,
 ) *MonitoringHandler {
 	return &MonitoringHandler{
 		db:                 db,
@@ -40,6 +43,7 @@ func NewMonitoringHandler(
 		triggeredAlertRepo: triggeredAlertRepo,
 		blockedIPRepo:      blockedIPRepo,
 		securityAuditRepo:  securityAuditRepo,
+		geoIPService:       geoIPService,
 	}
 }
 
@@ -1144,9 +1148,6 @@ func (h *MonitoringHandler) GetGeoAnalytics(w http.ResponseWriter, r *http.Reque
 		since = time.Now().Add(-24 * time.Hour)
 	}
 
-	// Note: Full geo analytics requires IP geolocation service integration
-	// For now, we provide IP-based analytics that can be extended with geo data
-
 	// Get top IPs with login activity
 	type ipStats struct {
 		IPAddress   string
@@ -1166,46 +1167,78 @@ func (h *MonitoringHandler) GetGeoAnalytics(w http.ResponseWriter, r *http.Reque
 		Where("event_type IN ?", []string{"login_success", "login_failed"}).
 		Group("ip_address").
 		Order("login_count DESC").
-		Limit(20).
+		Limit(50).
 		Scan(&ipData)
 
-	// Convert to geo stats (placeholder - would integrate with MaxMind or similar)
-	// For demonstration, we'll categorize as "Unknown" location
-	byCountry := []dto.GeoCountryStats{
-		{
-			CountryCode: "XX",
-			CountryName: "Unknown (Geo lookup not configured)",
-			LoginCount:  0,
-			UniqueUsers: 0,
-			FailedCount: 0,
-		},
+	// Collect unique IPs for batch lookup
+	ips := make([]string, len(ipData))
+	for i, ip := range ipData {
+		ips[i] = ip.IPAddress
 	}
 
-	// Aggregate totals
-	var totalLogins, totalFailed, totalUsers int64
+	// Perform GeoIP lookup
+	geoResults := h.geoIPService.LookupBatch(ips)
+
+	// Aggregate by country
+	countryStats := make(map[string]*dto.GeoCountryStats)
 	for _, ip := range ipData {
-		totalLogins += ip.LoginCount
-		totalFailed += ip.FailedCount
-		totalUsers += ip.UniqueUsers
-	}
-	byCountry[0].LoginCount = totalLogins
-	byCountry[0].FailedCount = totalFailed
-	byCountry[0].UniqueUsers = totalUsers
+		geo := geoResults[ip.IPAddress]
+		countryCode := "XX"
+		countryName := "Unknown"
+		if geo != nil && geo.IsValid {
+			countryCode = geo.CountryCode
+			countryName = geo.CountryName
+			if countryCode == "" {
+				countryCode = "XX"
+				countryName = "Unknown"
+			}
+		}
 
-	// Build city stats from IP data
+		if _, exists := countryStats[countryCode]; !exists {
+			countryStats[countryCode] = &dto.GeoCountryStats{
+				CountryCode: countryCode,
+				CountryName: countryName,
+			}
+		}
+		countryStats[countryCode].LoginCount += ip.LoginCount
+		countryStats[countryCode].FailedCount += ip.FailedCount
+		countryStats[countryCode].UniqueUsers += ip.UniqueUsers
+	}
+
+	// Convert to slice and sort by login count
+	byCountry := make([]dto.GeoCountryStats, 0, len(countryStats))
+	for _, stats := range countryStats {
+		byCountry = append(byCountry, *stats)
+	}
+
+	// Build city stats with geo data
 	byCity := make([]dto.GeoCityStats, 0, len(ipData))
 	for _, ip := range ipData {
+		geo := geoResults[ip.IPAddress]
+		city := ip.IPAddress
+		countryCode := "XX"
+		var lat, lng float64
+
+		if geo != nil && geo.IsValid {
+			if geo.City != "" && geo.City != "Unknown" {
+				city = geo.City
+			}
+			countryCode = geo.CountryCode
+			lat = geo.Latitude
+			lng = geo.Longitude
+		}
+
 		byCity = append(byCity, dto.GeoCityStats{
-			City:        ip.IPAddress, // Use IP as placeholder for city
-			CountryCode: "XX",
-			Latitude:    0,
-			Longitude:   0,
+			City:        city,
+			CountryCode: countryCode,
+			Latitude:    lat,
+			Longitude:   lng,
 			LoginCount:  ip.LoginCount,
 			FailedCount: ip.FailedCount,
 		})
 	}
 
-	// Detect anomalies: users logging in from multiple IPs in short time
+	// Detect anomalies: users logging in from multiple countries
 	type anomalyRow struct {
 		UserID    uint
 		Email     string
@@ -1236,21 +1269,43 @@ func (h *MonitoringHandler) GetGeoAnalytics(w http.ResponseWriter, r *http.Reque
 
 	anomalies := make([]dto.GeoAnomaly, 0, len(anomalyData))
 	for _, a := range anomalyData {
+		// Look up geo for first and last IP
+		firstGeo := h.geoIPService.Lookup(a.FirstIP)
+		lastGeo := h.geoIPService.Lookup(a.LastIP)
+
+		usualCountry := a.FirstIP
+		loginCountry := a.LastIP
+		if firstGeo != nil && firstGeo.CountryName != "" {
+			usualCountry = firstGeo.CountryName
+		}
+		if lastGeo != nil && lastGeo.CountryName != "" {
+			loginCountry = lastGeo.CountryName
+		}
+
+		description := "Login from multiple IPs (" + strconv.FormatInt(a.IPCount, 10) + " different IPs)"
+		if usualCountry != loginCountry && usualCountry != a.FirstIP && loginCountry != a.LastIP {
+			description = "Suspicious: Login from " + loginCountry + " (usually from " + usualCountry + ")"
+		}
+
 		anomalies = append(anomalies, dto.GeoAnomaly{
 			UserID:       a.UserID,
 			UserEmail:    a.Email,
-			Description:  "Login from multiple IPs (" + strconv.FormatInt(a.IPCount, 10) + " different IPs)",
-			UsualCountry: a.FirstIP,
-			LoginCountry: a.LastIP,
+			Description:  description,
+			UsualCountry: usualCountry,
+			LoginCountry: loginCountry,
 			CreatedAt:    a.CreatedAt,
 		})
 	}
 
+	// Add GeoIP status to response
+	geoConfigured := h.geoIPService.IsConfigured()
+
 	json.NewEncoder(w).Encode(dto.GeoAnalyticsResponse{
-		Period:    period,
-		ByCountry: byCountry,
-		ByCity:    byCity,
-		Anomalies: anomalies,
+		Period:        period,
+		GeoConfigured: geoConfigured,
+		ByCountry:     byCountry,
+		ByCity:        byCity,
+		Anomalies:     anomalies,
 	})
 }
 

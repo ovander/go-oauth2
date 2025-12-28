@@ -2094,3 +2094,156 @@ customConfig := service.AutoDefenseConfig{
 - Consider deploying on internal network only for production
 - **NEW:** Server now includes automatic IP blocking that operates without admin intervention
 
+---
+
+## Recent Security Compliance Fixes
+
+This section documents the OAuth2/OIDC compliance issues identified by security testing and the fixes applied.
+
+### TOK-05 & TOK-08: OAuth Token Error Codes
+
+**Issue:** Token endpoint returned `server_error` instead of RFC 6749 compliant error codes.
+
+| Test | Expected | Was Returning | Fixed |
+|------|----------|---------------|-------|
+| TOK-05 Invalid Grant Type | `unsupported_grant_type` | `server_error` | ✅ |
+| TOK-08 Invalid Refresh Token | `invalid_grant` | `server_error` | ✅ |
+
+**Root Cause:** Errors were wrapped with `fmt.Errorf("%w: ...")` but the handler used direct switch comparison instead of `errors.Is()`.
+
+**Fix Applied:** (`internal/handler/oauth_handler.go`)
+```go
+// Before (broken)
+switch err {
+case service.ErrInvalidGrantType:
+    // Never matched because err was wrapped
+}
+
+// After (fixed)
+switch {
+case errors.Is(err, service.ErrInvalidGrantType):
+    writeOAuthError(w, "unsupported_grant_type", "unsupported grant type", http.StatusBadRequest)
+case errors.Is(err, service.ErrInvalidToken):
+    writeOAuthError(w, "invalid_grant", "invalid or expired refresh token", http.StatusBadRequest)
+// ...
+}
+```
+
+---
+
+### SEC-08: Security Headers Exposure
+
+**Issue:** Security headers were being set by middleware but not exposed via CORS, making them invisible to browser-based clients.
+
+**Fix Applied:** (`internal/http/router.go`)
+```go
+r.Use(cors.Handler(cors.Options{
+    AllowedOrigins:   config.AllowedOrigins,
+    AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+    AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Correlation-ID"},
+    ExposedHeaders:   []string{
+        "X-Content-Type-Options",
+        "X-Frame-Options",
+        "Content-Security-Policy",
+        "Strict-Transport-Security",
+        "X-Correlation-ID",
+        "X-RateLimit-Limit",
+        "X-RateLimit-Remaining",
+        "X-RateLimit-Reset",
+        "Retry-After",
+    },
+    AllowCredentials: true,
+    MaxAge:           300,
+}))
+```
+
+---
+
+### DEF-03: XSS Prevention via Redirect URI Validation
+
+**Issue:** The `/oauth/authorize` endpoint accepted dangerous redirect URIs like `javascript:alert(1)`, which could enable XSS attacks.
+
+**Fix Applied (Two Parts):**
+
+**Part 1:** Added dangerous scheme detection (`internal/shared/auth/redirect.go`)
+```go
+var ErrRedirectURIDangerousScheme = errors.New("redirect URI uses a dangerous scheme")
+
+func isDangerousScheme(scheme string) bool {
+    dangerousSchemes := []string{"javascript", "data", "vbscript", "file"}
+    lowerScheme := strings.ToLower(scheme)
+    for _, dangerous := range dangerousSchemes {
+        if lowerScheme == dangerous {
+            return true
+        }
+    }
+    return false
+}
+
+func ValidateRedirectURI(uri string, allowedURIs []string, allowLocalhost bool) error {
+    // ... parse URI ...
+    if isDangerousScheme(parsedURI.Scheme) {
+        return ErrRedirectURIDangerousScheme
+    }
+    // ... continue validation ...
+}
+```
+
+**Part 2:** Error pages now return HTTP 400 (`internal/service/template_service.go`)
+```go
+// RenderError now returns HTTP 400 Bad Request instead of 200 OK
+func (s *TemplateService) RenderError(w http.ResponseWriter, data ErrorPageData) error {
+    return s.renderWithStatus(w, s.errorTemplate, data, http.StatusBadRequest)
+}
+```
+
+**Blocked Schemes:**
+- `javascript:` - XSS injection
+- `data:` - Data URL injection
+- `vbscript:` - VBScript injection (legacy IE)
+- `file:` - Local file access
+
+---
+
+### Database Schema Fix: blocked_ips Table
+
+**Issue:** The `BlockedIP` model had a column mapping mismatch causing SQL errors.
+
+**Error:** `ERROR: column "blocked_at" does not exist (SQLSTATE 42703)`
+
+**Root Cause:** Model was mapped to column `inserted_at` but repository queries used `blocked_at`.
+
+**Fix Applied:**
+
+1. Updated model (`internal/model/blocked_ip.go`):
+```go
+// Before
+BlockedAt time.Time `gorm:"column:inserted_at" json:"blocked_at"`
+
+// After
+BlockedAt time.Time `gorm:"autoCreateTime" json:"blocked_at"`
+```
+
+2. Added migration fix (`cmd/server/bootstrap.go`):
+```go
+// Pre-migration fix for existing databases
+if db.Migrator().HasTable("blocked_ips") &&
+   db.Migrator().HasColumn(&model.BlockedIP{}, "inserted_at") {
+    db.Migrator().RenameColumn(&model.BlockedIP{}, "inserted_at", "blocked_at")
+}
+```
+
+---
+
+### Security Test Results Summary
+
+| Test ID | Test Name | Status |
+|---------|-----------|--------|
+| TOK-05 | Invalid Grant Type | ✅ PASS |
+| TOK-08 | Invalid Refresh Token | ✅ PASS |
+| SEC-08 | Secure Headers | ✅ PASS |
+| DEF-03 | XSS in redirect_uri | ✅ PASS |
+| USR-01 | Basic UserInfo | ✅ PASS (401 expected for client_credentials) |
+
+**Note:** USR-01 returns 401 for `client_credentials` tokens because there is no user context. This is RFC-compliant behavior.
+

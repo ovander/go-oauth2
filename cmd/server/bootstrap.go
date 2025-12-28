@@ -65,6 +65,9 @@ func Bootstrap(cfg *config.Config) *App {
 		&model.AuthorizationCode{},
 		&model.UsedToken{},
 		&model.SecurityAuditLog{},
+		&model.AlertRule{},
+		&model.TriggeredAlert{},
+		&model.BlockedIP{},
 	); err != nil {
 		logger.Fatalf("Failed to auto-migrate database: %v", err)
 	}
@@ -101,6 +104,11 @@ func Bootstrap(cfg *config.Config) *App {
 	authCodeRepo := repository.NewAuthorizationCodeRepository(db)
 	usedTokenRepo := repository.NewUsedTokenRepository(db)
 	securityAuditRepo := repository.NewSecurityAuditLogRepository(db)
+
+	// Monitoring repositories
+	alertRuleRepo := repository.NewAlertRuleRepository(db)
+	triggeredAlertRepo := repository.NewTriggeredAlertRepository(db)
+	blockedIPRepo := repository.NewBlockedIPRepository(db)
 
 	// ==========================================
 	// Code Store (database-backed with cleanup)
@@ -182,6 +190,7 @@ func Bootstrap(cfg *config.Config) *App {
 	dashboardHandler := handler.NewDashboardHandler(db, userRepo, appRepo, userAppRoleRepo)
 	healthHandler := handler.NewHealthHandler(db)
 	appLogsHandler := handler.NewAppLogsHandler(appActivityLogService)
+	monitoringHandler := handler.NewMonitoringHandler(db, alertRuleRepo, triggeredAlertRepo, blockedIPRepo, securityAuditRepo)
 
 	// ==========================================
 	// Rate Limiters (with graceful shutdown support)
@@ -223,6 +232,7 @@ func Bootstrap(cfg *config.Config) *App {
 		dashboardHandler,
 		healthHandler,
 		appLogsHandler,
+		monitoringHandler,
 		tokenService,
 		userRepo,
 		userAppRoleRepo,
@@ -240,6 +250,7 @@ func Bootstrap(cfg *config.Config) *App {
 		dashboardHandler,
 		healthHandler,
 		appLogsHandler,
+		monitoringHandler,
 		tokenService,
 		userRepo,
 		userAppRoleRepo,

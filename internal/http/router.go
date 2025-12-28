@@ -38,6 +38,7 @@ func NewRouters(
 	dashboardHandler *handler.DashboardHandler,
 	healthHandler *handler.HealthHandler,
 	appLogsHandler *handler.AppLogsHandler,
+	monitoringHandler *handler.MonitoringHandler,
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
 	userAppRoleRepo repository.UserAppRoleRepository,
@@ -45,7 +46,7 @@ func NewRouters(
 ) *Routers {
 	return &Routers{
 		OAuth: newOAuthRouter(authHandler, oauthHandler, profileHandler, healthHandler, tokenService, userRepo, config),
-		Admin: newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config),
+		Admin: newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config),
 	}
 }
 
@@ -195,6 +196,7 @@ func newAdminRouter(
 	dashboardHandler *handler.DashboardHandler,
 	appUsersHandler *handler.AppUsersHandler,
 	appLogsHandler *handler.AppLogsHandler,
+	monitoringHandler *handler.MonitoringHandler,
 	healthHandler *handler.HealthHandler,
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
@@ -294,6 +296,32 @@ func newAdminRouter(
 				r.Delete("/", adminHandler.DeleteSuperadmin)
 			})
 		})
+
+		// Security monitoring endpoints
+		r.Route("/security", func(r chi.Router) {
+			r.Get("/events", monitoringHandler.GetSecurityEvents)
+			r.Get("/threats", monitoringHandler.GetThreatMetrics)
+
+			// IP blocking
+			r.Get("/blocked-ips", monitoringHandler.ListBlockedIPs)
+			r.Post("/blocked-ips", monitoringHandler.BlockIP)
+			r.Delete("/blocked-ips/{id}", monitoringHandler.UnblockIP)
+			r.Get("/ip-reputation/{ip}", monitoringHandler.GetIPReputation)
+		})
+
+		// Alert management
+		r.Route("/alerts", func(r chi.Router) {
+			r.Get("/rules", monitoringHandler.ListAlertRules)
+			r.Post("/rules", monitoringHandler.CreateAlertRule)
+			r.Put("/rules/{id}", monitoringHandler.UpdateAlertRule)
+			r.Delete("/rules/{id}", monitoringHandler.DeleteAlertRule)
+
+			r.Get("/history", monitoringHandler.GetAlertHistory)
+			r.Post("/{id}/acknowledge", monitoringHandler.AcknowledgeAlert)
+		})
+
+		// Token analytics
+		r.Get("/tokens/stats", monitoringHandler.GetTokenStats)
 	})
 
 	// ==========================================
@@ -335,6 +363,7 @@ func NewRouter(
 	dashboardHandler *handler.DashboardHandler,
 	healthHandler *handler.HealthHandler,
 	appLogsHandler *handler.AppLogsHandler,
+	monitoringHandler *handler.MonitoringHandler,
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
 	userAppRoleRepo repository.UserAppRoleRepository,
@@ -366,7 +395,7 @@ func NewRouter(
 	r.Mount("/", oauthRouter)
 
 	// Mount Admin router under /admin prefix (for single-port mode)
-	adminRouter := newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config)
+	adminRouter := newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config)
 	r.Mount("/manage", adminRouter)
 
 	return r

@@ -11,13 +11,15 @@ import (
 
 type AuthHandler struct {
 	authService service.AuthService
+	userService service.UserService
 	environment string
 	issuer      string
 }
 
-func NewAuthHandler(authService service.AuthService, environment, issuer string) *AuthHandler {
+func NewAuthHandler(authService service.AuthService, userService service.UserService, environment, issuer string) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
+		userService: userService,
 		environment: environment,
 		issuer:      issuer,
 	}
@@ -222,7 +224,7 @@ func (h *AuthHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// GET /api/auth/api_userinfo
+// GET /api/userinfo
 func (h *AuthHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
@@ -230,10 +232,32 @@ func (h *AuthHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Implement user info retrieval with proper claims
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"user_id": userID,
-	})
+	user, err := h.userService.GetByID(r.Context(), userID)
+	if err != nil {
+		writeError(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	response := dto.UserResponse{
+		ID:         user.ID,
+		Email:      user.Email,
+		Name:       user.Name,
+		Role:       string(user.Role),
+		IsVerified: user.IsVerified,
+		Title:      user.Title,
+		Division:   user.Division,
+		Company:    user.Company,
+		Country:    user.Country,
+		Phone:      user.Phone,
+		JobTitle:   user.JobTitle,
+		Department: user.Department,
+		Language:   user.Language,
+		Timezone:   user.Timezone,
+		LastLogin:  user.LastLogin,
+		CreatedAt:  user.CreatedAt,
+	}
+
+	json.NewEncoder(w).Encode(response)
 }
 
 func writeError(w http.ResponseWriter, message string, status int) {

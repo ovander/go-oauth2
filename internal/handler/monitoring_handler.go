@@ -754,13 +754,29 @@ func (h *MonitoringHandler) GetTokenStats(w http.ResponseWriter, r *http.Request
 		since = time.Now().Add(-24 * time.Hour)
 	}
 
-	// Count token events
-	var issued, refreshed, revoked, expiredAttempts, invalidAttempts int64
+	// Count token events by type using JSONB query on details->token_types
+	var accessTokens, refreshTokens, idTokens int64
+	var refreshed, revoked, expiredAttempts, invalidAttempts int64
 
+	// Count access tokens issued (both token_issued and token_refreshed events)
 	h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
-		Where("created_at >= ? AND event_type = ?", since, "token_issued").
-		Count(&issued)
+		Where("created_at >= ? AND event_type IN (?, ?) AND details->'token_types' ? ?",
+			since, "token_issued", "token_refreshed", "access_token").
+		Count(&accessTokens)
 
+	// Count refresh tokens issued
+	h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+		Where("created_at >= ? AND event_type IN (?, ?) AND details->'token_types' ? ?",
+			since, "token_issued", "token_refreshed", "refresh_token").
+		Count(&refreshTokens)
+
+	// Count ID tokens issued
+	h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+		Where("created_at >= ? AND event_type IN (?, ?) AND details->'token_types' ? ?",
+			since, "token_issued", "token_refreshed", "id_token").
+		Count(&idTokens)
+
+	// Count refresh operations (token_refreshed events)
 	h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
 		Where("created_at >= ? AND event_type = ?", since, "token_refreshed").
 		Count(&refreshed)
@@ -812,9 +828,9 @@ func (h *MonitoringHandler) GetTokenStats(w http.ResponseWriter, r *http.Request
 	json.NewEncoder(w).Encode(dto.TokenStatsResponse{
 		Period: period,
 		Issued: dto.TokenCounts{
-			AccessTokens:  issued,
-			RefreshTokens: issued,
-			IDTokens:      issued,
+			AccessTokens:  accessTokens,
+			RefreshTokens: refreshTokens,
+			IDTokens:      idTokens,
 		},
 		Refreshed:            refreshed,
 		Revoked:              revoked,

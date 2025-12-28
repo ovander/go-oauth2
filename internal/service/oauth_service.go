@@ -269,11 +269,16 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 		roles = append(roles, authCode.Role)
 	}
 
-	// Log token issuance
+	// Log token issuance with token types
+	tokenTypes := []string{"access_token", "refresh_token"}
+	if tokenSet.IDToken != "" {
+		tokenTypes = append(tokenTypes, "id_token")
+	}
 	s.logSecurityEvent(ctx, model.SecurityEventTokenIssued, &user.ID, &app.ID, true, map[string]interface{}{
-		"grant_type": "authorization_code",
-		"scope":      authCode.Scope,
-		"client_id":  clientID,
+		"grant_type":  "authorization_code",
+		"scope":       authCode.Scope,
+		"client_id":   clientID,
+		"token_types": tokenTypes,
 	})
 
 	return &dto.TokenResponse{
@@ -344,11 +349,16 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 
 	roles := []string{string(userAppRole.Role)}
 
-	// Log token refresh
+	// Log token refresh with token types
+	refreshTokenTypes := []string{"access_token", "refresh_token"}
+	if tokenSet.IDToken != "" {
+		refreshTokenTypes = append(refreshTokenTypes, "id_token")
+	}
 	s.logSecurityEvent(ctx, model.SecurityEventTokenRefreshed, &user.ID, &app.ID, true, map[string]interface{}{
-		"grant_type": "refresh_token",
-		"scope":      claims.Scope,
-		"client_id":  clientID,
+		"grant_type":  "refresh_token",
+		"scope":       claims.Scope,
+		"client_id":   clientID,
+		"token_types": refreshTokenTypes,
 	})
 
 	return &dto.TokenResponse{
@@ -387,11 +397,12 @@ func (s *oauthService) handleClientCredentialsGrant(ctx context.Context, req dto
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
 
-	// Log token issuance (no user for client_credentials grant)
+	// Log token issuance (no user for client_credentials grant, only access_token)
 	s.logSecurityEvent(ctx, model.SecurityEventTokenIssued, nil, &app.ID, true, map[string]interface{}{
-		"grant_type": "client_credentials",
-		"scope":      scope,
-		"client_id":  clientID,
+		"grant_type":  "client_credentials",
+		"scope":       scope,
+		"client_id":   clientID,
+		"token_types": []string{"access_token"},
 	})
 
 	return &dto.TokenResponse{

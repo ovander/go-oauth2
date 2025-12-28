@@ -191,6 +191,7 @@ func Bootstrap(cfg *config.Config) *App {
 		tokenService,
 		keyManager,
 		cfg.OAuthIssuer,
+		securityAuditRepo,
 	)
 
 	// ==========================================

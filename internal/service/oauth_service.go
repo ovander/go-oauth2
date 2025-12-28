@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
@@ -53,6 +54,7 @@ type oauthService struct {
 	codeStore       *auth.CodeStore
 	tokenService    *auth.TokenService
 	keyManager      *auth.KeyManager
+	auditRepo       repository.SecurityAuditLogRepository
 	issuer          string
 	requireHTTPS    bool
 }
@@ -71,6 +73,7 @@ func NewOAuthService(
 	tokenService *auth.TokenService,
 	keyManager *auth.KeyManager,
 	issuer string,
+	auditRepo repository.SecurityAuditLogRepository,
 ) OAuthService {
 	requireHTTPS := strings.HasPrefix(issuer, "https://")
 
@@ -87,6 +90,7 @@ func NewOAuthService(
 		codeStore:       codeStore,
 		tokenService:    tokenService,
 		keyManager:      keyManager,
+		auditRepo:       auditRepo,
 		issuer:          issuer,
 		requireHTTPS:    requireHTTPS,
 	}
@@ -101,6 +105,7 @@ func NewOAuthServiceWithConfig(
 	tokenService *auth.TokenService,
 	keyManager *auth.KeyManager,
 	issuer string,
+	auditRepo repository.SecurityAuditLogRepository,
 	config OAuthServiceConfig,
 ) OAuthService {
 	logger.WithFields(logger.Fields{
@@ -116,6 +121,7 @@ func NewOAuthServiceWithConfig(
 		codeStore:       codeStore,
 		tokenService:    tokenService,
 		keyManager:      keyManager,
+		auditRepo:       auditRepo,
 		issuer:          issuer,
 		requireHTTPS:    config.RequireHTTPS,
 	}
@@ -263,6 +269,13 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 		roles = append(roles, authCode.Role)
 	}
 
+	// Log token issuance
+	s.logSecurityEvent(ctx, model.SecurityEventTokenIssued, &user.ID, &app.ID, true, map[string]interface{}{
+		"grant_type": "authorization_code",
+		"scope":      authCode.Scope,
+		"client_id":  clientID,
+	})
+
 	return &dto.TokenResponse{
 		AccessToken:  tokenSet.AccessToken,
 		RefreshToken: tokenSet.RefreshToken,
@@ -331,6 +344,13 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 
 	roles := []string{string(userAppRole.Role)}
 
+	// Log token refresh
+	s.logSecurityEvent(ctx, model.SecurityEventTokenRefreshed, &user.ID, &app.ID, true, map[string]interface{}{
+		"grant_type": "refresh_token",
+		"scope":      claims.Scope,
+		"client_id":  clientID,
+	})
+
 	return &dto.TokenResponse{
 		AccessToken:  tokenSet.AccessToken,
 		RefreshToken: tokenSet.RefreshToken,
@@ -366,6 +386,13 @@ func (s *oauthService) handleClientCredentialsGrant(ctx context.Context, req dto
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
+
+	// Log token issuance (no user for client_credentials grant)
+	s.logSecurityEvent(ctx, model.SecurityEventTokenIssued, nil, &app.ID, true, map[string]interface{}{
+		"grant_type": "client_credentials",
+		"scope":      scope,
+		"client_id":  clientID,
+	})
 
 	return &dto.TokenResponse{
 		AccessToken: accessToken,
@@ -412,6 +439,12 @@ func (s *oauthService) Revoke(ctx context.Context, token string, userID uint) er
 	if err := s.userRepo.IncrementTokenVersion(ctx, userID); err != nil {
 		return fmt.Errorf("failed to revoke tokens: %w", err)
 	}
+
+	// Log token revocation
+	s.logSecurityEvent(ctx, model.SecurityEventTokenRevokedAll, &userID, nil, true, map[string]interface{}{
+		"action": "revoke_all_tokens",
+	})
+
 	return nil
 }
 
@@ -505,4 +538,26 @@ func validateScope(scope string) error {
 		}
 	}
 	return nil
+}
+
+// logSecurityEvent logs a security event to the audit log
+func (s *oauthService) logSecurityEvent(ctx context.Context, eventType model.SecurityEventType, userID *uint, appID *uint, success bool, details map[string]interface{}) {
+	if s.auditRepo == nil {
+		return
+	}
+
+	severity := model.GetSeverityForEvent(eventType, success)
+
+	log := &model.SecurityAuditLog{
+		UserID:    userID,
+		AppID:     appID,
+		EventType: eventType,
+		Severity:  severity,
+		Success:   success,
+		Details:   details,
+		CreatedAt: time.Now(),
+	}
+
+	// Fire and forget - don't let audit logging failure affect the main operation
+	_ = s.auditRepo.Create(ctx, log)
 }

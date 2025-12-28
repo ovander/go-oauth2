@@ -13,6 +13,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/middleware"
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 	"gorm.io/gorm"
 )
 
@@ -313,6 +314,7 @@ func (h *MonitoringHandler) ListAlertRules(w http.ResponseWriter, r *http.Reques
 
 	rules, err := h.alertRuleRepo.FindAll(ctx)
 	if err != nil {
+		logger.Errorf("Failed to list alert rules: %v", err)
 		writeError(w, "failed to list alert rules", http.StatusInternalServerError)
 		return
 	}

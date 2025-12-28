@@ -54,7 +54,7 @@ func (r *alertRuleRepository) FindByID(ctx context.Context, id uint) (*model.Ale
 
 func (r *alertRuleRepository) FindAll(ctx context.Context) ([]model.AlertRule, error) {
 	var rules []model.AlertRule
-	err := r.db.WithContext(ctx).Order("created_at DESC").Find(&rules).Error
+	err := r.db.WithContext(ctx).Order("inserted_at DESC").Find(&rules).Error
 	return rules, err
 }
 
@@ -122,7 +122,7 @@ func (r *triggeredAlertRepository) FindAll(ctx context.Context, page, pageSize i
 	r.db.WithContext(ctx).Model(&model.TriggeredAlert{}).Count(&total)
 	err := r.db.WithContext(ctx).
 		Preload("Rule").
-		Order("triggered_at DESC").
+		Order("inserted_at DESC").
 		Offset(offset).
 		Limit(pageSize).
 		Find(&alerts).Error
@@ -140,7 +140,7 @@ func (r *triggeredAlertRepository) FindByRuleID(ctx context.Context, ruleID uint
 	err := r.db.WithContext(ctx).
 		Preload("Rule").
 		Where("rule_id = ?", ruleID).
-		Order("triggered_at DESC").
+		Order("inserted_at DESC").
 		Offset(offset).
 		Limit(pageSize).
 		Find(&alerts).Error
@@ -158,7 +158,7 @@ func (r *triggeredAlertRepository) FindUnacknowledged(ctx context.Context, page,
 	err := r.db.WithContext(ctx).
 		Preload("Rule").
 		Where("acknowledged = ?", false).
-		Order("triggered_at DESC").
+		Order("inserted_at DESC").
 		Offset(offset).
 		Limit(pageSize).
 		Find(&alerts).Error
@@ -176,7 +176,7 @@ func (r *triggeredAlertRepository) FindBySeverity(ctx context.Context, severity 
 	err := r.db.WithContext(ctx).
 		Preload("Rule").
 		Where("severity = ?", severity).
-		Order("triggered_at DESC").
+		Order("inserted_at DESC").
 		Offset(offset).
 		Limit(pageSize).
 		Find(&alerts).Error
@@ -191,12 +191,12 @@ func (r *triggeredAlertRepository) FindByDateRange(ctx context.Context, from, to
 	offset := (page - 1) * pageSize
 
 	r.db.WithContext(ctx).Model(&model.TriggeredAlert{}).
-		Where("triggered_at >= ? AND triggered_at <= ?", from, to).
+		Where("inserted_at >= ? AND inserted_at <= ?", from, to).
 		Count(&total)
 	err := r.db.WithContext(ctx).
 		Preload("Rule").
-		Where("triggered_at >= ? AND triggered_at <= ?", from, to).
-		Order("triggered_at DESC").
+		Where("inserted_at >= ? AND inserted_at <= ?", from, to).
+		Order("inserted_at DESC").
 		Offset(offset).
 		Limit(pageSize).
 		Find(&alerts).Error

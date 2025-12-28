@@ -284,6 +284,7 @@ func newAdminRouter(
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", adminHandler.GetUser)
 				r.Get("/apps", adminHandler.GetUserApps) // Get all apps user belongs to
+				r.Get("/sessions", monitoringHandler.GetUserSessions)
 				r.Post("/revoke-tokens", adminHandler.RevokeUserTokens)
 				r.Post("/unlock", adminHandler.UnlockUser)
 			})
@@ -314,12 +315,30 @@ func newAdminRouter(
 		r.Route("/security", func(r chi.Router) {
 			r.Get("/events", monitoringHandler.GetSecurityEvents)
 			r.Get("/threats", monitoringHandler.GetThreatMetrics)
+			r.Get("/geo", monitoringHandler.GetGeoAnalytics)
 
 			// IP blocking
 			r.Get("/blocked-ips", monitoringHandler.ListBlockedIPs)
 			r.Post("/blocked-ips", monitoringHandler.BlockIP)
 			r.Delete("/blocked-ips/{id}", monitoringHandler.UnblockIP)
 			r.Get("/ip-reputation/{ip}", monitoringHandler.GetIPReputation)
+		})
+
+		// Real-time event streams
+		r.Route("/events", func(r chi.Router) {
+			r.Get("/stream", monitoringHandler.StreamEvents)
+		})
+
+		// Session management
+		r.Route("/sessions", func(r chi.Router) {
+			r.Get("/", monitoringHandler.ListSessions)
+		})
+
+		// Report generation
+		r.Route("/reports", func(r chi.Router) {
+			r.Post("/security", monitoringHandler.GenerateSecurityReport)
+			r.Get("/{id}", monitoringHandler.GetReportStatus)
+			r.Get("/{id}/download", monitoringHandler.DownloadReport)
 		})
 
 		// Alert management

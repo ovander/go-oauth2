@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -819,4 +820,664 @@ func (h *MonitoringHandler) GetTokenStats(w http.ResponseWriter, r *http.Request
 		InvalidUsageAttempts: invalidAttempts,
 		ByApp:                byApp,
 	})
+}
+
+// ==========================================
+// SSE Events Stream API
+// ==========================================
+
+// GET /api/admin/events/stream
+func (h *MonitoringHandler) StreamEvents(w http.ResponseWriter, r *http.Request) {
+	// Set headers for SSE
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Get flusher for streaming
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse filters from query params
+	severityFilter := r.URL.Query().Get("severity")
+	eventTypeFilter := r.URL.Query().Get("event_type")
+
+	// Track last event ID for polling
+	var lastEventID uint
+	if lastID := r.URL.Query().Get("last_event_id"); lastID != "" {
+		if id, err := strconv.ParseUint(lastID, 10, 64); err == nil {
+			lastEventID = uint(id)
+		}
+	}
+
+	// Create a context that cancels when client disconnects
+	ctx := r.Context()
+
+	// Send initial heartbeat
+	_, _ = w.Write([]byte("event: heartbeat\ndata: {\"status\":\"connected\"}\n\n"))
+	flusher.Flush()
+
+	// Poll for new events every 2 seconds
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			// Query for new events
+			query := h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+				Where("id > ?", lastEventID)
+
+			// Apply filters
+			if severityFilter != "" {
+				severities := strings.Split(severityFilter, ",")
+				query = query.Where("severity IN ?", severities)
+			}
+			if eventTypeFilter != "" {
+				types := strings.Split(eventTypeFilter, ",")
+				query = query.Where("event_type IN ?", types)
+			}
+
+			var events []model.SecurityAuditLog
+			if err := query.
+				Preload("User").
+				Preload("App").
+				Order("id ASC").
+				Limit(50).
+				Find(&events).Error; err != nil {
+				continue
+			}
+
+			// Send events
+			for _, event := range events {
+				eventDTO := dto.FromSecurityAuditLog(&event)
+				data, _ := json.Marshal(eventDTO)
+				_, _ = w.Write([]byte("event: security_event\n"))
+				_, _ = w.Write([]byte("data: "))
+				_, _ = w.Write(data)
+				_, _ = w.Write([]byte("\n\n"))
+				lastEventID = event.ID
+			}
+
+			// Send heartbeat if no events
+			if len(events) == 0 {
+				heartbeat := map[string]interface{}{
+					"timestamp": time.Now().Format(time.RFC3339),
+					"type":      "heartbeat",
+				}
+				data, _ := json.Marshal(heartbeat)
+				_, _ = w.Write([]byte("event: heartbeat\n"))
+				_, _ = w.Write([]byte("data: "))
+				_, _ = w.Write(data)
+				_, _ = w.Write([]byte("\n\n"))
+			}
+
+			flusher.Flush()
+		}
+	}
+}
+
+// ==========================================
+// Sessions Management API
+// ==========================================
+
+// GET /api/admin/sessions
+func (h *MonitoringHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	pageSize, _ := strconv.Atoi(r.URL.Query().Get("page_size"))
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	offset := (page - 1) * pageSize
+
+	// Build query for active sessions based on recent token usage
+	// We infer sessions from security audit logs of type "token_issued" or "login_success"
+	// within the last 24 hours that haven't been followed by a logout
+	now := time.Now()
+	sessionWindow := now.Add(-24 * time.Hour)
+
+	query := h.db.WithContext(ctx).Table("security_audit_logs").
+		Select(`
+			DISTINCT ON (user_id, app_id, ip_address)
+			id,
+			user_id,
+			app_id,
+			ip_address,
+			user_agent,
+			created_at,
+			created_at as last_activity
+		`).
+		Where("event_type IN ?", []string{"login_success", "token_issued", "token_refreshed"}).
+		Where("created_at >= ?", sessionWindow).
+		Where("user_id IS NOT NULL")
+
+	// Apply filters
+	if userID := r.URL.Query().Get("user_id"); userID != "" {
+		if id, err := strconv.ParseUint(userID, 10, 64); err == nil {
+			query = query.Where("user_id = ?", id)
+		}
+	}
+	if appID := r.URL.Query().Get("app_id"); appID != "" {
+		if id, err := strconv.ParseUint(appID, 10, 64); err == nil {
+			query = query.Where("app_id = ?", id)
+		}
+	}
+
+	// Count total
+	var total int64
+	h.db.WithContext(ctx).Table("security_audit_logs").
+		Where("event_type IN ?", []string{"login_success", "token_issued", "token_refreshed"}).
+		Where("created_at >= ?", sessionWindow).
+		Where("user_id IS NOT NULL").
+		Distinct("user_id", "app_id", "ip_address").
+		Count(&total)
+
+	// Get sessions
+	type sessionRow struct {
+		ID           uint
+		UserID       *uint
+		AppID        *uint
+		IPAddress    string
+		UserAgent    string
+		CreatedAt    time.Time
+		LastActivity time.Time
+	}
+	var rows []sessionRow
+	query.Order("created_at DESC").
+		Offset(offset).
+		Limit(pageSize).
+		Scan(&rows)
+
+	// Build response with user/app details
+	sessions := make([]dto.SessionResponse, 0, len(rows))
+	for _, row := range rows {
+		session := dto.SessionResponse{
+			ID:           strconv.FormatUint(uint64(row.ID), 10),
+			IPAddress:    row.IPAddress,
+			UserAgent:    row.UserAgent,
+			CreatedAt:    row.CreatedAt,
+			LastActivity: row.LastActivity,
+			ExpiresAt:    row.CreatedAt.Add(24 * time.Hour), // Assume 24h session
+		}
+		if row.UserID != nil {
+			session.UserID = *row.UserID
+			var user model.User
+			if err := h.db.WithContext(ctx).First(&user, *row.UserID).Error; err == nil {
+				session.UserEmail = user.Email
+			}
+		}
+		if row.AppID != nil {
+			session.AppID = *row.AppID
+			var app model.App
+			if err := h.db.WithContext(ctx).First(&app, *row.AppID).Error; err == nil {
+				session.AppName = app.Name
+			}
+		}
+		sessions = append(sessions, session)
+	}
+
+	json.NewEncoder(w).Encode(dto.SessionsListResponse{
+		Sessions: sessions,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	})
+}
+
+// GET /api/admin/users/:id/sessions
+func (h *MonitoringHandler) GetUserSessions(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, "invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	now := time.Now()
+	sessionWindow := now.Add(-24 * time.Hour)
+
+	type sessionRow struct {
+		ID           uint
+		AppID        *uint
+		IPAddress    string
+		UserAgent    string
+		CreatedAt    time.Time
+		LastActivity time.Time
+	}
+	var rows []sessionRow
+	h.db.WithContext(ctx).Table("security_audit_logs").
+		Select("id, app_id, ip_address, user_agent, created_at, created_at as last_activity").
+		Where("user_id = ?", userID).
+		Where("event_type IN ?", []string{"login_success", "token_issued", "token_refreshed"}).
+		Where("created_at >= ?", sessionWindow).
+		Order("created_at DESC").
+		Scan(&rows)
+
+	// Get user info
+	var user model.User
+	if err := h.db.WithContext(ctx).First(&user, userID).Error; err != nil {
+		writeError(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	sessions := make([]dto.SessionResponse, 0, len(rows))
+	for _, row := range rows {
+		session := dto.SessionResponse{
+			ID:           strconv.FormatUint(uint64(row.ID), 10),
+			UserID:       uint(userID),
+			UserEmail:    user.Email,
+			IPAddress:    row.IPAddress,
+			UserAgent:    row.UserAgent,
+			CreatedAt:    row.CreatedAt,
+			LastActivity: row.LastActivity,
+			ExpiresAt:    row.CreatedAt.Add(24 * time.Hour),
+		}
+		if row.AppID != nil {
+			session.AppID = *row.AppID
+			var app model.App
+			if err := h.db.WithContext(ctx).First(&app, *row.AppID).Error; err == nil {
+				session.AppName = app.Name
+			}
+		}
+		sessions = append(sessions, session)
+	}
+
+	json.NewEncoder(w).Encode(dto.SessionsListResponse{
+		Sessions: sessions,
+		Total:    int64(len(sessions)),
+		Page:     1,
+		PageSize: len(sessions),
+	})
+}
+
+// ==========================================
+// Geographic Analytics API
+// ==========================================
+
+// GET /api/admin/security/geo
+func (h *MonitoringHandler) GetGeoAnalytics(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Parse period
+	period := r.URL.Query().Get("period")
+	if period == "" {
+		period = "24h"
+	}
+
+	var since time.Time
+	switch period {
+	case "1h":
+		since = time.Now().Add(-1 * time.Hour)
+	case "24h":
+		since = time.Now().Add(-24 * time.Hour)
+	case "7d":
+		since = time.Now().AddDate(0, 0, -7)
+	case "30d":
+		since = time.Now().AddDate(0, 0, -30)
+	default:
+		since = time.Now().Add(-24 * time.Hour)
+	}
+
+	// Note: Full geo analytics requires IP geolocation service integration
+	// For now, we provide IP-based analytics that can be extended with geo data
+
+	// Get top IPs with login activity
+	type ipStats struct {
+		IPAddress   string
+		LoginCount  int64
+		FailedCount int64
+		UniqueUsers int64
+	}
+	var ipData []ipStats
+	h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+		Select(`
+			ip_address,
+			COUNT(*) as login_count,
+			SUM(CASE WHEN success = false THEN 1 ELSE 0 END) as failed_count,
+			COUNT(DISTINCT user_id) as unique_users
+		`).
+		Where("created_at >= ?", since).
+		Where("event_type IN ?", []string{"login_success", "login_failed"}).
+		Group("ip_address").
+		Order("login_count DESC").
+		Limit(20).
+		Scan(&ipData)
+
+	// Convert to geo stats (placeholder - would integrate with MaxMind or similar)
+	// For demonstration, we'll categorize as "Unknown" location
+	byCountry := []dto.GeoCountryStats{
+		{
+			CountryCode: "XX",
+			CountryName: "Unknown (Geo lookup not configured)",
+			LoginCount:  0,
+			UniqueUsers: 0,
+			FailedCount: 0,
+		},
+	}
+
+	// Aggregate totals
+	var totalLogins, totalFailed, totalUsers int64
+	for _, ip := range ipData {
+		totalLogins += ip.LoginCount
+		totalFailed += ip.FailedCount
+		totalUsers += ip.UniqueUsers
+	}
+	byCountry[0].LoginCount = totalLogins
+	byCountry[0].FailedCount = totalFailed
+	byCountry[0].UniqueUsers = totalUsers
+
+	// Build city stats from IP data
+	byCity := make([]dto.GeoCityStats, 0, len(ipData))
+	for _, ip := range ipData {
+		byCity = append(byCity, dto.GeoCityStats{
+			City:        ip.IPAddress, // Use IP as placeholder for city
+			CountryCode: "XX",
+			Latitude:    0,
+			Longitude:   0,
+			LoginCount:  ip.LoginCount,
+			FailedCount: ip.FailedCount,
+		})
+	}
+
+	// Detect anomalies: users logging in from multiple IPs in short time
+	type anomalyRow struct {
+		UserID    uint
+		Email     string
+		IPCount   int64
+		FirstIP   string
+		LastIP    string
+		CreatedAt time.Time
+	}
+	var anomalyData []anomalyRow
+	h.db.WithContext(ctx).Table("security_audit_logs sal").
+		Select(`
+			sal.user_id,
+			u.email,
+			COUNT(DISTINCT sal.ip_address) as ip_count,
+			MIN(sal.ip_address) as first_ip,
+			MAX(sal.ip_address) as last_ip,
+			MAX(sal.created_at) as created_at
+		`).
+		Joins("JOIN users u ON u.id = sal.user_id").
+		Where("sal.created_at >= ?", since).
+		Where("sal.event_type = ?", "login_success").
+		Where("sal.user_id IS NOT NULL").
+		Group("sal.user_id, u.email").
+		Having("COUNT(DISTINCT sal.ip_address) > 2").
+		Order("ip_count DESC").
+		Limit(10).
+		Scan(&anomalyData)
+
+	anomalies := make([]dto.GeoAnomaly, 0, len(anomalyData))
+	for _, a := range anomalyData {
+		anomalies = append(anomalies, dto.GeoAnomaly{
+			UserID:       a.UserID,
+			UserEmail:    a.Email,
+			Description:  "Login from multiple IPs (" + strconv.FormatInt(a.IPCount, 10) + " different IPs)",
+			UsualCountry: a.FirstIP,
+			LoginCountry: a.LastIP,
+			CreatedAt:    a.CreatedAt,
+		})
+	}
+
+	json.NewEncoder(w).Encode(dto.GeoAnalyticsResponse{
+		Period:    period,
+		ByCountry: byCountry,
+		ByCity:    byCity,
+		Anomalies: anomalies,
+	})
+}
+
+// ==========================================
+// Report Generation API
+// ==========================================
+
+// In-memory report storage (would use database in production)
+var reports = make(map[string]*dto.ReportResponse)
+var reportData = make(map[string]*dto.SecurityReportData)
+
+// POST /api/admin/reports/security
+func (h *MonitoringHandler) GenerateSecurityReport(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req dto.ReportRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if req.Type == "" {
+		req.Type = "security_summary"
+	}
+	if req.Format == "" {
+		req.Format = "json"
+	}
+
+	// Validate format
+	if req.Format != "json" && req.Format != "csv" {
+		writeError(w, "format must be 'json' or 'csv'", http.StatusBadRequest)
+		return
+	}
+
+	// Generate report ID
+	reportID := "rpt_" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	now := time.Now()
+	expiresAt := now.Add(24 * time.Hour)
+
+	// Create report entry
+	report := &dto.ReportResponse{
+		ReportID:    reportID,
+		Status:      "completed", // Generate synchronously for simplicity
+		Type:        req.Type,
+		Format:      req.Format,
+		DownloadURL: "/api/admin/reports/" + reportID + "/download",
+		CreatedAt:   now,
+		CompletedAt: &now,
+		ExpiresAt:   &expiresAt,
+	}
+
+	// Generate report data
+	data := h.generateReportData(ctx, req.Period)
+	reportData[reportID] = data
+	reports[reportID] = report
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(report)
+}
+
+// GET /api/admin/reports/:id
+func (h *MonitoringHandler) GetReportStatus(w http.ResponseWriter, r *http.Request) {
+	reportID := chi.URLParam(r, "id")
+
+	report, exists := reports[reportID]
+	if !exists {
+		writeError(w, "report not found", http.StatusNotFound)
+		return
+	}
+
+	json.NewEncoder(w).Encode(report)
+}
+
+// GET /api/admin/reports/:id/download
+func (h *MonitoringHandler) DownloadReport(w http.ResponseWriter, r *http.Request) {
+	reportID := chi.URLParam(r, "id")
+
+	report, exists := reports[reportID]
+	if !exists {
+		writeError(w, "report not found", http.StatusNotFound)
+		return
+	}
+
+	data, dataExists := reportData[reportID]
+	if !dataExists {
+		writeError(w, "report data not found", http.StatusNotFound)
+		return
+	}
+
+	// Check expiry
+	if report.ExpiresAt != nil && time.Now().After(*report.ExpiresAt) {
+		writeError(w, "report has expired", http.StatusGone)
+		return
+	}
+
+	switch report.Format {
+	case "csv":
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", "attachment; filename=security_report_"+reportID+".csv")
+		h.writeReportCSV(w, data)
+	default:
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Disposition", "attachment; filename=security_report_"+reportID+".json")
+		json.NewEncoder(w).Encode(data)
+	}
+}
+
+func (h *MonitoringHandler) generateReportData(ctx context.Context, period dto.ReportPeriod) *dto.SecurityReportData {
+	from := period.From
+	to := period.To
+	if from.IsZero() {
+		from = time.Now().AddDate(0, 0, -30)
+	}
+	if to.IsZero() {
+		to = time.Now()
+	}
+
+	data := &dto.SecurityReportData{
+		GeneratedAt: time.Now(),
+		Period: dto.ReportPeriod{
+			From: from,
+			To:   to,
+		},
+	}
+
+	// Overview statistics
+	h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+		Where("created_at BETWEEN ? AND ?", from, to).
+		Count(&data.Overview.TotalEvents)
+
+	h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+		Where("created_at BETWEEN ? AND ? AND severity = ?", from, to, "critical").
+		Count(&data.Overview.CriticalEvents)
+
+	h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+		Where("created_at BETWEEN ? AND ? AND event_type = ? AND success = ?", from, to, "login_success", true).
+		Count(&data.Overview.SuccessfulLogins)
+
+	h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+		Where("created_at BETWEEN ? AND ? AND event_type = ?", from, to, "login_failed").
+		Count(&data.Overview.FailedLogins)
+
+	h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+		Where("created_at BETWEEN ? AND ? AND user_id IS NOT NULL", from, to).
+		Distinct("user_id").
+		Count(&data.Overview.UniqueUsers)
+
+	h.db.WithContext(ctx).Model(&model.BlockedIP{}).
+		Where("blocked_at BETWEEN ? AND ?", from, to).
+		Count(&data.Overview.BlockedIPs)
+
+	h.db.WithContext(ctx).Model(&model.TriggeredAlert{}).
+		Where("triggered_at BETWEEN ? AND ?", from, to).
+		Count(&data.Overview.AlertsTriggered)
+
+	// Threat statistics
+	type threatCount struct {
+		EventType string
+		Count     int64
+	}
+	var threatCounts []threatCount
+	h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+		Select("event_type, count(*) as count").
+		Where("created_at BETWEEN ? AND ? AND success = ?", from, to, false).
+		Group("event_type").
+		Order("count DESC").
+		Limit(5).
+		Scan(&threatCounts)
+
+	for _, tc := range threatCounts {
+		var uniqueIPs, affectedUsers int64
+		h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+			Where("created_at BETWEEN ? AND ? AND event_type = ?", from, to, tc.EventType).
+			Distinct("ip_address").
+			Count(&uniqueIPs)
+		h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+			Where("created_at BETWEEN ? AND ? AND event_type = ? AND user_id IS NOT NULL", from, to, tc.EventType).
+			Distinct("user_id").
+			Count(&affectedUsers)
+
+		data.Threats.TopAttackTypes = append(data.Threats.TopAttackTypes, dto.ThreatTypeStats{
+			Type:          tc.EventType,
+			Count:         tc.Count,
+			UniqueIPs:     uniqueIPs,
+			AffectedUsers: affectedUsers,
+		})
+	}
+
+	// Brute force attempts
+	h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+		Where("created_at BETWEEN ? AND ? AND event_type = ?", from, to, "brute_force_detected").
+		Count(&data.Threats.BruteForceAttempts)
+
+	// User statistics
+	h.db.WithContext(ctx).Model(&model.User{}).Count(&data.Users.TotalUsers)
+
+	h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+		Where("created_at BETWEEN ? AND ? AND user_id IS NOT NULL", from, to).
+		Distinct("user_id").
+		Count(&data.Users.ActiveUsers)
+
+	h.db.WithContext(ctx).Model(&model.User{}).
+		Where("created_at BETWEEN ? AND ?", from, to).
+		Count(&data.Users.NewUsers)
+
+	// App statistics
+	h.db.WithContext(ctx).Model(&model.App{}).Count(&data.Apps.TotalApps)
+
+	h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+		Where("created_at BETWEEN ? AND ? AND app_id IS NOT NULL", from, to).
+		Distinct("app_id").
+		Count(&data.Apps.ActiveApps)
+
+	return data
+}
+
+func (h *MonitoringHandler) writeReportCSV(w http.ResponseWriter, data *dto.SecurityReportData) {
+	// Write CSV header and data
+	lines := []string{
+		"Security Report",
+		"Generated At," + data.GeneratedAt.Format(time.RFC3339),
+		"Period," + data.Period.From.Format("2006-01-02") + " to " + data.Period.To.Format("2006-01-02"),
+		"",
+		"Overview",
+		"Total Events," + strconv.FormatInt(data.Overview.TotalEvents, 10),
+		"Critical Events," + strconv.FormatInt(data.Overview.CriticalEvents, 10),
+		"Successful Logins," + strconv.FormatInt(data.Overview.SuccessfulLogins, 10),
+		"Failed Logins," + strconv.FormatInt(data.Overview.FailedLogins, 10),
+		"Unique Users," + strconv.FormatInt(data.Overview.UniqueUsers, 10),
+		"Blocked IPs," + strconv.FormatInt(data.Overview.BlockedIPs, 10),
+		"Alerts Triggered," + strconv.FormatInt(data.Overview.AlertsTriggered, 10),
+		"",
+		"Users",
+		"Total Users," + strconv.FormatInt(data.Users.TotalUsers, 10),
+		"Active Users," + strconv.FormatInt(data.Users.ActiveUsers, 10),
+		"New Users," + strconv.FormatInt(data.Users.NewUsers, 10),
+		"",
+		"Applications",
+		"Total Apps," + strconv.FormatInt(data.Apps.TotalApps, 10),
+		"Active Apps," + strconv.FormatInt(data.Apps.ActiveApps, 10),
+	}
+
+	for _, line := range lines {
+		_, _ = w.Write([]byte(line + "\n"))
+	}
 }

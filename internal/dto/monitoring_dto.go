@@ -416,3 +416,77 @@ func FromBlockedIP(ip *model.BlockedIP) BlockedIPResponse {
 	}
 	return resp
 }
+
+// ==========================================
+// Report Generation
+// ==========================================
+
+// ReportRequest represents a request to generate a report
+type ReportRequest struct {
+	Type     string       `json:"type"`
+	Period   ReportPeriod `json:"period"`
+	Format   string       `json:"format"`
+	Sections []string     `json:"sections,omitempty"`
+}
+
+// ReportPeriod represents a time period for reports
+type ReportPeriod struct {
+	From time.Time `json:"from"`
+	To   time.Time `json:"to"`
+}
+
+// ReportResponse represents a generated report status
+type ReportResponse struct {
+	ReportID            string     `json:"report_id"`
+	Status              string     `json:"status"`
+	Type                string     `json:"type"`
+	Format              string     `json:"format"`
+	DownloadURL         string     `json:"download_url,omitempty"`
+	EstimatedCompletion *time.Time `json:"estimated_completion,omitempty"`
+	CreatedAt           time.Time  `json:"created_at"`
+	CompletedAt         *time.Time `json:"completed_at,omitempty"`
+	ExpiresAt           *time.Time `json:"expires_at,omitempty"`
+}
+
+// SecurityReportData represents the data in a security report
+type SecurityReportData struct {
+	GeneratedAt time.Time             `json:"generated_at"`
+	Period      ReportPeriod          `json:"period"`
+	Overview    ReportOverview        `json:"overview"`
+	Threats     ReportThreats         `json:"threats"`
+	Users       ReportUsers           `json:"users"`
+	Apps        ReportApps            `json:"apps"`
+}
+
+// ReportOverview contains high-level statistics
+type ReportOverview struct {
+	TotalEvents        int64 `json:"total_events"`
+	CriticalEvents     int64 `json:"critical_events"`
+	SuccessfulLogins   int64 `json:"successful_logins"`
+	FailedLogins       int64 `json:"failed_logins"`
+	UniqueUsers        int64 `json:"unique_users"`
+	BlockedIPs         int64 `json:"blocked_ips"`
+	AlertsTriggered    int64 `json:"alerts_triggered"`
+}
+
+// ReportThreats contains threat-related statistics
+type ReportThreats struct {
+	TopAttackTypes    []ThreatTypeStats  `json:"top_attack_types"`
+	SuspiciousIPs     []SuspiciousIPInfo `json:"suspicious_ips"`
+	BruteForceAttempts int64             `json:"brute_force_attempts"`
+}
+
+// ReportUsers contains user-related statistics
+type ReportUsers struct {
+	TotalUsers      int64               `json:"total_users"`
+	ActiveUsers     int64               `json:"active_users"`
+	NewUsers        int64               `json:"new_users"`
+	LockedAccounts  []LockedAccountInfo `json:"locked_accounts"`
+}
+
+// ReportApps contains app-related statistics
+type ReportApps struct {
+	TotalApps    int64           `json:"total_apps"`
+	ActiveApps   int64           `json:"active_apps"`
+	TopApps      []TokenAppStats `json:"top_apps"`
+}

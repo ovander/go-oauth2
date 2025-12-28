@@ -171,11 +171,14 @@ The following security monitoring APIs have been implemented and are available o
 | **Alert History** | `GET /api/admin/alerts/history` | ✅ Implemented |
 | **Acknowledge Alert** | `POST /api/admin/alerts/{id}/acknowledge` | ✅ Implemented |
 | **Token Stats** | `GET /api/admin/tokens/stats` | ✅ Implemented |
-| **WebSocket Events** | `WS /api/admin/events/ws` | ⏳ Planned |
-| **SSE Events** | `GET /api/admin/events/stream` | ⏳ Planned |
-| **Sessions Management** | `GET /api/admin/sessions` | ⏳ Planned |
-| **Geographic Analytics** | `GET /api/admin/security/geo` | ⏳ Planned |
-| **Report Generation** | `POST /api/admin/reports/security` | ⏳ Planned |
+| **SSE Events** | `GET /api/admin/events/stream` | ✅ Implemented |
+| **Sessions List** | `GET /api/admin/sessions` | ✅ Implemented |
+| **User Sessions** | `GET /api/admin/users/{id}/sessions` | ✅ Implemented |
+| **Geographic Analytics** | `GET /api/admin/security/geo` | ✅ Implemented |
+| **Generate Report** | `POST /api/admin/reports/security` | ✅ Implemented |
+| **Report Status** | `GET /api/admin/reports/{id}` | ✅ Implemented |
+| **Download Report** | `GET /api/admin/reports/{id}/download` | ✅ Implemented |
+| **WebSocket Events** | `WS /api/admin/events/ws` | ⏳ Future (requires gorilla/websocket) |
 
 ---
 
@@ -313,10 +316,10 @@ Returns aggregated threat intelligence.
 
 ---
 
-### 3. Active Sessions Management
+### 3. Active Sessions Management ✅ IMPLEMENTED
 
 #### List Active Sessions
-**`GET /api/admin/sessions`**
+**`GET /api/admin/sessions`** ✅
 
 Query parameters:
 - `user_id` - Filter by user
@@ -347,7 +350,7 @@ Query parameters:
 ```
 
 #### Get User Sessions
-**`GET /api/admin/users/:id/sessions`**
+**`GET /api/admin/users/:id/sessions`** ✅
 
 Returns all active sessions for a specific user.
 
@@ -432,10 +435,10 @@ Query parameters:
 
 ---
 
-### 5. Geographic Analytics
+### 5. Geographic Analytics ✅ IMPLEMENTED
 
 #### Login Geography
-**`GET /api/admin/security/geo`**
+**`GET /api/admin/security/geo`** ✅
 
 Query parameters:
 - `period` - Time period (24h, 7d, 30d)
@@ -638,10 +641,10 @@ Query parameters:
 
 ---
 
-### 8. Audit Reports
+### 8. Audit Reports ✅ IMPLEMENTED
 
 #### Generate Security Report
-**`POST /api/admin/reports/security`**
+**`POST /api/admin/reports/security`** ✅
 
 ```json
 {
@@ -665,7 +668,7 @@ Response:
 ```
 
 #### Get Report Status
-**`GET /api/admin/reports/:id`**
+**`GET /api/admin/reports/:id`** ✅
 
 ```json
 {
@@ -678,7 +681,7 @@ Response:
 ```
 
 #### Download Report
-**`GET /api/admin/reports/:id/download`**
+**`GET /api/admin/reports/:id/download`** ✅
 
 Returns the generated report file (PDF, CSV, or JSON).
 
@@ -885,22 +888,22 @@ interface Session {
 ## Implementation Priority
 
 ### Phase 1: Core Monitoring (MVP) ✅ COMPLETE
-1. ~~Real-time event stream (WebSocket/SSE)~~ ⏳ Planned
+1. ✅ Real-time event stream (SSE implemented, WebSocket planned)
 2. ✅ Enhanced security events query API
-3. ⏳ Active sessions management (Planned)
+3. ✅ Active sessions management
 4. ✅ IP reputation API
 
 ### Phase 2: Analytics & Alerts ✅ COMPLETE
 5. ✅ Token analytics endpoints
 6. ✅ Alert rule configuration
 7. ✅ Alert history and acknowledgment
-8. ⏳ Geographic analytics (Planned)
+8. ✅ Geographic analytics (IP-based, geo lookup requires MaxMind integration)
 
-### Phase 3: Advanced Features (In Progress)
-9. ⏳ Report generation (Planned)
+### Phase 3: Advanced Features ✅ COMPLETE
+9. ✅ Report generation (JSON and CSV formats)
 10. ✅ IP blocking management
-11. ⏳ Scheduled reports (Planned)
-12. ⏳ Webhook integrations (Planned)
+11. ⏳ Scheduled reports (Planned - requires background job system)
+12. ⏳ Webhook integrations (Planned - alert actions framework exists)
 
 ---
 

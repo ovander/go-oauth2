@@ -150,7 +150,36 @@ Returns activity logs for a specific application.
 
 ---
 
-## New APIs Required
+## Implemented Monitoring APIs
+
+The following security monitoring APIs have been implemented and are available on the Admin API (Port 8081).
+
+### Implementation Status
+
+| API Category | Endpoint | Status |
+|--------------|----------|--------|
+| **Security Events** | `GET /api/admin/security/events` | ✅ Implemented |
+| **Threat Metrics** | `GET /api/admin/security/threats` | ✅ Implemented |
+| **Blocked IPs** | `GET /api/admin/security/blocked-ips` | ✅ Implemented |
+| **Block IP** | `POST /api/admin/security/blocked-ips` | ✅ Implemented |
+| **Unblock IP** | `DELETE /api/admin/security/blocked-ips/{id}` | ✅ Implemented |
+| **IP Reputation** | `GET /api/admin/security/ip-reputation/{ip}` | ✅ Implemented |
+| **Alert Rules** | `GET /api/admin/alerts/rules` | ✅ Implemented |
+| **Create Rule** | `POST /api/admin/alerts/rules` | ✅ Implemented |
+| **Update Rule** | `PUT /api/admin/alerts/rules/{id}` | ✅ Implemented |
+| **Delete Rule** | `DELETE /api/admin/alerts/rules/{id}` | ✅ Implemented |
+| **Alert History** | `GET /api/admin/alerts/history` | ✅ Implemented |
+| **Acknowledge Alert** | `POST /api/admin/alerts/{id}/acknowledge` | ✅ Implemented |
+| **Token Stats** | `GET /api/admin/tokens/stats` | ✅ Implemented |
+| **WebSocket Events** | `WS /api/admin/events/ws` | ⏳ Planned |
+| **SSE Events** | `GET /api/admin/events/stream` | ⏳ Planned |
+| **Sessions Management** | `GET /api/admin/sessions` | ⏳ Planned |
+| **Geographic Analytics** | `GET /api/admin/security/geo` | ⏳ Planned |
+| **Report Generation** | `POST /api/admin/reports/security` | ⏳ Planned |
+
+---
+
+## APIs Still Required (Planned)
 
 ### 1. Security Events Stream (Real-time)
 
@@ -193,10 +222,10 @@ data: {"timestamp": "2024-01-15T10:30:00Z"}
 
 ---
 
-### 2. Advanced Security Queries
+### 2. Advanced Security Queries ✅ IMPLEMENTED
 
 #### Security Events Query
-**`GET /api/admin/security/events`**
+**`GET /api/admin/security/events`** ✅
 
 Query parameters:
 - `event_type` - Filter by event type (comma-separated)
@@ -233,7 +262,7 @@ Query parameters:
 ```
 
 #### Aggregated Threat Metrics
-**`GET /api/admin/security/threats`**
+**`GET /api/admin/security/threats`** ✅
 
 Returns aggregated threat intelligence.
 
@@ -341,10 +370,10 @@ Revokes all sessions for a user (already partially implemented via revoke-tokens
 
 ---
 
-### 4. Token Analytics
+### 4. Token Analytics ✅ IMPLEMENTED
 
 #### Token Statistics
-**`GET /api/admin/tokens/stats`**
+**`GET /api/admin/tokens/stats`** ✅
 
 Query parameters:
 - `period` - Time period (1h, 24h, 7d, 30d)
@@ -448,10 +477,10 @@ Query parameters:
 
 ---
 
-### 6. Alert Configuration
+### 6. Alert Configuration ✅ IMPLEMENTED
 
 #### List Alert Rules
-**`GET /api/admin/alerts/rules`**
+**`GET /api/admin/alerts/rules`** ✅
 
 ```json
 {
@@ -476,7 +505,7 @@ Query parameters:
 ```
 
 #### Create Alert Rule
-**`POST /api/admin/alerts/rules`**
+**`POST /api/admin/alerts/rules`** ✅
 
 ```json
 {
@@ -494,13 +523,13 @@ Query parameters:
 ```
 
 #### Update Alert Rule
-**`PUT /api/admin/alerts/rules/:id`**
+**`PUT /api/admin/alerts/rules/:id`** ✅
 
 #### Delete Alert Rule
-**`DELETE /api/admin/alerts/rules/:id`**
+**`DELETE /api/admin/alerts/rules/:id`** ✅
 
 #### List Triggered Alerts
-**`GET /api/admin/alerts/history`**
+**`GET /api/admin/alerts/history`** ✅
 
 Query parameters:
 - `rule_id` - Filter by rule
@@ -535,7 +564,7 @@ Query parameters:
 ```
 
 #### Acknowledge Alert
-**`POST /api/admin/alerts/:id/acknowledge`**
+**`POST /api/admin/alerts/:id/acknowledge`** ✅
 
 ```json
 {
@@ -545,10 +574,10 @@ Query parameters:
 
 ---
 
-### 7. IP Reputation & Blocking
+### 7. IP Reputation & Blocking ✅ IMPLEMENTED
 
 #### List Blocked IPs
-**`GET /api/admin/security/blocked-ips`**
+**`GET /api/admin/security/blocked-ips`** ✅
 
 ```json
 {
@@ -569,7 +598,7 @@ Query parameters:
 ```
 
 #### Block IP
-**`POST /api/admin/security/blocked-ips`**
+**`POST /api/admin/security/blocked-ips`** ✅
 
 ```json
 {
@@ -581,10 +610,10 @@ Query parameters:
 ```
 
 #### Unblock IP
-**`DELETE /api/admin/security/blocked-ips/:id`**
+**`DELETE /api/admin/security/blocked-ips/:id`** ✅
 
 #### Get IP Reputation
-**`GET /api/admin/security/ip-reputation/:ip`**
+**`GET /api/admin/security/ip-reputation/:ip`** ✅
 
 ```json
 {
@@ -855,23 +884,23 @@ interface Session {
 
 ## Implementation Priority
 
-### Phase 1: Core Monitoring (MVP)
-1. Real-time event stream (WebSocket/SSE)
-2. Enhanced security events query API
-3. Active sessions management
-4. IP reputation API
+### Phase 1: Core Monitoring (MVP) ✅ COMPLETE
+1. ~~Real-time event stream (WebSocket/SSE)~~ ⏳ Planned
+2. ✅ Enhanced security events query API
+3. ⏳ Active sessions management (Planned)
+4. ✅ IP reputation API
 
-### Phase 2: Analytics & Alerts
-5. Token analytics endpoints
-6. Alert rule configuration
-7. Alert history and acknowledgment
-8. Geographic analytics
+### Phase 2: Analytics & Alerts ✅ COMPLETE
+5. ✅ Token analytics endpoints
+6. ✅ Alert rule configuration
+7. ✅ Alert history and acknowledgment
+8. ⏳ Geographic analytics (Planned)
 
-### Phase 3: Advanced Features
-9. Report generation
-10. IP blocking management
-11. Scheduled reports
-12. Webhook integrations
+### Phase 3: Advanced Features (In Progress)
+9. ⏳ Report generation (Planned)
+10. ✅ IP blocking management
+11. ⏳ Scheduled reports (Planned)
+12. ⏳ Webhook integrations (Planned)
 
 ---
 

@@ -1002,6 +1002,829 @@ CREATE INDEX idx_security_logs_user_time
 
 ---
 
+## Attack Detection & Countermeasures
+
+This section details the security attacks the monitoring app can detect and the recommended countermeasures.
+
+### Attack Categories Overview
+
+| Category | Attacks Covered | Detection APIs | Countermeasures |
+|----------|-----------------|----------------|-----------------|
+| Authentication | 5 attacks | `/security/events`, `/security/threats` | IP blocking, account lockout, alerts |
+| OAuth2 Protocol | 7 attacks | `/security/events`, `/tokens/stats` | Token revocation, client blocking |
+| Session | 3 attacks | `/sessions`, `/security/events` | Session revocation, force re-auth |
+| Token | 4 attacks | `/tokens/stats`, `/security/events` | Token blacklisting, key rotation |
+| Infrastructure | 4 attacks | `/security/threats`, `/ip-reputation` | Rate limiting, IP blocking |
+| Account | 3 attacks | `/security/events`, `/alerts` | Account lockout, 2FA enforcement |
+
+---
+
+### 1. Authentication Attacks
+
+#### ATK-AUTH-01: Brute Force Attack
+
+**Description:** Attacker attempts multiple password combinations against a single account.
+
+**Detection Signals:**
+- Event: `login_failed` - Multiple failures for same `user_id`
+- Pattern: 5+ failures within 5 minutes from any IP
+- API: `GET /api/admin/security/events?event_type=login_failed&user_id=X`
+
+**Detection Query:**
+```sql
+SELECT user_id, COUNT(*) as attempts, array_agg(DISTINCT ip_address) as ips
+FROM security_audit_logs
+WHERE event_type = 'login_failed'
+  AND created_at > NOW() - INTERVAL '5 minutes'
+GROUP BY user_id
+HAVING COUNT(*) >= 5;
+```
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Account Lockout | 5 failures | Automatic (server-side) |
+| Alert Security Team | 10 failures | `POST /api/admin/alerts/rules` |
+| Block Source IP | 15 failures | `POST /api/admin/security/blocked-ips` |
+| Force Password Reset | After unlock | `POST /api/admin/users/:id/reset-password` |
+
+**Recommended Alert Rule:**
+```json
+{
+  "name": "Brute Force - Single Account",
+  "event_type": "login_failed",
+  "condition": {"threshold": 5, "window_minutes": 5, "group_by": "user_id"},
+  "severity": "critical",
+  "actions": ["email", "webhook"]
+}
+```
+
+---
+
+#### ATK-AUTH-02: Credential Stuffing
+
+**Description:** Attacker uses stolen credential lists from data breaches to attempt logins across multiple accounts.
+
+**Detection Signals:**
+- Event: `login_failed` - Failures across multiple accounts from same IP
+- Pattern: 10+ different users targeted from single IP
+- Characteristic: Often uses automation (consistent user-agent, timing)
+
+**Detection Query:**
+```sql
+SELECT ip_address, COUNT(DISTINCT user_id) as users_targeted, COUNT(*) as attempts
+FROM security_audit_logs
+WHERE event_type = 'login_failed'
+  AND created_at > NOW() - INTERVAL '1 hour'
+GROUP BY ip_address
+HAVING COUNT(DISTINCT user_id) >= 10;
+```
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Block IP (24h) | 10+ users targeted | `POST /api/admin/security/blocked-ips` |
+| Block IP (permanent) | 50+ users targeted | `POST /api/admin/security/blocked-ips` |
+| Enable CAPTCHA | Attack detected | Application-level |
+| Notify affected users | Post-incident | Email service |
+
+**Recommended Alert Rule:**
+```json
+{
+  "name": "Credential Stuffing Attack",
+  "event_type": "login_failed",
+  "condition": {"threshold": 10, "window_minutes": 60, "group_by": "ip_address", "count_distinct": "user_id"},
+  "severity": "critical",
+  "actions": ["email", "webhook", "slack"]
+}
+```
+
+---
+
+#### ATK-AUTH-03: Password Spraying
+
+**Description:** Attacker tries common passwords against many accounts to avoid lockouts.
+
+**Detection Signals:**
+- Event: `login_failed` - Low failure rate per account, high total failures
+- Pattern: 1-2 attempts per account across 100+ accounts
+- Timing: Attempts spread over time to evade rate limits
+
+**Detection Query:**
+```sql
+SELECT ip_address,
+       COUNT(DISTINCT user_id) as accounts_tried,
+       COUNT(*) as total_attempts,
+       COUNT(*)::float / COUNT(DISTINCT user_id) as attempts_per_account
+FROM security_audit_logs
+WHERE event_type = 'login_failed'
+  AND created_at > NOW() - INTERVAL '24 hours'
+GROUP BY ip_address
+HAVING COUNT(DISTINCT user_id) >= 50
+   AND COUNT(*)::float / COUNT(DISTINCT user_id) <= 3;
+```
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Block IP | 50+ accounts attempted | `POST /api/admin/security/blocked-ips` |
+| Global rate limit | Attack pattern detected | Server configuration |
+| Force password change | High-value accounts | `POST /api/admin/users/:id/reset-password` |
+
+---
+
+#### ATK-AUTH-04: Account Enumeration
+
+**Description:** Attacker determines valid usernames/emails by analyzing login response differences.
+
+**Detection Signals:**
+- Event: `login_failed` - High volume of unique usernames from same IP
+- Pattern: Sequential or alphabetical username patterns
+- Characteristic: Different response times for valid vs invalid users
+
+**Detection Query:**
+```sql
+SELECT ip_address, COUNT(*) as attempts,
+       COUNT(DISTINCT details->>'email') as unique_emails
+FROM security_audit_logs
+WHERE event_type = 'login_failed'
+  AND created_at > NOW() - INTERVAL '1 hour'
+GROUP BY ip_address
+HAVING COUNT(DISTINCT details->>'email') >= 20;
+```
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Block IP | 20+ unique usernames | `POST /api/admin/security/blocked-ips` |
+| Implement timing normalization | Always | Server configuration |
+| Generic error messages | Always | Application code |
+
+---
+
+#### ATK-AUTH-05: Account Lockout DoS
+
+**Description:** Attacker intentionally locks out legitimate users by triggering failed login thresholds.
+
+**Detection Signals:**
+- Event: `account_locked` - Multiple lockouts from same IP
+- Pattern: Targeted lockouts of specific high-value accounts
+- Timing: Lockouts during business hours
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Block attacking IP | Multiple lockouts triggered | `POST /api/admin/security/blocked-ips` |
+| Admin unlock account | Confirmed attack | `POST /api/admin/users/:id/unlock` |
+| Reduce lockout duration | During attack | Server configuration |
+
+---
+
+### 2. OAuth2 Protocol Attacks
+
+#### ATK-OAUTH-01: Authorization Code Interception
+
+**Description:** Attacker intercepts authorization code during redirect.
+
+**Detection Signals:**
+- Event: `auth_code_failed` - Code exchange from different IP than authorization
+- Event: `auth_code_failed` - Code already used (replay attempt)
+- Pattern: Multiple exchange attempts for same code
+
+**Detection Query:**
+```sql
+SELECT details->>'code' as auth_code,
+       array_agg(DISTINCT ip_address) as ips,
+       COUNT(*) as exchange_attempts
+FROM security_audit_logs
+WHERE event_type IN ('auth_code_exchanged', 'auth_code_failed')
+  AND created_at > NOW() - INTERVAL '10 minutes'
+GROUP BY details->>'code'
+HAVING COUNT(DISTINCT ip_address) > 1 OR COUNT(*) > 1;
+```
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Invalidate all user tokens | Code compromise suspected | `POST /api/admin/users/:id/revoke-tokens` |
+| Block suspicious IP | Multiple intercept attempts | `POST /api/admin/security/blocked-ips` |
+| Enforce PKCE | Always | Server configuration |
+| Alert user | Suspicious code exchange | Email notification |
+
+---
+
+#### ATK-OAUTH-02: Token Theft/Replay
+
+**Description:** Attacker obtains and uses stolen access or refresh tokens.
+
+**Detection Signals:**
+- Event: Token used from new IP/device after legitimate session
+- Event: `token_refreshed` - Refresh from different location than issuance
+- Pattern: Simultaneous token usage from geographically distant IPs
+
+**Detection Query:**
+```sql
+WITH token_usage AS (
+  SELECT user_id, ip_address, created_at,
+         LAG(ip_address) OVER (PARTITION BY user_id ORDER BY created_at) as prev_ip,
+         LAG(created_at) OVER (PARTITION BY user_id ORDER BY created_at) as prev_time
+  FROM security_audit_logs
+  WHERE event_type IN ('token_issued', 'token_refreshed')
+    AND created_at > NOW() - INTERVAL '1 hour'
+)
+SELECT * FROM token_usage
+WHERE ip_address != prev_ip
+  AND created_at - prev_time < INTERVAL '5 minutes';
+```
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Revoke all user tokens | Token theft confirmed | `POST /api/admin/users/:id/revoke-tokens` |
+| Force re-authentication | Suspicious activity | Invalidate sessions |
+| Block suspicious IP | Stolen token usage | `POST /api/admin/security/blocked-ips` |
+| Notify user | Token used from new location | Email notification |
+
+---
+
+#### ATK-OAUTH-03: Refresh Token Abuse
+
+**Description:** Attacker uses compromised refresh token to maintain persistent access.
+
+**Detection Signals:**
+- Event: `token_refreshed` - Abnormal refresh patterns
+- Pattern: Refreshes from multiple IPs concurrently
+- Pattern: Refresh attempts after user logout
+
+**Detection Query:**
+```sql
+SELECT user_id, COUNT(*) as refreshes, COUNT(DISTINCT ip_address) as unique_ips
+FROM security_audit_logs
+WHERE event_type = 'token_refreshed'
+  AND created_at > NOW() - INTERVAL '1 hour'
+GROUP BY user_id
+HAVING COUNT(DISTINCT ip_address) > 2 OR COUNT(*) > 20;
+```
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Revoke refresh tokens | Abuse detected | `POST /oauth/revoke` |
+| Implement refresh token rotation | Always | Server configuration |
+| Reduce refresh token lifetime | High-risk periods | Server configuration |
+| Bind tokens to IP/device | Security policy | Server configuration |
+
+---
+
+#### ATK-OAUTH-04: Client Impersonation
+
+**Description:** Attacker uses stolen client credentials to impersonate a legitimate application.
+
+**Detection Signals:**
+- Event: Token requests from unexpected IPs for client
+- Event: Client credentials used outside normal patterns
+- Pattern: Sudden spike in client_credentials grants
+
+**Detection Query:**
+```sql
+SELECT app_id, ip_address, COUNT(*) as requests
+FROM security_audit_logs
+WHERE event_type = 'token_issued'
+  AND details->>'grant_type' = 'client_credentials'
+  AND created_at > NOW() - INTERVAL '1 hour'
+GROUP BY app_id, ip_address
+HAVING COUNT(*) > 100;
+```
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Rotate client secret | Compromise suspected | `POST /api/admin/apps/:id/rotate-secret` |
+| Revoke issued tokens | Client compromise confirmed | Revoke by app_id |
+| IP allowlist for client | Security policy | Application configuration |
+| Disable client | Active attack | `PUT /api/admin/apps/:id` (active=false) |
+
+---
+
+#### ATK-OAUTH-05: PKCE Downgrade Attack
+
+**Description:** Attacker attempts to bypass PKCE protection.
+
+**Detection Signals:**
+- Event: `pkce_validation_failed` - PKCE bypass attempts
+- Event: Authorization requests without PKCE for public clients
+- Pattern: Code exchange without code_verifier after PKCE-enabled authorize
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Reject non-PKCE requests | Public clients | Server configuration (enforced) |
+| Alert on bypass attempts | Any `pkce_validation_failed` | Alert rule |
+| Block source IP | Repeated bypass attempts | `POST /api/admin/security/blocked-ips` |
+
+---
+
+#### ATK-OAUTH-06: Redirect URI Manipulation
+
+**Description:** Attacker manipulates redirect_uri to steal authorization codes.
+
+**Detection Signals:**
+- Event: Authorization request with invalid redirect_uri
+- Pattern: Multiple redirect_uri variations for same client
+- Characteristic: Open redirect attempts
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Strict redirect_uri matching | Always | Server configuration (enforced) |
+| Log redirect attempts | All authorization requests | Security audit log |
+| Alert on pattern | Multiple invalid redirects | Alert rule |
+
+---
+
+#### ATK-OAUTH-07: Scope Escalation
+
+**Description:** Attacker requests elevated scopes beyond authorized permissions.
+
+**Detection Signals:**
+- Event: Token request with unauthorized scopes
+- Pattern: Repeated attempts to access admin-level scopes
+- Characteristic: Scope changes between authorization and token exchange
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Deny unauthorized scopes | Always | Server enforcement |
+| Alert on escalation attempts | Repeated scope abuse | Alert rule |
+| Review client permissions | Post-incident | `GET /api/admin/apps/:id` |
+
+---
+
+### 3. Session Attacks
+
+#### ATK-SESS-01: Session Hijacking
+
+**Description:** Attacker steals session and impersonates legitimate user.
+
+**Detection Signals:**
+- Event: Session used from drastically different IP/location
+- Event: User-agent change mid-session
+- Pattern: Impossible travel (logins from distant locations in short time)
+
+**Detection Query:**
+```sql
+WITH user_logins AS (
+  SELECT user_id, ip_address, created_at,
+         LAG(ip_address) OVER (PARTITION BY user_id ORDER BY created_at) as prev_ip,
+         LAG(created_at) OVER (PARTITION BY user_id ORDER BY created_at) as prev_time
+  FROM security_audit_logs
+  WHERE event_type = 'login_success'
+    AND created_at > NOW() - INTERVAL '24 hours'
+)
+SELECT * FROM user_logins
+WHERE ip_address != prev_ip
+  AND created_at - prev_time < INTERVAL '30 minutes';
+-- Note: Add IP geolocation to detect impossible travel
+```
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Terminate all sessions | Hijacking detected | `POST /api/admin/users/:id/revoke-tokens` |
+| Force password reset | Confirmed attack | `POST /api/admin/users/:id/reset-password` |
+| Block attacker IP | Identified | `POST /api/admin/security/blocked-ips` |
+| Notify user | Suspicious session | Email notification |
+
+---
+
+#### ATK-SESS-02: Session Fixation
+
+**Description:** Attacker sets session ID before victim authenticates.
+
+**Detection Signals:**
+- Event: Session ID present before authentication
+- Pattern: Same session used by multiple IPs
+- Characteristic: Session created then authenticated from different IP
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Regenerate session on login | Always | Server enforcement |
+| Invalidate pre-auth sessions | Always | Server enforcement |
+
+---
+
+#### ATK-SESS-03: Concurrent Session Abuse
+
+**Description:** Attacker maintains unauthorized parallel sessions.
+
+**Detection Signals:**
+- Event: Multiple active sessions for same user
+- Pattern: Sessions from unexpected locations
+- API: `GET /api/admin/sessions?user_id=X`
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Limit concurrent sessions | Security policy | Server configuration |
+| Alert on new sessions | Exceeds threshold | Alert rule |
+| Provide session management | User self-service | User portal |
+
+---
+
+### 4. Token Attacks
+
+#### ATK-TOK-01: JWT Signature Bypass
+
+**Description:** Attacker attempts to forge or manipulate JWT tokens.
+
+**Detection Signals:**
+- Event: `invalid_token_used` - Signature verification failures
+- Pattern: Tokens with "none" algorithm
+- Pattern: Tokens with manipulated claims
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Reject invalid signatures | Always | Server enforcement |
+| Alert on tampering | Any `invalid_token_used` | Alert rule |
+| Block source IP | Repeated attempts | `POST /api/admin/security/blocked-ips` |
+
+---
+
+#### ATK-TOK-02: Expired Token Replay
+
+**Description:** Attacker attempts to use expired tokens.
+
+**Detection Signals:**
+- Event: `expired_token_used` - Attempts to use expired tokens
+- Pattern: High volume from single IP
+- Characteristic: Often automated
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Reject expired tokens | Always | Server enforcement |
+| Track patterns | Monitoring | `GET /api/admin/tokens/stats` |
+| Block persistent offenders | 10+ attempts | `POST /api/admin/security/blocked-ips` |
+
+---
+
+#### ATK-TOK-03: Revoked Token Usage
+
+**Description:** Attacker attempts to use previously revoked tokens.
+
+**Detection Signals:**
+- Event: `revoked_token_used` - Attempts to use revoked tokens
+- Pattern: Usage after explicit revocation
+- Severity: Critical (indicates token theft)
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Track all revoked tokens | Always | `used_tokens` table |
+| Alert immediately | Any `revoked_token_used` | Alert rule (critical) |
+| Investigate user account | Post-alert | Security review |
+
+**Recommended Alert Rule:**
+```json
+{
+  "name": "Revoked Token Usage",
+  "event_type": "revoked_token_used",
+  "condition": {"threshold": 1, "window_minutes": 1},
+  "severity": "critical",
+  "actions": ["email", "webhook", "slack"]
+}
+```
+
+---
+
+#### ATK-TOK-04: Token Leakage Detection
+
+**Description:** Tokens exposed through logs, URLs, or referrer headers.
+
+**Detection Signals:**
+- Event: Token used from unexpected source
+- Pattern: Token correlation with leaked credentials databases
+- Monitoring: Search for tokens in logs
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Revoke leaked tokens | Identified | `POST /oauth/revoke` |
+| Rotate signing keys | Mass leak | Key rotation process |
+| Audit logging practices | Preventive | Code review |
+
+---
+
+### 5. Infrastructure Attacks
+
+#### ATK-INFRA-01: Rate Limit Bypass
+
+**Description:** Attacker attempts to bypass rate limiting protections.
+
+**Detection Signals:**
+- Event: `rate_limit_exceeded` - Rate limit triggers
+- Pattern: Requests from distributed IPs (botnet)
+- Pattern: Header manipulation to bypass limits
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Block offending IPs | Rate limit exceeded | `POST /api/admin/security/blocked-ips` |
+| Implement CAPTCHA | Threshold reached | Application level |
+| Use distributed rate limiting | Architecture | Redis/central store |
+
+---
+
+#### ATK-INFRA-02: Denial of Service (DoS)
+
+**Description:** Attacker overwhelms service with requests.
+
+**Detection Signals:**
+- Event: Massive request volume from single/few IPs
+- Pattern: All endpoints targeted
+- Impact: Service degradation
+
+**Detection via Dashboard:**
+- `GET /api/admin/dashboard/health` - Check service health
+- `GET /api/admin/security/threats` - Check for suspicious IPs
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Block attacking IPs | Pattern detected | `POST /api/admin/security/blocked-ips` |
+| Enable WAF rules | Attack ongoing | Infrastructure |
+| Scale resources | If legitimate traffic | Infrastructure |
+
+---
+
+#### ATK-INFRA-03: Distributed Denial of Service (DDoS)
+
+**Description:** Attacker uses botnet for distributed attack.
+
+**Detection Signals:**
+- Pattern: High request volume from many diverse IPs
+- Characteristic: Geographic distribution of sources
+- Impact: Cannot block by IP alone
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Enable DDoS protection | Attack detected | CDN/WAF |
+| Geographic blocking | If applicable | Infrastructure |
+| Rate limit per user/session | Defense in depth | Server configuration |
+
+---
+
+#### ATK-INFRA-04: Slowloris Attack
+
+**Description:** Attacker holds connections open to exhaust resources.
+
+**Detection Signals:**
+- Pattern: Many incomplete/slow requests
+- Impact: Connection pool exhaustion
+- Characteristic: Low bandwidth usage
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Connection timeouts | Always | Server configuration |
+| Limit connections per IP | Defense | Server configuration |
+| Reverse proxy protection | Architecture | nginx/HAProxy |
+
+---
+
+### 6. Account Attacks
+
+#### ATK-ACCT-01: Account Takeover (ATO)
+
+**Description:** Attacker gains full control of user account.
+
+**Detection Signals:**
+- Event: Password change from new IP/device
+- Event: Email change request
+- Event: Unusual activity after login
+- Pattern: Activity immediately after credential reset
+
+**Detection Query:**
+```sql
+SELECT user_id, event_type, ip_address, created_at
+FROM security_audit_logs
+WHERE event_type IN ('password_changed', 'email_change_requested', 'login_success')
+  AND created_at > NOW() - INTERVAL '1 hour'
+ORDER BY user_id, created_at;
+-- Look for password_changed followed by unusual activity
+```
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Lock account | Suspected ATO | `POST /api/admin/users/:id/lock` |
+| Revoke all tokens | Confirmed ATO | `POST /api/admin/users/:id/revoke-tokens` |
+| Force password reset | Recovery | `POST /api/admin/users/:id/reset-password` |
+| Review account activity | Investigation | `GET /api/admin/security/events?user_id=X` |
+
+---
+
+#### ATK-ACCT-02: Privilege Escalation
+
+**Description:** Attacker attempts to gain higher privileges.
+
+**Detection Signals:**
+- Event: Role change requests
+- Event: Attempts to access admin endpoints
+- Pattern: Manipulation of JWT claims
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Deny unauthorized access | Always | Server enforcement |
+| Alert on attempts | Any escalation attempt | Alert rule |
+| Review role assignments | Regular audit | `GET /api/admin/users/:id/apps` |
+
+---
+
+#### ATK-ACCT-03: Mass Account Creation (Spam)
+
+**Description:** Attacker creates many fake accounts.
+
+**Detection Signals:**
+- Event: High signup rate from single IP
+- Event: `user_registered` - Pattern analysis
+- Pattern: Similar email patterns, timing
+
+**Detection Query:**
+```sql
+SELECT ip_address, COUNT(*) as signups
+FROM security_audit_logs
+WHERE event_type = 'user_registered'
+  AND created_at > NOW() - INTERVAL '1 hour'
+GROUP BY ip_address
+HAVING COUNT(*) >= 10;
+```
+
+**Countermeasures:**
+| Action | Trigger | API |
+|--------|---------|-----|
+| Block IP | 10+ signups/hour | `POST /api/admin/security/blocked-ips` |
+| Enable CAPTCHA | Attack detected | Application level |
+| Email verification | Always | Server enforcement |
+| Phone verification | High-risk | Application level |
+
+---
+
+### Pre-configured Alert Rules
+
+The monitoring app should come with these pre-configured alert rules:
+
+```json
+[
+  {
+    "name": "Brute Force - Single Account",
+    "event_type": "login_failed",
+    "condition": {"threshold": 5, "window_minutes": 5, "group_by": "user_id"},
+    "severity": "critical"
+  },
+  {
+    "name": "Credential Stuffing",
+    "event_type": "login_failed",
+    "condition": {"threshold": 10, "window_minutes": 30, "group_by": "ip_address"},
+    "severity": "critical"
+  },
+  {
+    "name": "Account Lockout",
+    "event_type": "account_locked",
+    "condition": {"threshold": 1, "window_minutes": 1},
+    "severity": "error"
+  },
+  {
+    "name": "Revoked Token Usage",
+    "event_type": "revoked_token_used",
+    "condition": {"threshold": 1, "window_minutes": 1},
+    "severity": "critical"
+  },
+  {
+    "name": "Invalid Token Flood",
+    "event_type": "invalid_token_used",
+    "condition": {"threshold": 20, "window_minutes": 5, "group_by": "ip_address"},
+    "severity": "error"
+  },
+  {
+    "name": "Mass Account Creation",
+    "event_type": "user_registered",
+    "condition": {"threshold": 10, "window_minutes": 60, "group_by": "ip_address"},
+    "severity": "warning"
+  },
+  {
+    "name": "PKCE Bypass Attempt",
+    "event_type": "pkce_validation_failed",
+    "condition": {"threshold": 3, "window_minutes": 10},
+    "severity": "critical"
+  },
+  {
+    "name": "Suspicious Token Refresh",
+    "event_type": "token_refreshed",
+    "condition": {"threshold": 10, "window_minutes": 5, "group_by": "user_id"},
+    "severity": "warning"
+  }
+]
+```
+
+---
+
+### Response Playbooks
+
+#### Playbook: Brute Force Attack
+
+1. **Immediate (Automated):**
+   - Account locked after 5 failures
+   - Alert triggered
+
+2. **Investigation (Manual):**
+   - Query: `GET /api/admin/security/events?event_type=login_failed&user_id=X`
+   - Check IP reputation: `GET /api/admin/security/ip-reputation/:ip`
+
+3. **Response:**
+   - If single IP: Block IP for 24h
+   - If distributed: Enable CAPTCHA
+   - Notify user if legitimate
+
+4. **Recovery:**
+   - Unlock account: `POST /api/admin/users/:id/unlock`
+   - Force password reset if compromised
+
+---
+
+#### Playbook: Token Theft
+
+1. **Detection:**
+   - Alert on `revoked_token_used` or suspicious refresh patterns
+
+2. **Immediate Response:**
+   - Revoke all user tokens: `POST /api/admin/users/:id/revoke-tokens`
+   - Block suspicious IP: `POST /api/admin/security/blocked-ips`
+
+3. **Investigation:**
+   - Review user activity: `GET /api/admin/security/events?user_id=X`
+   - Check for data access
+
+4. **Recovery:**
+   - Force password reset
+   - Notify user
+   - Monitor for continued abuse
+
+---
+
+#### Playbook: Client Compromise
+
+1. **Detection:**
+   - Unusual client_credentials usage patterns
+   - Client used from unexpected IPs
+
+2. **Immediate Response:**
+   - Rotate client secret: `POST /api/admin/apps/:id/rotate-secret`
+   - Optionally disable client: `PUT /api/admin/apps/:id` (active=false)
+
+3. **Investigation:**
+   - Review tokens issued
+   - Check for data access
+
+4. **Recovery:**
+   - Update client configuration with new secret
+   - Re-enable client
+   - Implement IP allowlisting
+
+---
+
+### Attack Detection Dashboard
+
+The monitoring app should include a dedicated "Attacks" dashboard view showing:
+
+1. **Real-time Attack Feed**
+   - Critical/error events in last 24h
+   - Attack type classification
+   - Affected accounts/IPs
+
+2. **Attack Timeline**
+   - Visualize attack patterns over time
+   - Correlate related events
+
+3. **Top Attackers**
+   - IPs with highest threat scores
+   - One-click blocking
+
+4. **Affected Accounts**
+   - Users targeted in attacks
+   - Quick access to lock/unlock
+
+5. **Attack Statistics**
+   - Attacks blocked vs successful
+   - Trending attack types
+   - Geographic distribution
+
+---
+
 ## Notes
 
 - This monitoring app complements the Security Testing SPA

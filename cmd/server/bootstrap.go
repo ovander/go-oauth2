@@ -62,6 +62,18 @@ func Bootstrap(cfg *config.Config) *App {
 	db := database.Connect(cfg.DatabaseURL, cfg.DBPoolSize)
 
 	// ==========================================
+	// Pre-migration fixes for schema changes
+	// ==========================================
+	// Fix: Rename inserted_at to blocked_at in blocked_ips table if it exists
+	if db.Migrator().HasTable("blocked_ips") && db.Migrator().HasColumn(&model.BlockedIP{}, "inserted_at") {
+		if err := db.Migrator().RenameColumn(&model.BlockedIP{}, "inserted_at", "blocked_at"); err != nil {
+			logger.Warnf("Could not rename inserted_at to blocked_at: %v", err)
+		} else {
+			logger.Info("✅ Renamed inserted_at to blocked_at in blocked_ips table")
+		}
+	}
+
+	// ==========================================
 	// Auto-migrate database schema
 	// ==========================================
 	if err := db.AutoMigrate(

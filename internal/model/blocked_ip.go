@@ -11,7 +11,7 @@ type BlockedIP struct {
 	Reason    string     `gorm:"type:text" json:"reason,omitempty"`
 	BlockedBy *uint      `gorm:"index" json:"blocked_by,omitempty"`
 	Blocker   *User      `gorm:"foreignKey:BlockedBy" json:"blocker,omitempty"`
-	BlockedAt time.Time  `gorm:"column:inserted_at" json:"blocked_at"`
+	BlockedAt time.Time  `gorm:"autoCreateTime" json:"blocked_at"`
 	ExpiresAt *time.Time `gorm:"index" json:"expires_at,omitempty"`
 	Permanent bool       `gorm:"default:false" json:"permanent"`
 }

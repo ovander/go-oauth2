@@ -128,9 +128,9 @@ func (s *TemplateService) RenderLogin(w http.ResponseWriter, data LoginPageData)
 	return s.render(w, s.loginTemplate, data)
 }
 
-// RenderError renders the error page
+// RenderError renders the error page with a 400 Bad Request status
 func (s *TemplateService) RenderError(w http.ResponseWriter, data ErrorPageData) error {
-	return s.render(w, s.errorTemplate, data)
+	return s.renderWithStatus(w, s.errorTemplate, data, http.StatusBadRequest)
 }
 
 // RenderAcceptInvite renders the accept invite page
@@ -149,6 +149,10 @@ func (s *TemplateService) RenderResetPassword(w http.ResponseWriter, data ResetP
 }
 
 func (s *TemplateService) render(w http.ResponseWriter, tmpl *template.Template, data interface{}) error {
+	return s.renderWithStatus(w, tmpl, data, http.StatusOK)
+}
+
+func (s *TemplateService) renderWithStatus(w http.ResponseWriter, tmpl *template.Template, data interface{}, status int) error {
 	// First render to a buffer to catch errors before writing to response
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, "base.html", data); err != nil {
@@ -158,7 +162,7 @@ func (s *TemplateService) render(w http.ResponseWriter, tmpl *template.Template,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(status)
 	_, err := io.Copy(w, &buf)
 	return err
 }

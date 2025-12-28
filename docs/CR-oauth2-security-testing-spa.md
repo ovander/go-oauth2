@@ -174,6 +174,112 @@ A single-page application (SPA) for comprehensive testing of OAuth2 and OpenID C
 
 ---
 
+### 13. Defensive Tests (Input Validation & Fuzzing)
+
+| Test ID | Test Name | Description | Expected Result |
+|---------|-----------|-------------|-----------------|
+| DEF-01 | SQL Injection in client_id | `client_id='; DROP TABLE users;--` | Rejected, no SQL error |
+| DEF-02 | SQL Injection in username | Login with SQL payload | Rejected, no SQL error |
+| DEF-03 | XSS in redirect_uri | `redirect_uri=javascript:alert(1)` | Rejected as invalid URI |
+| DEF-04 | XSS in state parameter | `state=<script>alert(1)</script>` | Escaped or rejected |
+| DEF-05 | Command Injection | Shell commands in parameters | Rejected, no execution |
+| DEF-06 | Path Traversal | `redirect_uri=../../etc/passwd` | Rejected as invalid URI |
+| DEF-07 | Null Byte Injection | `client_id=valid%00malicious` | Handled safely |
+| DEF-08 | Unicode Normalization | Homoglyph attacks in identifiers | Normalized or rejected |
+| DEF-09 | Oversized Token | Submit 1MB+ token | 413 or graceful rejection |
+| DEF-10 | Oversized Request Body | POST with huge body | 413 Payload Too Large |
+| DEF-11 | Empty String Parameters | `client_id=` vs missing | Consistent error handling |
+| DEF-12 | Special Characters | `!@#$%^&*()` in parameters | Proper escaping/rejection |
+| DEF-13 | JSON Injection | Nested/malformed JSON | Parse error, not crash |
+| DEF-14 | Header Injection | CRLF in header values | Rejected or sanitized |
+| DEF-15 | Integer Overflow | Very large numbers in claims | Handled safely |
+| DEF-16 | Negative Values | `expires_in=-1` in requests | Rejected or ignored |
+| DEF-17 | Duplicate Parameters | `grant_type=x&grant_type=y` | Consistent behavior |
+| DEF-18 | Case Sensitivity | `Grant_Type` vs `grant_type` | Consistent handling |
+
+---
+
+### 14. Boundary Tests
+
+| Test ID | Test Name | Description | Expected Result |
+|---------|-----------|-------------|-----------------|
+| BND-01 | Minimum Token Length | Single character token | Rejected as invalid |
+| BND-02 | Maximum Token Length | Token at size limit | Accepted or clear limit error |
+| BND-03 | Empty Scope | `scope=` | Handled gracefully |
+| BND-04 | Many Scopes | 100+ scopes requested | Handled gracefully |
+| BND-05 | Long client_id | 1000+ character client_id | Rejected with limit error |
+| BND-06 | Long redirect_uri | 10KB redirect URI | Rejected with limit error |
+| BND-07 | Unicode in Names | Emoji/CJK in user names | Stored and returned correctly |
+| BND-08 | Whitespace Handling | Leading/trailing spaces | Trimmed or consistent error |
+| BND-09 | Zero TTL Token | Token with exp=iat | Immediately expired |
+| BND-10 | Far Future Expiry | exp = year 3000 | Accepted or capped |
+
+---
+
+### 15. Load & Performance Tests
+
+| Test ID | Test Name | Description | Expected Result |
+|---------|-----------|-------------|-----------------|
+| LOAD-01 | Token Endpoint Throughput | 100 req/sec for 60 sec | >95% success, <500ms p99 |
+| LOAD-02 | UserInfo Throughput | 200 req/sec for 60 sec | >95% success, <200ms p99 |
+| LOAD-03 | Discovery Throughput | 500 req/sec for 60 sec | >99% success, <100ms p99 |
+| LOAD-04 | Introspection Throughput | 100 req/sec for 60 sec | >95% success, <300ms p99 |
+| LOAD-05 | Mixed Workload | Realistic traffic pattern | All endpoints responsive |
+| LOAD-06 | Concurrent Auth Flows | 50 parallel auth flows | All complete successfully |
+| LOAD-07 | Concurrent Token Refresh | 100 parallel refreshes | All get valid tokens |
+| LOAD-08 | Database Connection Pool | Exhaust DB connections | Graceful queuing, no crashes |
+| LOAD-09 | Memory Under Load | Monitor memory during load | No memory leaks |
+| LOAD-10 | CPU Under Load | Monitor CPU during load | Stays under 80% |
+
+---
+
+### 16. Stress Tests
+
+| Test ID | Test Name | Description | Expected Result |
+|---------|-----------|-------------|-----------------|
+| STR-01 | Spike Test | 0 to 1000 req/sec instantly | Recovers within 30 sec |
+| STR-02 | Sustained Overload | 10x normal load for 5 min | Degrades gracefully |
+| STR-03 | Recovery After Overload | Normal traffic after spike | Returns to baseline |
+| STR-04 | Connection Exhaustion | Open 10000 connections | Rejects new, serves existing |
+| STR-05 | Slow Client Attack | Slowloris-style connections | Timeouts, no resource exhaustion |
+| STR-06 | Large Response Handling | Request with huge scope list | Bounded response size |
+| STR-07 | Rapid Token Creation | 1000 tokens/sec | Rate limited appropriately |
+| STR-08 | Rapid Token Revocation | Mass revocation | Completes without cascade |
+| STR-09 | Auth Code Flood | 10000 auth codes in queue | Cleaned up properly |
+| STR-10 | Session Table Growth | Create 100000 sessions | No unbounded growth |
+
+---
+
+### 17. Concurrency Tests
+
+| Test ID | Test Name | Description | Expected Result |
+|---------|-----------|-------------|-----------------|
+| CON-01 | Parallel Auth Code Use | Same code used twice simultaneously | Only one succeeds |
+| CON-02 | Parallel Token Refresh | Same refresh token used twice | Only one succeeds, one fails |
+| CON-03 | Concurrent User Update | Same user updated simultaneously | No data corruption |
+| CON-04 | Race: Revoke vs Use | Revoke and use token simultaneously | Consistent state |
+| CON-05 | Race: Login vs Lockout | Login at exactly lockout threshold | Consistent lockout state |
+| CON-06 | Parallel Session Creation | Same user, 100 parallel logins | All sessions valid or rate limited |
+| CON-07 | Distributed Token Use | Same token from multiple IPs | Consistent behavior |
+| CON-08 | Write Conflict | Concurrent writes to same resource | No lost updates |
+
+---
+
+### 18. Resilience Tests
+
+| Test ID | Test Name | Description | Expected Result |
+|---------|-----------|-------------|-----------------|
+| RES-01 | Database Disconnect | DB goes down temporarily | Returns 503, recovers when DB returns |
+| RES-02 | Database Slow | DB queries take 5+ sec | Timeouts, no thread exhaustion |
+| RES-03 | Partial Failure | One service degraded | Other services unaffected |
+| RES-04 | Key Rotation | Rotate JWKS keys | Old tokens still valid until expiry |
+| RES-05 | Clock Skew | Server time off by 5 min | Tokens still validate with buffer |
+| RES-06 | Invalid JWKS Cache | Cached keys become invalid | Refreshes keys automatically |
+| RES-07 | Restart Under Load | Restart server during traffic | Minimal request failures |
+| RES-08 | Graceful Shutdown | SIGTERM during requests | In-flight requests complete |
+
+---
+
 ## Test Implementation
 
 ### Request Formats

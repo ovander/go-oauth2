@@ -30,3 +30,12 @@ vendor/
 # Temporary
 tmp/
 server
+
+# GeoIP databases
+data/*.mmdb
+
+# Secrets
+keys/
+*.pem
+*.key
+*.crt

@@ -1,0 +1,36 @@
+{{define "content"}}
+<div class="card">
+    <div class="card-header">
+        <h1>Socrate</h1>
+        <p>Email Verification</p>
+    </div>
+    <div class="card-body">
+        {{if .Success}}
+        <div class="icon-success">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+        </div>
+        <h2 class="text-center" style="margin-bottom: 12px;">Email verified!</h2>
+        <p class="text-center text-muted" style="margin-bottom: 20px;">
+            Your email address has been verified successfully. You can now sign in to your account.
+        </p>
+        <a href="/auth/login" class="btn">Sign in</a>
+        {{else}}
+        <div class="icon-error">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        </div>
+        <h2 class="text-center" style="margin-bottom: 12px;">Verification failed</h2>
+        <p class="text-center text-muted" style="margin-bottom: 20px;">
+            {{if .Error}}{{.Error}}{{else}}This verification link is invalid or has expired.{{end}}
+        </p>
+        <p class="text-center text-muted">
+            Please try signing in. If your email is not verified, you can request a new verification link.
+        </p>
+        <a href="/auth/login" class="btn" style="margin-top: 20px;">Sign in</a>
+        {{end}}
+    </div>
+</div>
+{{end}}

@@ -4,9 +4,7 @@ import (
 	"embed"
 	"html/template"
 	"net/http"
-	"net/url"
 
-	"github.com/socrate-auth/go-oauth/internal/dto"
 	"github.com/socrate-auth/go-oauth/internal/repository"
 	"github.com/socrate-auth/go-oauth/internal/service"
 	"github.com/socrate-auth/go-oauth/internal/shared/auth"
@@ -16,6 +14,8 @@ import (
 var templateFS embed.FS
 
 // WebHandler handles web page rendering for auth flows
+// These are standalone pages for email verification, password reset, and invitation acceptance
+// The main OAuth2 login flow is handled separately
 type WebHandler struct {
 	templates    *template.Template
 	authService  service.AuthService
@@ -51,160 +51,14 @@ func NewWebHandler(
 	}, nil
 }
 
-// LoginPage renders the login page
-func (h *WebHandler) LoginPage(w http.ResponseWriter, r *http.Request) {
-	data := map[string]interface{}{
-		"Title":               "Sign In",
-		"ClientID":            r.URL.Query().Get("client_id"),
-		"RedirectURI":         r.URL.Query().Get("redirect_uri"),
-		"State":               r.URL.Query().Get("state"),
-		"Scope":               r.URL.Query().Get("scope"),
-		"ResponseType":        r.URL.Query().Get("response_type"),
-		"Nonce":               r.URL.Query().Get("nonce"),
-		"CodeChallenge":       r.URL.Query().Get("code_challenge"),
-		"CodeChallengeMethod": r.URL.Query().Get("code_challenge_method"),
-		"AllowSignup":         true,
-	}
-
-	h.render(w, "login.html", data)
-}
-
-// LoginSubmit handles login form submission
-func (h *WebHandler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		h.renderLoginError(w, r, "Invalid form data")
-		return
-	}
-
-	email := r.FormValue("email")
-	password := r.FormValue("password")
-	clientID := r.FormValue("client_id")
-	redirectURI := r.FormValue("redirect_uri")
-	state := r.FormValue("state")
-
-	// Authenticate user
-	loginReq := dto.LoginRequest{
-		Email:       email,
-		Password:    password,
-		AppClientID: clientID,
-	}
-	loginResp, err := h.authService.Login(r.Context(), loginReq)
-	if err != nil {
-		h.renderLoginError(w, r, "Invalid email or password")
-		return
-	}
-
-	// If no redirect URI, just show success
-	if redirectURI == "" || clientID == "" {
-		http.Redirect(w, r, "/auth/login?success=1", http.StatusSeeOther)
-		return
-	}
-
-	// Build redirect URL with authorization code
-	redirectURL, err := url.Parse(redirectURI)
-	if err != nil {
-		h.renderLoginError(w, r, "Invalid redirect URI")
-		return
-	}
-
-	q := redirectURL.Query()
-	if state != "" {
-		q.Set("state", state)
-	}
-	// For now, redirect with the tokens directly (implicit flow style)
-	// In production, you'd generate an auth code here
-	q.Set("access_token", loginResp.AccessToken)
-	q.Set("token_type", "Bearer")
-	redirectURL.Fragment = q.Encode()
-
-	http.Redirect(w, r, redirectURL.String(), http.StatusSeeOther)
-}
-
-func (h *WebHandler) renderLoginError(w http.ResponseWriter, r *http.Request, errMsg string) {
-	data := map[string]interface{}{
-		"Title":               "Sign In",
-		"Error":               errMsg,
-		"Email":               r.FormValue("email"),
-		"ClientID":            r.FormValue("client_id"),
-		"RedirectURI":         r.FormValue("redirect_uri"),
-		"State":               r.FormValue("state"),
-		"Scope":               r.FormValue("scope"),
-		"ResponseType":        r.FormValue("response_type"),
-		"Nonce":               r.FormValue("nonce"),
-		"CodeChallenge":       r.FormValue("code_challenge"),
-		"CodeChallengeMethod": r.FormValue("code_challenge_method"),
-		"AllowSignup":         true,
-	}
-	h.render(w, "login.html", data)
-}
-
-// SignupPage renders the signup page
-func (h *WebHandler) SignupPage(w http.ResponseWriter, r *http.Request) {
-	data := map[string]interface{}{
-		"Title":       "Sign Up",
-		"ClientID":    r.URL.Query().Get("client_id"),
-		"RedirectURI": r.URL.Query().Get("redirect_uri"),
-	}
-	h.render(w, "signup.html", data)
-}
-
-// SignupSubmit handles signup form submission
-func (h *WebHandler) SignupSubmit(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		h.renderSignupError(w, r, "Invalid form data")
-		return
-	}
-
-	name := r.FormValue("name")
-	email := r.FormValue("email")
-	password := r.FormValue("password")
-	clientID := r.FormValue("client_id")
-
-	// Create user
-	signupReq := dto.SignupRequest{
-		Name:     name,
-		Email:    email,
-		Password: password,
-		ClientID: clientID,
-	}
-	user, verifyToken, err := h.authService.Signup(r.Context(), signupReq)
-	if err != nil {
-		h.renderSignupError(w, r, err.Error())
-		return
-	}
-
-	// Send verification email
-	verifyURL := h.baseURL + "/auth/verify-email?token=" + verifyToken
-	if err := h.emailService.SendVerificationEmail(email, user.Name, verifyURL); err != nil {
-		// Log error but don't fail - user is created
-	}
-
-	data := map[string]interface{}{
-		"Title":    "Sign Up",
-		"Success":  true,
-		"Email":    email,
-		"ClientID": clientID,
-	}
-	h.render(w, "signup.html", data)
-}
-
-func (h *WebHandler) renderSignupError(w http.ResponseWriter, r *http.Request, errMsg string) {
-	data := map[string]interface{}{
-		"Title":       "Sign Up",
-		"Error":       errMsg,
-		"Name":        r.FormValue("name"),
-		"Email":       r.FormValue("email"),
-		"ClientID":    r.FormValue("client_id"),
-		"RedirectURI": r.FormValue("redirect_uri"),
-	}
-	h.render(w, "signup.html", data)
-}
+// ==========================================
+// Forgot Password Flow
+// ==========================================
 
 // ForgotPasswordPage renders the forgot password page
 func (h *WebHandler) ForgotPasswordPage(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
-		"Title":    "Forgot Password",
-		"ClientID": r.URL.Query().Get("client_id"),
+		"Title": "Forgot Password",
 	}
 	h.render(w, "forgot_password.html", data)
 }
@@ -220,7 +74,6 @@ func (h *WebHandler) ForgotPasswordSubmit(w http.ResponseWriter, r *http.Request
 	}
 
 	email := r.FormValue("email")
-	clientID := r.FormValue("client_id")
 
 	// Request password reset (don't reveal if email exists)
 	token, _ := h.authService.RequestPasswordReset(r.Context(), email)
@@ -238,12 +91,15 @@ func (h *WebHandler) ForgotPasswordSubmit(w http.ResponseWriter, r *http.Request
 	}
 
 	data := map[string]interface{}{
-		"Title":    "Forgot Password",
-		"Success":  true,
-		"ClientID": clientID,
+		"Title":   "Forgot Password",
+		"Success": true,
 	}
 	h.render(w, "forgot_password.html", data)
 }
+
+// ==========================================
+// Reset Password Flow
+// ==========================================
 
 // ResetPasswordPage renders the reset password page
 func (h *WebHandler) ResetPasswordPage(w http.ResponseWriter, r *http.Request) {
@@ -317,6 +173,10 @@ func (h *WebHandler) ResetPasswordSubmit(w http.ResponseWriter, r *http.Request)
 	h.render(w, "reset_password.html", data)
 }
 
+// ==========================================
+// Email Verification Flow
+// ==========================================
+
 // VerifyEmailPage handles email verification
 func (h *WebHandler) VerifyEmailPage(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
@@ -337,6 +197,10 @@ func (h *WebHandler) VerifyEmailPage(w http.ResponseWriter, r *http.Request) {
 	}
 	h.render(w, "verify_email.html", data)
 }
+
+// ==========================================
+// Invitation Accept Flow
+// ==========================================
 
 // AcceptInvitePage renders the accept invitation page
 func (h *WebHandler) AcceptInvitePage(w http.ResponseWriter, r *http.Request) {
@@ -445,10 +309,14 @@ func (h *WebHandler) AcceptInviteSubmit(w http.ResponseWriter, r *http.Request) 
 	h.render(w, "accept_invite.html", data)
 }
 
+// ==========================================
+// Template Rendering
+// ==========================================
+
 func (h *WebHandler) render(w http.ResponseWriter, name string, data map[string]interface{}) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-	// First execute base template
+	// Execute the specific template which uses base
 	if err := h.templates.ExecuteTemplate(w, "base", data); err != nil {
 		http.Error(w, "Template error", http.StatusInternalServerError)
 		return

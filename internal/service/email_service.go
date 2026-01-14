@@ -19,34 +19,34 @@ type EmailService interface {
 	SendAppCredentialsEmail(to, name, appName, clientID, clientSecret string) error
 }
 
-// EmailConfig holds email service configuration
-type EmailConfig struct {
-	SMTPHost     string
-	SMTPPort     int
-	SMTPUsername string
-	SMTPPassword string
-	SMTPSecurity string // "starttls", "ssl", "none"
-	FromEmail    string
-	FromName     string
-	BaseURL      string // For generating links
+// SMTPConfig holds SMTP email service configuration
+type SMTPConfig struct {
+	Host     string
+	Port     int
+	Username string
+	Password string
+	Security string // "starttls", "ssl", "none"
+	From     string
+	BaseURL  string // For generating links
 }
 
 type smtpEmailService struct {
-	config    EmailConfig
+	config    SMTPConfig
 	templates *template.Template
 }
 
 // NewEmailService creates a new SMTP-based email service
-func NewEmailService(config EmailConfig) (EmailService, error) {
+func NewEmailService(config SMTPConfig) EmailService {
 	tmpl, err := template.New("emails").Parse(emailTemplates)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse email templates: %w", err)
+		// Templates are embedded constants, so this should never fail
+		panic(fmt.Sprintf("failed to parse email templates: %v", err))
 	}
 
 	return &smtpEmailService{
 		config:    config,
 		templates: tmpl,
-	}, nil
+	}
 }
 
 // SendVerificationEmail sends an email verification link
@@ -135,7 +135,7 @@ func (s *smtpEmailService) sendTemplatedEmail(to, subject, templateName string, 
 func (s *smtpEmailService) sendEmail(to, subject, htmlBody string) error {
 	// Build email headers
 	headers := make(map[string]string)
-	headers["From"] = fmt.Sprintf("%s <%s>", s.config.FromName, s.config.FromEmail)
+	headers["From"] = s.config.From
 	headers["To"] = to
 	headers["Subject"] = subject
 	headers["MIME-Version"] = "1.0"
@@ -150,26 +150,26 @@ func (s *smtpEmailService) sendEmail(to, subject, htmlBody string) error {
 	message.WriteString(htmlBody)
 
 	// Connect to SMTP server
-	addr := fmt.Sprintf("%s:%d", s.config.SMTPHost, s.config.SMTPPort)
+	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
 
 	var auth smtp.Auth
-	if s.config.SMTPUsername != "" {
-		auth = smtp.PlainAuth("", s.config.SMTPUsername, s.config.SMTPPassword, s.config.SMTPHost)
+	if s.config.Username != "" {
+		auth = smtp.PlainAuth("", s.config.Username, s.config.Password, s.config.Host)
 	}
 
-	switch s.config.SMTPSecurity {
+	switch s.config.Security {
 	case "ssl", "tls":
 		return s.sendEmailSSL(addr, auth, to, message.String())
 	case "starttls":
 		return s.sendEmailStartTLS(addr, auth, to, message.String())
 	default:
-		return smtp.SendMail(addr, auth, s.config.FromEmail, []string{to}, []byte(message.String()))
+		return smtp.SendMail(addr, auth, s.config.From, []string{to}, []byte(message.String()))
 	}
 }
 
 func (s *smtpEmailService) sendEmailSSL(addr string, auth smtp.Auth, to, message string) error {
 	tlsConfig := &tls.Config{
-		ServerName: s.config.SMTPHost,
+		ServerName: s.config.Host,
 	}
 
 	conn, err := tls.Dial("tcp", addr, tlsConfig)
@@ -178,7 +178,7 @@ func (s *smtpEmailService) sendEmailSSL(addr string, auth smtp.Auth, to, message
 	}
 	defer conn.Close()
 
-	client, err := smtp.NewClient(conn, s.config.SMTPHost)
+	client, err := smtp.NewClient(conn, s.config.Host)
 	if err != nil {
 		return fmt.Errorf("failed to create SMTP client: %w", err)
 	}
@@ -190,7 +190,7 @@ func (s *smtpEmailService) sendEmailSSL(addr string, auth smtp.Auth, to, message
 		}
 	}
 
-	if err := client.Mail(s.config.FromEmail); err != nil {
+	if err := client.Mail(s.config.From); err != nil {
 		return fmt.Errorf("MAIL FROM failed: %w", err)
 	}
 
@@ -224,7 +224,7 @@ func (s *smtpEmailService) sendEmailStartTLS(addr string, auth smtp.Auth, to, me
 	defer client.Close()
 
 	tlsConfig := &tls.Config{
-		ServerName: s.config.SMTPHost,
+		ServerName: s.config.Host,
 	}
 
 	if err := client.StartTLS(tlsConfig); err != nil {
@@ -237,7 +237,7 @@ func (s *smtpEmailService) sendEmailStartTLS(addr string, auth smtp.Auth, to, me
 		}
 	}
 
-	if err := client.Mail(s.config.FromEmail); err != nil {
+	if err := client.Mail(s.config.From); err != nil {
 		return fmt.Errorf("MAIL FROM failed: %w", err)
 	}
 

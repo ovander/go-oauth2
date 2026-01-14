@@ -14,9 +14,9 @@ type EmailService interface {
 	SendVerificationEmail(to, name, verifyURL string) error
 	SendPasswordResetEmail(to, name, resetURL string) error
 	SendInvitationEmail(to, name, appName, inviterName, inviteURL string) error
-	SendInviteEmail(to, name, appName, inviteURL string) error
+	SendInviteEmail(to, appName, inviteURL string) error
 	SendWelcomeEmail(to, name, appName string) error
-	SendAppCredentialsEmail(to, appName, clientID, clientSecret string) error
+	SendAppCredentialsEmail(to, name, appName, clientID, clientSecret string) error
 }
 
 // EmailConfig holds email service configuration
@@ -105,13 +105,14 @@ func (s *smtpEmailService) SendWelcomeEmail(to, name, appName string) error {
 }
 
 // SendInviteEmail sends an invitation email (simplified version without inviter name)
-func (s *smtpEmailService) SendInviteEmail(to, name, appName, inviteURL string) error {
-	return s.SendInvitationEmail(to, name, appName, "The administrator", inviteURL)
+func (s *smtpEmailService) SendInviteEmail(to, appName, inviteURL string) error {
+	return s.SendInvitationEmail(to, to, appName, "The administrator", inviteURL)
 }
 
 // SendAppCredentialsEmail sends app credentials to the admin
-func (s *smtpEmailService) SendAppCredentialsEmail(to, appName, clientID, clientSecret string) error {
+func (s *smtpEmailService) SendAppCredentialsEmail(to, name, appName, clientID, clientSecret string) error {
 	data := map[string]string{
+		"Name":         name,
 		"AppName":      appName,
 		"ClientID":     clientID,
 		"ClientSecret": clientSecret,
@@ -518,6 +519,9 @@ const emailTemplates = `
                         <td style="padding: 40px;">
                             <h2 style="margin: 0 0 20px; color: #1a1a1a; font-size: 20px;">Credentials for {{.AppName}}</h2>
                             <p style="margin: 0 0 20px; color: #4a4a4a; font-size: 16px; line-height: 1.5;">
+                                Hi {{.Name}},
+                            </p>
+                            <p style="margin: 0 0 20px; color: #4a4a4a; font-size: 16px; line-height: 1.5;">
                                 Your application credentials have been generated. Please store them securely.
                             </p>
                             <div style="background: #f3f4f6; border-radius: 8px; padding: 20px; margin: 20px 0;">
@@ -587,14 +591,14 @@ func (s *NoOpEmailService) SendWelcomeEmail(to, name, appName string) error {
 	return nil
 }
 
-func (s *NoOpEmailService) SendInviteEmail(to, name, appName, inviteURL string) error {
+func (s *NoOpEmailService) SendInviteEmail(to, appName, inviteURL string) error {
 	s.LastEmail = &SentEmail{To: to, Subject: "Invitation", URL: inviteURL}
 	fmt.Printf("[EMAIL] Invite email to %s for %s: %s\n", to, appName, inviteURL)
 	return nil
 }
 
-func (s *NoOpEmailService) SendAppCredentialsEmail(to, appName, clientID, clientSecret string) error {
+func (s *NoOpEmailService) SendAppCredentialsEmail(to, name, appName, clientID, clientSecret string) error {
 	s.LastEmail = &SentEmail{To: to, Subject: "App Credentials", URL: ""}
-	fmt.Printf("[EMAIL] App credentials email to %s for %s: client_id=%s\n", to, appName, clientID)
+	fmt.Printf("[EMAIL] App credentials email to %s (%s) for %s: client_id=%s\n", to, name, appName, clientID)
 	return nil
 }

@@ -14,7 +14,9 @@ type EmailService interface {
 	SendVerificationEmail(to, name, verifyURL string) error
 	SendPasswordResetEmail(to, name, resetURL string) error
 	SendInvitationEmail(to, name, appName, inviterName, inviteURL string) error
+	SendInviteEmail(to, name, appName, inviteURL string) error
 	SendWelcomeEmail(to, name, appName string) error
+	SendAppCredentialsEmail(to, appName, clientID, clientSecret string) error
 }
 
 // EmailConfig holds email service configuration
@@ -100,6 +102,24 @@ func (s *smtpEmailService) SendWelcomeEmail(to, name, appName string) error {
 
 	subject := fmt.Sprintf("Welcome to %s", appName)
 	return s.sendTemplatedEmail(to, subject, "welcome", data)
+}
+
+// SendInviteEmail sends an invitation email (simplified version without inviter name)
+func (s *smtpEmailService) SendInviteEmail(to, name, appName, inviteURL string) error {
+	return s.SendInvitationEmail(to, name, appName, "The administrator", inviteURL)
+}
+
+// SendAppCredentialsEmail sends app credentials to the admin
+func (s *smtpEmailService) SendAppCredentialsEmail(to, appName, clientID, clientSecret string) error {
+	data := map[string]string{
+		"AppName":      appName,
+		"ClientID":     clientID,
+		"ClientSecret": clientSecret,
+		"Year":         fmt.Sprintf("%d", 2024),
+	}
+
+	subject := fmt.Sprintf("Credentials for %s", appName)
+	return s.sendTemplatedEmail(to, subject, "app_credentials", data)
 }
 
 func (s *smtpEmailService) sendTemplatedEmail(to, subject, templateName string, data map[string]string) error {
@@ -473,6 +493,59 @@ const emailTemplates = `
 </body>
 </html>
 {{end}}
+
+{{define "app_credentials"}}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>App Credentials</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f5f5f5; padding: 40px 0;">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="padding: 40px 40px 20px; text-align: center; background-color: #4F46E5; border-radius: 8px 8px 0 0;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">Socrate</h1>
+                        </td>
+                    </tr>
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px;">
+                            <h2 style="margin: 0 0 20px; color: #1a1a1a; font-size: 20px;">Credentials for {{.AppName}}</h2>
+                            <p style="margin: 0 0 20px; color: #4a4a4a; font-size: 16px; line-height: 1.5;">
+                                Your application credentials have been generated. Please store them securely.
+                            </p>
+                            <div style="background: #f3f4f6; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                                <p style="margin: 0 0 10px; color: #374151; font-size: 14px;"><strong>Client ID:</strong></p>
+                                <p style="margin: 0 0 20px; color: #1f2937; font-size: 14px; font-family: monospace; word-break: break-all;">{{.ClientID}}</p>
+                                <p style="margin: 0 0 10px; color: #374151; font-size: 14px;"><strong>Client Secret:</strong></p>
+                                <p style="margin: 0; color: #1f2937; font-size: 14px; font-family: monospace; word-break: break-all;">{{.ClientSecret}}</p>
+                            </div>
+                            <p style="margin: 20px 0 0; color: #dc2626; font-size: 14px; line-height: 1.5;">
+                                <strong>Important:</strong> The client secret will not be shown again. Please save it now.
+                            </p>
+                        </td>
+                    </tr>
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 20px 40px; background-color: #f9f9f9; border-radius: 0 0 8px 8px; text-align: center;">
+                            <p style="margin: 0; color: #9a9a9a; font-size: 12px;">
+                                &copy; {{.Year}} Socrate. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+{{end}}
 `
 
 // NoOpEmailService is a no-op implementation for development/testing
@@ -511,5 +584,17 @@ func (s *NoOpEmailService) SendInvitationEmail(to, name, appName, inviterName, i
 func (s *NoOpEmailService) SendWelcomeEmail(to, name, appName string) error {
 	s.LastEmail = &SentEmail{To: to, Subject: "Welcome", URL: ""}
 	fmt.Printf("[EMAIL] Welcome email to %s for %s\n", to, appName)
+	return nil
+}
+
+func (s *NoOpEmailService) SendInviteEmail(to, name, appName, inviteURL string) error {
+	s.LastEmail = &SentEmail{To: to, Subject: "Invitation", URL: inviteURL}
+	fmt.Printf("[EMAIL] Invite email to %s for %s: %s\n", to, appName, inviteURL)
+	return nil
+}
+
+func (s *NoOpEmailService) SendAppCredentialsEmail(to, appName, clientID, clientSecret string) error {
+	s.LastEmail = &SentEmail{To: to, Subject: "App Credentials", URL: ""}
+	fmt.Printf("[EMAIL] App credentials email to %s for %s: client_id=%s\n", to, appName, clientID)
 	return nil
 }

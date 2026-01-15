@@ -7,6 +7,8 @@ import (
 	"html/template"
 	"net/smtp"
 	"strings"
+
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
 // EmailService defines the interface for sending emails
@@ -125,12 +127,30 @@ func (s *smtpEmailService) SendAppCredentialsEmail(to, name, appName, clientID, 
 }
 
 func (s *smtpEmailService) sendTemplatedEmail(to, subject, templateName string, data map[string]string) error {
+	logger.Logger.WithFields(logger.Fields{
+		"to":       to,
+		"subject":  subject,
+		"template": templateName,
+	}).Info("📧 Sending email")
+
 	var bodyBuffer bytes.Buffer
 	if err := s.templates.ExecuteTemplate(&bodyBuffer, templateName, data); err != nil {
 		return fmt.Errorf("failed to execute template %s: %w", templateName, err)
 	}
 
-	return s.sendEmail(to, subject, bodyBuffer.String())
+	if err := s.sendEmail(to, subject, bodyBuffer.String()); err != nil {
+		logger.Logger.WithFields(logger.Fields{
+			"to":    to,
+			"error": err.Error(),
+		}).Error("📧 Failed to send email")
+		return err
+	}
+
+	logger.Logger.WithFields(logger.Fields{
+		"to":      to,
+		"subject": subject,
+	}).Info("📧 Email sent successfully")
+	return nil
 }
 
 func (s *smtpEmailService) sendEmail(to, subject, htmlBody string) error {

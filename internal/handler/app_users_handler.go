@@ -11,6 +11,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/dto"
 	"github.com/ovandermoten/go-oauth2/internal/middleware"
 	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 	"github.com/ovandermoten/go-oauth2/internal/service"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 )
@@ -206,9 +207,18 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	if h.emailService != nil {
 		inviteURL := h.tokenService.GetIssuer() + "/auth/invite?token=" + inviteToken
 		if err := h.emailService.SendInviteEmail(user.Email, appName, inviteURL); err != nil {
-			// Log error but don't fail the request
-			// The invite token is still valid and can be resent
+			// Log error but don't fail the request - the invite token is still valid and can be resent
+			logger.Logger.WithFields(logger.Fields{
+				"email": user.Email,
+				"app":   appName,
+				"error": err.Error(),
+			}).Warn("📧 Failed to send invite email, but invite token is valid")
 		}
+	} else {
+		logger.Logger.WithFields(logger.Fields{
+			"email": user.Email,
+			"app":   appName,
+		}).Debug("📧 Email service not configured, skipping invite email")
 	}
 
 	// Mark invite as sent

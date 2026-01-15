@@ -11,6 +11,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/middleware"
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/service"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
 type AdminHandler struct {
@@ -147,8 +148,18 @@ func (h *AdminHandler) CreateApp(w http.ResponseWriter, r *http.Request) {
 		admin, adminErr := h.userService.GetByID(r.Context(), userID)
 		if adminErr == nil && admin != nil {
 			// Email sending is best-effort, don't fail the request if it fails
-			_ = h.emailService.SendAppCredentialsEmail(admin.Email, admin.Name, app.Name, app.ClientID, clientSecret)
+			if err := h.emailService.SendAppCredentialsEmail(admin.Email, admin.Name, app.Name, app.ClientID, clientSecret); err != nil {
+				logger.Logger.WithFields(logger.Fields{
+					"email": admin.Email,
+					"app":   app.Name,
+					"error": err.Error(),
+				}).Warn("📧 Failed to send app credentials email")
+			}
 		}
+	} else {
+		logger.Logger.WithFields(logger.Fields{
+			"app": app.Name,
+		}).Debug("📧 Email service not configured, skipping credentials email")
 	}
 
 	w.WriteHeader(http.StatusCreated)
@@ -303,8 +314,18 @@ func (h *AdminHandler) RotateSecret(w http.ResponseWriter, r *http.Request) {
 	if h.emailService != nil {
 		admin, adminErr := h.userService.GetByID(r.Context(), userID)
 		if adminErr == nil && admin != nil {
-			_ = h.emailService.SendAppCredentialsEmail(admin.Email, admin.Name, updatedApp.Name, updatedApp.ClientID, newSecret)
+			if err := h.emailService.SendAppCredentialsEmail(admin.Email, admin.Name, updatedApp.Name, updatedApp.ClientID, newSecret); err != nil {
+				logger.Logger.WithFields(logger.Fields{
+					"email": admin.Email,
+					"app":   updatedApp.Name,
+					"error": err.Error(),
+				}).Warn("📧 Failed to send rotated credentials email")
+			}
 		}
+	} else {
+		logger.Logger.WithFields(logger.Fields{
+			"app": updatedApp.Name,
+		}).Debug("📧 Email service not configured, skipping rotated credentials email")
 	}
 
 	json.NewEncoder(w).Encode(dto.AppWithSecretResponse{

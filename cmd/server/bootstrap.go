@@ -12,6 +12,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/service"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/internal/web"
 	"github.com/ovandermoten/go-oauth2/pkg/database"
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
 	"gorm.io/gorm"
@@ -150,14 +151,15 @@ func Bootstrap(cfg *config.Config) *App {
 	// Email service (nil if SMTP not configured)
 	var emailService service.EmailService
 	if cfg.SMTPHost != "" {
-		emailService = service.NewEmailService(service.SMTPConfig{
-			Host:     cfg.SMTPHost,
-			Port:     cfg.SMTPPort,
-			Username: cfg.SMTPUsername,
-			Password: cfg.SMTPPassword,
-			Security: cfg.SMTPSecurity,
-			From:     cfg.FromEmail,
-			BaseURL:  cfg.OAuthIssuer,
+		emailService = service.NewEmailService(service.EmailConfig{
+			SMTPHost:     cfg.SMTPHost,
+			SMTPPort:     cfg.SMTPPort,
+			SMTPUsername: cfg.SMTPUsername,
+			SMTPPassword: cfg.SMTPPassword,
+			SMTPSecurity: cfg.SMTPSecurity,
+			FromEmail:    cfg.FromEmail,
+			FromName:     cfg.FromName,
+			BaseURL:      cfg.OAuthIssuer,
 		})
 		logger.Info("✅ Email service configured with SMTP")
 	} else {
@@ -228,6 +230,20 @@ func Bootstrap(cfg *config.Config) *App {
 	appLogsHandler := handler.NewAppLogsHandler(appActivityLogService)
 	monitoringHandler := handler.NewMonitoringHandler(db, alertRuleRepo, triggeredAlertRepo, blockedIPRepo, securityAuditRepo, geoIPService)
 
+	// Web handler for HTML auth pages
+	webHandler, err := web.NewWebHandler(
+		authService,
+		userService,
+		appRepo,
+		emailService,
+		tokenService,
+		cfg.OAuthIssuer,
+	)
+	if err != nil {
+		logger.Fatalf("Failed to create web handler: %v", err)
+	}
+	logger.Info("✅ Web handler initialized")
+
 	// ==========================================
 	// Auto-Defense System (automatic IP blocking)
 	// ==========================================
@@ -296,6 +312,7 @@ func Bootstrap(cfg *config.Config) *App {
 		healthHandler,
 		appLogsHandler,
 		monitoringHandler,
+		webHandler,
 		tokenService,
 		userRepo,
 		userAppRoleRepo,
@@ -314,6 +331,7 @@ func Bootstrap(cfg *config.Config) *App {
 		healthHandler,
 		appLogsHandler,
 		monitoringHandler,
+		webHandler,
 		tokenService,
 		userRepo,
 		userAppRoleRepo,

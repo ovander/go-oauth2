@@ -11,6 +11,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/middleware"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	internalweb "github.com/ovandermoten/go-oauth2/internal/web"
 	"github.com/ovandermoten/go-oauth2/web"
 )
 
@@ -40,13 +41,14 @@ func NewRouters(
 	healthHandler *handler.HealthHandler,
 	appLogsHandler *handler.AppLogsHandler,
 	monitoringHandler *handler.MonitoringHandler,
+	webHandler *internalweb.WebHandler,
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
 	userAppRoleRepo repository.UserAppRoleRepository,
 	config RouterConfig,
 ) *Routers {
 	return &Routers{
-		OAuth: newOAuthRouter(authHandler, oauthHandler, profileHandler, healthHandler, tokenService, userRepo, config),
+		OAuth: newOAuthRouter(authHandler, oauthHandler, webHandler, profileHandler, healthHandler, tokenService, userRepo, config),
 		Admin: newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config),
 	}
 }
@@ -56,6 +58,7 @@ func NewRouters(
 func newOAuthRouter(
 	authHandler *handler.AuthHandler,
 	oauthHandler *handler.OAuthHandler,
+	webHandler *internalweb.WebHandler,
 	profileHandler *handler.ProfileHandler,
 	healthHandler *handler.HealthHandler,
 	tokenService *auth.TokenService,
@@ -139,15 +142,28 @@ func newOAuthRouter(
 	// Server-Rendered Auth Pages (HTML)
 	// ==========================================
 	r.Route("/auth", func(r chi.Router) {
-		// Accept invite - combined email verification + password setting
-		r.Get("/accept-invite", oauthHandler.AcceptInvitePage)
-		r.Post("/accept-invite", oauthHandler.AcceptInviteSubmit)
+		// Login flow
+		r.Get("/login", webHandler.LoginPage)
+		r.With(middleware.RateLimitMiddleware(config.LoginRateLimiter)).
+			Post("/login", webHandler.LoginSubmit)
+
+		// Signup flow
+		r.Get("/signup", webHandler.SignupPage)
+		r.With(middleware.RateLimitMiddleware(config.SignupRateLimiter)).
+			Post("/signup", webHandler.SignupSubmit)
 
 		// Password reset flow
-		r.Get("/forgot-password", oauthHandler.ForgotPasswordPage)
-		r.Post("/forgot-password", oauthHandler.ForgotPasswordSubmit)
-		r.Get("/reset-password", oauthHandler.ResetPasswordPage)
-		r.Post("/reset-password", oauthHandler.ResetPasswordSubmit)
+		r.Get("/forgot-password", webHandler.ForgotPasswordPage)
+		r.Post("/forgot-password", webHandler.ForgotPasswordSubmit)
+		r.Get("/reset-password", webHandler.ResetPasswordPage)
+		r.Post("/reset-password", webHandler.ResetPasswordSubmit)
+
+		// Email verification
+		r.Get("/verify-email", webHandler.VerifyEmailPage)
+
+		// Invitation acceptance
+		r.Get("/invite", webHandler.AcceptInvitePage)
+		r.Post("/invite", webHandler.AcceptInviteSubmit)
 	})
 
 	// ==========================================
@@ -396,6 +412,7 @@ func NewRouter(
 	healthHandler *handler.HealthHandler,
 	appLogsHandler *handler.AppLogsHandler,
 	monitoringHandler *handler.MonitoringHandler,
+	webHandler *internalweb.WebHandler,
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
 	userAppRoleRepo repository.UserAppRoleRepository,
@@ -424,7 +441,7 @@ func NewRouter(
 	r.Use(middleware.JSONContentType())
 
 	// Mount OAuth router
-	oauthRouter := newOAuthRouter(authHandler, oauthHandler, profileHandler, healthHandler, tokenService, userRepo, config)
+	oauthRouter := newOAuthRouter(authHandler, oauthHandler, webHandler, profileHandler, healthHandler, tokenService, userRepo, config)
 	r.Mount("/", oauthRouter)
 
 	// Mount Admin router under /admin prefix (for single-port mode)

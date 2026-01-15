@@ -52,6 +52,7 @@ type Config struct {
 	SMTPPassword string
 	SMTPSecurity string
 	FromEmail    string
+	FromName     string
 
 	// Keys
 	KeysPath string
@@ -108,6 +109,7 @@ func Load() *Config {
 		SMTPPassword: getEnv("SMTP_PASSWORD", ""),
 		SMTPSecurity: getEnv("SMTP_SECURITY", "starttls"),
 		FromEmail:    getEnv("FROM_EMAIL", "no-reply@example.com"),
+		FromName:     getEnv("FROM_NAME", "Socrate"),
 
 		// Keys
 		KeysPath: getEnv("KEYS_PATH", "keys"),

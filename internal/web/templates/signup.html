@@ -1,0 +1,72 @@
+{{define "content"}}
+<div class="card">
+    <div class="card-header">
+        <h1>Socrate</h1>
+        {{if .AppName}}<p>Create your {{.AppName}} account</p>{{else}}<p>Create your account</p>{{end}}
+    </div>
+    <div class="card-body">
+        {{if .Success}}
+        <div class="icon-success">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+        </div>
+        <h2 class="text-center" style="margin-bottom: 12px;">Check your email!</h2>
+        <p class="text-center text-muted" style="margin-bottom: 20px;">
+            We've sent a verification link to <strong>{{.Email}}</strong>. Please check your inbox and click the link to verify your account.
+        </p>
+        <a href="/auth/login{{if .ClientID}}?client_id={{.ClientID}}{{end}}" class="btn">Back to login</a>
+        {{else}}
+        {{if .Error}}
+        <div class="alert alert-error">
+            {{.Error}}
+        </div>
+        {{end}}
+
+        <form method="POST" action="/auth/signup">
+            <!-- Preserve OAuth parameters -->
+            <input type="hidden" name="client_id" value="{{.ClientID}}">
+            <input type="hidden" name="redirect_uri" value="{{.RedirectURI}}">
+            <input type="hidden" name="response_type" value="{{.ResponseType}}">
+            <input type="hidden" name="scope" value="{{.Scope}}">
+            <input type="hidden" name="state" value="{{.State}}">
+            {{if .CodeChallenge}}
+            <input type="hidden" name="code_challenge" value="{{.CodeChallenge}}">
+            <input type="hidden" name="code_challenge_method" value="{{.CodeChallengeMethod}}">
+            {{end}}
+
+            <div class="form-group">
+                <label for="name">Full name</label>
+                <input type="text" id="name" name="name" value="{{.Name}}" required autofocus placeholder="John Doe">
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email address</label>
+                <input type="email" id="email" name="email" value="{{.Email}}" required placeholder="you@example.com">
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required placeholder="Choose a password">
+                <div class="password-requirements">
+                    Password must be at least 8 characters.
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="password_confirm">Confirm password</label>
+                <input type="password" id="password_confirm" name="password_confirm" required placeholder="Confirm your password">
+            </div>
+
+            <button type="submit" class="btn">Create account</button>
+        </form>
+
+        <div class="divider"><span>or</span></div>
+
+        <p class="text-center text-muted">
+            Already have an account? <a href="/auth/login{{if .ClientID}}?client_id={{.ClientID}}{{end}}" class="link">Sign in</a>
+        </p>
+        {{end}}
+    </div>
+</div>
+{{end}}

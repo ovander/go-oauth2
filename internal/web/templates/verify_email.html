@@ -13,12 +13,14 @@
         </div>
         <h2 class="text-center" style="margin-bottom: 12px;">Email verified!</h2>
         <p class="text-center text-muted" style="margin-bottom: 20px;">
-            Your email address has been verified successfully. You can now sign in to your account.
+            Your email address has been verified successfully.
         </p>
         {{if .RedirectURI}}
         <a href="{{.RedirectURI}}" class="btn">Return to {{if .AppName}}{{.AppName}}{{else}}App{{end}}</a>
         {{else}}
-        <a href="/auth/login" class="btn">Sign in</a>
+        <div class="alert alert-warning" style="text-align: center;">
+            <p style="margin: 0;">Please return to your application to sign in.</p>
+        </div>
         {{end}}
         {{else}}
         <div class="icon-error">
@@ -30,10 +32,9 @@
         <p class="text-center text-muted" style="margin-bottom: 20px;">
             {{if .Error}}{{.Error}}{{else}}This verification link is invalid or has expired.{{end}}
         </p>
-        <p class="text-center text-muted">
-            Please try signing in. If your email is not verified, you can request a new verification link.
-        </p>
-        <a href="/auth/login" class="btn" style="margin-top: 20px;">Sign in</a>
+        <div class="alert alert-warning" style="text-align: center;">
+            <p style="margin: 0;">Please return to your application and request a new verification link.</p>
+        </div>
         {{end}}
     </div>
 </div>

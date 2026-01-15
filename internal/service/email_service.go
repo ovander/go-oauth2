@@ -63,7 +63,7 @@ func (s *smtpEmailService) SendVerificationEmail(to, name, appName, verifyURL st
 		"Name":      name,
 		"AppName":   displayAppName,
 		"VerifyURL": verifyURL,
-		"Year":      fmt.Sprintf("%d", 2024),
+		"Year":      "2024 - 2026",
 	}
 
 	subject := fmt.Sprintf("Verify your email for %s", displayAppName)
@@ -81,7 +81,7 @@ func (s *smtpEmailService) SendPasswordResetEmail(to, name, appName, resetURL st
 		"Name":     name,
 		"AppName":  displayAppName,
 		"ResetURL": resetURL,
-		"Year":     fmt.Sprintf("%d", 2024),
+		"Year":     "2024 - 2026",
 	}
 
 	subject := fmt.Sprintf("Reset your password for %s", displayAppName)
@@ -100,7 +100,7 @@ func (s *smtpEmailService) SendInvitationEmail(to, name, appName, inviterName, i
 		"AppName":     appName,
 		"InviterName": inviterName,
 		"InviteURL":   inviteURL,
-		"Year":        fmt.Sprintf("%d", 2024),
+		"Year":        "2024 - 2026",
 	}
 
 	subject := fmt.Sprintf("You've been invited to join %s", appName)
@@ -112,7 +112,7 @@ func (s *smtpEmailService) SendWelcomeEmail(to, name, appName string) error {
 	data := map[string]string{
 		"Name":    name,
 		"AppName": appName,
-		"Year":    fmt.Sprintf("%d", 2024),
+		"Year":    "2024 - 2026",
 	}
 
 	subject := fmt.Sprintf("Welcome to %s", appName)
@@ -131,7 +131,7 @@ func (s *smtpEmailService) SendAppCredentialsEmail(to, name, appName, clientID, 
 		"AppName":      appName,
 		"ClientID":     clientID,
 		"ClientSecret": clientSecret,
-		"Year":         fmt.Sprintf("%d", 2024),
+		"Year":         "2024 - 2026",
 	}
 
 	subject := fmt.Sprintf("Credentials for %s", appName)

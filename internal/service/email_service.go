@@ -13,8 +13,8 @@ import (
 
 // EmailService defines the interface for sending emails
 type EmailService interface {
-	SendVerificationEmail(to, name, verifyURL string) error
-	SendPasswordResetEmail(to, name, resetURL string) error
+	SendVerificationEmail(to, name, appName, verifyURL string) error
+	SendPasswordResetEmail(to, name, appName, resetURL string) error
 	SendInvitationEmail(to, name, appName, inviterName, inviteURL string) error
 	SendInviteEmail(to, appName, inviteURL string) error
 	SendWelcomeEmail(to, name, appName string) error
@@ -53,26 +53,38 @@ func NewEmailService(config EmailConfig) EmailService {
 }
 
 // SendVerificationEmail sends an email verification link
-func (s *smtpEmailService) SendVerificationEmail(to, name, verifyURL string) error {
+func (s *smtpEmailService) SendVerificationEmail(to, name, appName, verifyURL string) error {
+	displayAppName := appName
+	if displayAppName == "" {
+		displayAppName = "Socrate"
+	}
+
 	data := map[string]string{
 		"Name":      name,
+		"AppName":   displayAppName,
 		"VerifyURL": verifyURL,
 		"Year":      fmt.Sprintf("%d", 2024),
 	}
 
-	subject := "Verify your email address"
+	subject := fmt.Sprintf("Verify your email for %s", displayAppName)
 	return s.sendTemplatedEmail(to, subject, "verification", data)
 }
 
 // SendPasswordResetEmail sends a password reset link
-func (s *smtpEmailService) SendPasswordResetEmail(to, name, resetURL string) error {
+func (s *smtpEmailService) SendPasswordResetEmail(to, name, appName, resetURL string) error {
+	displayAppName := appName
+	if displayAppName == "" {
+		displayAppName = "Socrate"
+	}
+
 	data := map[string]string{
 		"Name":     name,
+		"AppName":  displayAppName,
 		"ResetURL": resetURL,
 		"Year":     fmt.Sprintf("%d", 2024),
 	}
 
-	subject := "Reset your password"
+	subject := fmt.Sprintf("Reset your password for %s", displayAppName)
 	return s.sendTemplatedEmail(to, subject, "password_reset", data)
 }
 
@@ -296,7 +308,7 @@ const emailTemplates = `
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verify Your Email</title>
+    <title>Verify Your Email for {{.AppName}}</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f5f5f5; padding: 40px 0;">
@@ -306,7 +318,7 @@ const emailTemplates = `
                     <!-- Header -->
                     <tr>
                         <td style="padding: 40px 40px 20px; text-align: center; background-color: #4F46E5; border-radius: 8px 8px 0 0;">
-                            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">Socrate</h1>
+                            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">{{.AppName}}</h1>
                         </td>
                     </tr>
                     <!-- Content -->
@@ -317,7 +329,7 @@ const emailTemplates = `
                                 Hi {{.Name}},
                             </p>
                             <p style="margin: 0 0 30px; color: #4a4a4a; font-size: 16px; line-height: 1.5;">
-                                Thank you for signing up. Please verify your email address by clicking the button below.
+                                Thank you for signing up for <strong>{{.AppName}}</strong>. Please verify your email address by clicking the button below.
                             </p>
                             <table role="presentation" cellspacing="0" cellpadding="0" style="margin: 0 auto;">
                                 <tr>
@@ -327,7 +339,7 @@ const emailTemplates = `
                                 </tr>
                             </table>
                             <p style="margin: 30px 0 0; color: #6a6a6a; font-size: 14px; line-height: 1.5;">
-                                If you didn't create an account, you can safely ignore this email.
+                                If you didn't create an account with {{.AppName}}, you can safely ignore this email.
                             </p>
                             <p style="margin: 20px 0 0; color: #6a6a6a; font-size: 14px; line-height: 1.5;">
                                 This link will expire in 24 hours.
@@ -338,7 +350,7 @@ const emailTemplates = `
                     <tr>
                         <td style="padding: 20px 40px; background-color: #f9f9f9; border-radius: 0 0 8px 8px; text-align: center;">
                             <p style="margin: 0; color: #9a9a9a; font-size: 12px;">
-                                &copy; {{.Year}} Socrate. All rights reserved.
+                                &copy; {{.Year}} {{.AppName}}. All rights reserved.
                             </p>
                         </td>
                     </tr>
@@ -356,7 +368,7 @@ const emailTemplates = `
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reset Your Password</title>
+    <title>Reset Your Password for {{.AppName}}</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f5f5f5; padding: 40px 0;">
@@ -366,7 +378,7 @@ const emailTemplates = `
                     <!-- Header -->
                     <tr>
                         <td style="padding: 40px 40px 20px; text-align: center; background-color: #4F46E5; border-radius: 8px 8px 0 0;">
-                            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">Socrate</h1>
+                            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">{{.AppName}}</h1>
                         </td>
                     </tr>
                     <!-- Content -->
@@ -377,7 +389,7 @@ const emailTemplates = `
                                 Hi {{.Name}},
                             </p>
                             <p style="margin: 0 0 30px; color: #4a4a4a; font-size: 16px; line-height: 1.5;">
-                                We received a request to reset your password. Click the button below to choose a new password.
+                                We received a request to reset your password for <strong>{{.AppName}}</strong>. Click the button below to choose a new password.
                             </p>
                             <table role="presentation" cellspacing="0" cellpadding="0" style="margin: 0 auto;">
                                 <tr>
@@ -387,7 +399,7 @@ const emailTemplates = `
                                 </tr>
                             </table>
                             <p style="margin: 30px 0 0; color: #6a6a6a; font-size: 14px; line-height: 1.5;">
-                                If you didn't request a password reset, you can safely ignore this email. Your password will not be changed.
+                                If you didn't request a password reset for {{.AppName}}, you can safely ignore this email. Your password will not be changed.
                             </p>
                             <p style="margin: 20px 0 0; color: #6a6a6a; font-size: 14px; line-height: 1.5;">
                                 This link will expire in 1 hour.
@@ -398,7 +410,7 @@ const emailTemplates = `
                     <tr>
                         <td style="padding: 20px 40px; background-color: #f9f9f9; border-radius: 0 0 8px 8px; text-align: center;">
                             <p style="margin: 0; color: #9a9a9a; font-size: 12px;">
-                                &copy; {{.Year}} Socrate. All rights reserved.
+                                &copy; {{.Year}} {{.AppName}}. All rights reserved.
                             </p>
                         </td>
                     </tr>
@@ -593,15 +605,15 @@ func NewNoOpEmailService() EmailService {
 	return &NoOpEmailService{}
 }
 
-func (s *NoOpEmailService) SendVerificationEmail(to, name, verifyURL string) error {
+func (s *NoOpEmailService) SendVerificationEmail(to, name, appName, verifyURL string) error {
 	s.LastEmail = &SentEmail{To: to, Subject: "Verify Email", URL: verifyURL}
-	fmt.Printf("[EMAIL] Verification email to %s: %s\n", to, verifyURL)
+	fmt.Printf("[EMAIL] Verification email to %s for %s: %s\n", to, appName, verifyURL)
 	return nil
 }
 
-func (s *NoOpEmailService) SendPasswordResetEmail(to, name, resetURL string) error {
+func (s *NoOpEmailService) SendPasswordResetEmail(to, name, appName, resetURL string) error {
 	s.LastEmail = &SentEmail{To: to, Subject: "Reset Password", URL: resetURL}
-	fmt.Printf("[EMAIL] Password reset email to %s: %s\n", to, resetURL)
+	fmt.Printf("[EMAIL] Password reset email to %s for %s: %s\n", to, appName, resetURL)
 	return nil
 }
 

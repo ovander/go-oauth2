@@ -21,7 +21,7 @@ type AuthService interface {
 	AdminLogin(ctx context.Context, req dto.AdminLoginRequest) (*dto.LoginResponse, error)
 	RefreshTokens(ctx context.Context, refreshToken string) (*dto.RefreshResponse, error)
 	Logout(ctx context.Context, userID uint) error
-	RequestPasswordReset(ctx context.Context, email string) (string, error)
+	RequestPasswordReset(ctx context.Context, email string, appCtx *auth.AppContext) (string, error)
 	ResetPassword(ctx context.Context, token, newPassword string) error
 	ChangePassword(ctx context.Context, userID uint, currentPassword, newPassword string) error
 	ValidateInviteToken(ctx context.Context, token string) (*dto.InviteValidationResponse, error)
@@ -188,14 +188,24 @@ func (s *authService) Signup(ctx context.Context, req dto.SignupRequest) (*model
 		return nil, "", fmt.Errorf("failed to assign user role: %w", err)
 	}
 
-	verifyToken, err := s.tokenService.GenerateEmailVerificationToken(user.Email, user.ID)
+	// Generate verification token with app context
+	appCtx := &auth.AppContext{
+		AppID:   app.ID,
+		AppName: app.Name,
+	}
+	if len(app.RedirectURIs) > 0 {
+		appCtx.RedirectURI = app.RedirectURIs[0]
+	}
+
+	verifyToken, err := s.tokenService.GenerateEmailVerificationToken(user.Email, user.ID, appCtx)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to generate verification token: %w", err)
 	}
 
-	// Send verification email
+	// Send verification email with app name
 	if s.emailService != nil {
-		if err := s.emailService.SendVerificationEmail(user.Email, user.Name, verifyToken); err != nil {
+		verifyURL := s.tokenService.GetIssuer() + "/auth/verify-email?token=" + verifyToken
+		if err := s.emailService.SendVerificationEmail(user.Email, user.Name, app.Name, verifyURL); err != nil {
 			// Log but don't fail - user can request resend
 			s.logSecurityEvent(ctx, model.SecurityEventEmailSendFailed, &user.ID, &app.ID, false, map[string]interface{}{
 				"email": user.Email,
@@ -533,32 +543,26 @@ func (s *authService) Logout(ctx context.Context, userID uint) error {
 	return nil
 }
 
-// RequestPasswordReset initiates a password reset
-func (s *authService) RequestPasswordReset(ctx context.Context, email string) (string, error) {
+// RequestPasswordReset initiates a password reset and returns the token
+// Note: Email sending is handled by the caller to allow proper app context
+func (s *authService) RequestPasswordReset(ctx context.Context, email string, appCtx *auth.AppContext) (string, error) {
 	user, err := s.userRepo.FindByEmail(ctx, email)
 	if err != nil {
 		// Don't reveal if email exists - return empty string without error
 		return "", nil
 	}
 
-	token, err := s.tokenService.GeneratePasswordResetToken(user.Email, user.ID)
+	token, err := s.tokenService.GeneratePasswordResetToken(user.Email, user.ID, appCtx)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate reset token: %w", err)
 	}
 
-	// Send password reset email
-	if s.emailService != nil {
-		if err := s.emailService.SendPasswordResetEmail(user.Email, user.Name, token); err != nil {
-			s.logSecurityEvent(ctx, model.SecurityEventEmailSendFailed, &user.ID, nil, false, map[string]interface{}{
-				"email": user.Email,
-				"type":  "password_reset",
-				"error": err.Error(),
-			})
-		}
-	}
-
 	// Log password reset request
-	s.logSecurityEvent(ctx, model.SecurityEventPasswordResetReq, &user.ID, nil, true, map[string]interface{}{
+	var appID *uint
+	if appCtx != nil {
+		appID = &appCtx.AppID
+	}
+	s.logSecurityEvent(ctx, model.SecurityEventPasswordResetReq, &user.ID, appID, true, map[string]interface{}{
 		"email": user.Email,
 	})
 

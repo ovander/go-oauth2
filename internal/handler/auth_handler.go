@@ -12,17 +12,19 @@ import (
 type AuthHandler struct {
 	authService     service.AuthService
 	userService     service.UserService
+	emailService    service.EmailService
 	autoDefense     *service.AutoDefenseService
 	environment     string
 	issuer          string
 }
 
-func NewAuthHandler(authService service.AuthService, userService service.UserService, environment, issuer string) *AuthHandler {
+func NewAuthHandler(authService service.AuthService, userService service.UserService, emailService service.EmailService, environment, issuer string) *AuthHandler {
 	return &AuthHandler{
-		authService: authService,
-		userService: userService,
-		environment: environment,
-		issuer:      issuer,
+		authService:  authService,
+		userService:  userService,
+		emailService: emailService,
+		environment:  environment,
+		issuer:       issuer,
 	}
 }
 
@@ -175,9 +177,22 @@ func (h *AuthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Always return success to prevent email enumeration
-	h.authService.RequestPasswordReset(r.Context(), req.Email)
+	// Request password reset (no app context in API flow)
+	token, _ := h.authService.RequestPasswordReset(r.Context(), req.Email, nil)
 
+	// Send email if token was generated
+	if token != "" && h.emailService != nil {
+		resetURL := h.issuer + "/auth/reset-password?token=" + token
+		// Get user name for email
+		user, _ := h.userService.GetByEmail(r.Context(), req.Email)
+		name := req.Email
+		if user != nil {
+			name = user.Name
+		}
+		h.emailService.SendPasswordResetEmail(req.Email, name, "", resetURL)
+	}
+
+	// Always return success to prevent email enumeration
 	json.NewEncoder(w).Encode(dto.MessageResponse{
 		Message: "If an account exists with this email, a password reset link has been sent",
 	})

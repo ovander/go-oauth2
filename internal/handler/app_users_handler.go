@@ -357,8 +357,23 @@ func (h *AppUsersHandler) ResendVerification(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Generate new verification token
-	token, err := h.tokenService.GenerateEmailVerificationToken(user.Email, user.ID)
+	// Get app details for context
+	app, err := h.appService.GetByID(r.Context(), appID)
+	if err != nil {
+		writeError(w, "app not found", http.StatusNotFound)
+		return
+	}
+
+	// Generate new verification token with app context
+	appCtx := &auth.AppContext{
+		AppID:   app.ID,
+		AppName: app.Name,
+	}
+	if len(app.RedirectURIs) > 0 {
+		appCtx.RedirectURI = app.RedirectURIs[0]
+	}
+
+	token, err := h.tokenService.GenerateEmailVerificationToken(user.Email, user.ID, appCtx)
 	if err != nil {
 		writeError(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -371,10 +386,10 @@ func (h *AppUsersHandler) ResendVerification(w http.ResponseWriter, r *http.Requ
 		})
 	}
 
-	// Send verification email
+	// Send verification email with app name
 	if h.emailService != nil {
 		verifyURL := h.baseURL + "/auth/verify-email?token=" + token
-		if err := h.emailService.SendVerificationEmail(user.Email, user.Name, verifyURL); err != nil {
+		if err := h.emailService.SendVerificationEmail(user.Email, user.Name, app.Name, verifyURL); err != nil {
 			writeError(w, "failed to send verification email: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -405,8 +420,23 @@ func (h *AppUsersHandler) ForcePasswordReset(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Generate password reset token
-	token, err := h.tokenService.GeneratePasswordResetToken(user.Email, user.ID)
+	// Get app details for context
+	app, err := h.appService.GetByID(r.Context(), appID)
+	if err != nil {
+		writeError(w, "app not found", http.StatusNotFound)
+		return
+	}
+
+	// Generate password reset token with app context
+	appCtx := &auth.AppContext{
+		AppID:   app.ID,
+		AppName: app.Name,
+	}
+	if len(app.RedirectURIs) > 0 {
+		appCtx.RedirectURI = app.RedirectURIs[0]
+	}
+
+	token, err := h.tokenService.GeneratePasswordResetToken(user.Email, user.ID, appCtx)
 	if err != nil {
 		writeError(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -419,10 +449,10 @@ func (h *AppUsersHandler) ForcePasswordReset(w http.ResponseWriter, r *http.Requ
 		})
 	}
 
-	// Send password reset email
+	// Send password reset email with app name
 	if h.emailService != nil {
 		resetURL := h.baseURL + "/auth/reset-password?token=" + token
-		if err := h.emailService.SendPasswordResetEmail(user.Email, user.Name, resetURL); err != nil {
+		if err := h.emailService.SendPasswordResetEmail(user.Email, user.Name, app.Name, resetURL); err != nil {
 			writeError(w, "failed to send password reset email: "+err.Error(), http.StatusInternalServerError)
 			return
 		}

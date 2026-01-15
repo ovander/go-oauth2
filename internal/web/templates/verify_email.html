@@ -1,7 +1,7 @@
 {{define "content"}}
 <div class="card">
     <div class="card-header">
-        <h1>Socrate</h1>
+        <h1>{{if .AppName}}{{.AppName}}{{else}}Socrate{{end}}</h1>
         <p>Email Verification</p>
     </div>
     <div class="card-body">
@@ -15,7 +15,11 @@
         <p class="text-center text-muted" style="margin-bottom: 20px;">
             Your email address has been verified successfully. You can now sign in to your account.
         </p>
+        {{if .RedirectURI}}
+        <a href="{{.RedirectURI}}" class="btn">Return to {{if .AppName}}{{.AppName}}{{else}}App{{end}}</a>
+        {{else}}
         <a href="/auth/login" class="btn">Sign in</a>
+        {{end}}
         {{else}}
         <div class="icon-error">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">

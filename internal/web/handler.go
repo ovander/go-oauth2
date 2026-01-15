@@ -106,7 +106,8 @@ func (h *WebHandler) ForgotPasswordSubmit(w http.ResponseWriter, r *http.Request
 	email := r.FormValue("email")
 
 	// Request password reset (don't reveal if email exists)
-	token, _ := h.authService.RequestPasswordReset(r.Context(), email)
+	// Note: No app context available in generic forgot password flow
+	token, _ := h.authService.RequestPasswordReset(r.Context(), email, nil)
 
 	// If token was generated, send email
 	if token != "" {
@@ -117,7 +118,7 @@ func (h *WebHandler) ForgotPasswordSubmit(w http.ResponseWriter, r *http.Request
 		if user != nil {
 			name = user.Name
 		}
-		h.emailService.SendPasswordResetEmail(email, name, resetURL)
+		h.emailService.SendPasswordResetEmail(email, name, "", resetURL)
 	}
 
 	data := map[string]interface{}{
@@ -167,11 +168,23 @@ func (h *WebHandler) ResetPasswordSubmit(w http.ResponseWriter, r *http.Request)
 	password := r.FormValue("password")
 	passwordConfirm := r.FormValue("password_confirm")
 
+	// Parse token to get app context (for display purposes)
+	claims, _ := h.tokenService.VerifyEmailToken(token)
+	var appName, redirectURI string
+	if claims != nil {
+		appName = claims.AppName
+		redirectURI = claims.RedirectURI
+	}
+	if appName == "" {
+		appName = "Socrate"
+	}
+
 	if password != passwordConfirm {
 		data := map[string]interface{}{
-			"Title": "Reset Password",
-			"Token": token,
-			"Error": "Passwords do not match",
+			"Title":   "Reset Password",
+			"AppName": appName,
+			"Token":   token,
+			"Error":   "Passwords do not match",
 		}
 		h.render(w, "reset_password.html", data)
 		return
@@ -179,9 +192,10 @@ func (h *WebHandler) ResetPasswordSubmit(w http.ResponseWriter, r *http.Request)
 
 	if len(password) < 8 {
 		data := map[string]interface{}{
-			"Title": "Reset Password",
-			"Token": token,
-			"Error": "Password must be at least 8 characters",
+			"Title":   "Reset Password",
+			"AppName": appName,
+			"Token":   token,
+			"Error":   "Password must be at least 8 characters",
 		}
 		h.render(w, "reset_password.html", data)
 		return
@@ -190,6 +204,7 @@ func (h *WebHandler) ResetPasswordSubmit(w http.ResponseWriter, r *http.Request)
 	if err := h.authService.ResetPassword(r.Context(), token, password); err != nil {
 		data := map[string]interface{}{
 			"Title":      "Reset Password",
+			"AppName":    appName,
 			"TokenError": true,
 		}
 		h.render(w, "reset_password.html", data)
@@ -197,8 +212,10 @@ func (h *WebHandler) ResetPasswordSubmit(w http.ResponseWriter, r *http.Request)
 	}
 
 	data := map[string]interface{}{
-		"Title":   "Reset Password",
-		"Success": true,
+		"Title":       "Reset Password",
+		"AppName":     appName,
+		"RedirectURI": redirectURI,
+		"Success":     true,
 	}
 	h.render(w, "reset_password.html", data)
 }
@@ -211,19 +228,33 @@ func (h *WebHandler) ResetPasswordSubmit(w http.ResponseWriter, r *http.Request)
 func (h *WebHandler) VerifyEmailPage(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 
+	// Parse token first to get app context (for display purposes)
+	claims, _ := h.tokenService.VerifyEmailToken(token)
+	var appName, redirectURI string
+	if claims != nil {
+		appName = claims.AppName
+		redirectURI = claims.RedirectURI
+	}
+	if appName == "" {
+		appName = "Socrate"
+	}
+
 	err := h.authService.VerifyEmail(r.Context(), token)
 	if err != nil {
 		data := map[string]interface{}{
-			"Title": "Email Verification",
-			"Error": "This verification link is invalid or has expired.",
+			"Title":   "Email Verification",
+			"AppName": appName,
+			"Error":   "This verification link is invalid or has expired.",
 		}
 		h.render(w, "verify_email.html", data)
 		return
 	}
 
 	data := map[string]interface{}{
-		"Title":   "Email Verification",
-		"Success": true,
+		"Title":       "Email Verification",
+		"AppName":     appName,
+		"RedirectURI": redirectURI,
+		"Success":     true,
 	}
 	h.render(w, "verify_email.html", data)
 }
@@ -512,8 +543,8 @@ func (h *WebHandler) SignupSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Register user
-	_, verifyToken, err := h.authService.Signup(r.Context(), dto.SignupRequest{
+	// Register user (email is sent by the service with proper app context)
+	_, _, err := h.authService.Signup(r.Context(), dto.SignupRequest{
 		Name:     name,
 		Email:    email,
 		Password: password,
@@ -523,12 +554,6 @@ func (h *WebHandler) SignupSubmit(w http.ResponseWriter, r *http.Request) {
 		data["Error"] = err.Error()
 		h.render(w, "signup.html", data)
 		return
-	}
-
-	// Send verification email if token provided
-	if verifyToken != "" && h.emailService != nil {
-		verifyURL := h.baseURL + "/auth/verify-email?token=" + verifyToken
-		h.emailService.SendVerificationEmail(email, name, verifyURL)
 	}
 
 	data["Success"] = true

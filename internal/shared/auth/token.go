@@ -103,9 +103,12 @@ type IDTokenClaims struct {
 // EmailTokenClaims represents email verification/reset token claims
 type EmailTokenClaims struct {
 	jwt.RegisteredClaims
-	Email  string `json:"email"`
-	Type   string `json:"type"`
-	Action string `json:"action"`
+	Email       string `json:"email"`
+	Type        string `json:"type"`
+	Action      string `json:"action"`
+	AppID       uint   `json:"app_id,omitempty"`
+	AppName     string `json:"app_name,omitempty"`
+	RedirectURI string `json:"redirect_uri,omitempty"`
 }
 
 // InviteTokenClaims represents invite token claims
@@ -246,8 +249,15 @@ func (ts *TokenService) generateIDToken(user *model.User, app *model.App, role s
 	return ts.signToken(claims)
 }
 
+// AppContext contains optional app information for email tokens
+type AppContext struct {
+	AppID       uint
+	AppName     string
+	RedirectURI string
+}
+
 // GenerateEmailVerificationToken generates an email verification token
-func (ts *TokenService) GenerateEmailVerificationToken(email string, userID uint) (string, error) {
+func (ts *TokenService) GenerateEmailVerificationToken(email string, userID uint, appCtx *AppContext) (string, error) {
 	now := time.Now()
 
 	claims := EmailTokenClaims{
@@ -264,11 +274,17 @@ func (ts *TokenService) GenerateEmailVerificationToken(email string, userID uint
 		Action: "verify",
 	}
 
+	if appCtx != nil {
+		claims.AppID = appCtx.AppID
+		claims.AppName = appCtx.AppName
+		claims.RedirectURI = appCtx.RedirectURI
+	}
+
 	return ts.signToken(claims)
 }
 
 // GeneratePasswordResetToken generates a password reset token
-func (ts *TokenService) GeneratePasswordResetToken(email string, userID uint) (string, error) {
+func (ts *TokenService) GeneratePasswordResetToken(email string, userID uint, appCtx *AppContext) (string, error) {
 	now := time.Now()
 
 	claims := EmailTokenClaims{
@@ -283,6 +299,12 @@ func (ts *TokenService) GeneratePasswordResetToken(email string, userID uint) (s
 		Email:  email,
 		Type:   "password_reset",
 		Action: "reset",
+	}
+
+	if appCtx != nil {
+		claims.AppID = appCtx.AppID
+		claims.AppName = appCtx.AppName
+		claims.RedirectURI = appCtx.RedirectURI
 	}
 
 	return ts.signToken(claims)

@@ -27,3 +27,6 @@ vendor/
 
 # Temporary
 tmp/
+
+data/
+keys/

@@ -87,9 +87,20 @@ func NewWebHandler(
 
 // ForgotPasswordPage renders the forgot password page
 func (h *WebHandler) ForgotPasswordPage(w http.ResponseWriter, r *http.Request) {
+	clientID := r.URL.Query().Get("client_id")
+
 	data := map[string]interface{}{
-		"Title": "Forgot Password",
+		"Title":    "Forgot Password",
+		"ClientID": clientID,
 	}
+
+	// Get app name if client_id provided
+	if clientID != "" {
+		if app, err := h.appRepo.FindByClientID(r.Context(), clientID); err == nil {
+			data["AppName"] = app.Name
+		}
+	}
+
 	h.render(w, "forgot_password.html", data)
 }
 
@@ -104,12 +115,28 @@ func (h *WebHandler) ForgotPasswordSubmit(w http.ResponseWriter, r *http.Request
 	}
 
 	email := r.FormValue("email")
+	clientID := r.FormValue("client_id")
 
-	// Request password reset (don't reveal if email exists)
-	// Note: No app context available in generic forgot password flow
-	token, _ := h.authService.RequestPasswordReset(r.Context(), email, nil)
+	// Build app context if client_id provided
+	var appCtx *auth.AppContext
+	var appName string
+	if clientID != "" {
+		if app, err := h.appRepo.FindByClientID(r.Context(), clientID); err == nil {
+			appName = app.Name
+			appCtx = &auth.AppContext{
+				AppID:   app.ID,
+				AppName: app.Name,
+			}
+			if len(app.RedirectURIs) > 0 {
+				appCtx.RedirectURI = app.RedirectURIs[0]
+			}
+		}
+	}
 
-	// If token was generated, send email
+	// Request password reset with app context
+	token, _ := h.authService.RequestPasswordReset(r.Context(), email, appCtx)
+
+	// If token was generated, send email with app name
 	if token != "" {
 		resetURL := h.baseURL + "/auth/reset-password?token=" + token
 		// Get user name for email
@@ -118,12 +145,14 @@ func (h *WebHandler) ForgotPasswordSubmit(w http.ResponseWriter, r *http.Request
 		if user != nil {
 			name = user.Name
 		}
-		h.emailService.SendPasswordResetEmail(email, name, "", resetURL)
+		h.emailService.SendPasswordResetEmail(email, name, appName, resetURL)
 	}
 
 	data := map[string]interface{}{
-		"Title":   "Forgot Password",
-		"Success": true,
+		"Title":    "Forgot Password",
+		"ClientID": clientID,
+		"AppName":  appName,
+		"Success":  true,
 	}
 	h.render(w, "forgot_password.html", data)
 }

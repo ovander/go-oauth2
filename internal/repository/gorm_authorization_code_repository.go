@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/socrate-auth/go-oauth/internal/model"
+	"github.com/ovandermoten/go-oauth2/internal/model"
 	"gorm.io/gorm"
 )
 

@@ -1,0 +1,88 @@
+{{define "title"}}Accept Invitation - OAuth2 Server{{end}}
+
+{{define "content"}}
+<div class="login-card">
+    <div class="login-header">
+        <div class="logo">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="24" cy="24" r="22" stroke="currentColor" stroke-width="2" fill="none"/>
+                <path d="M16 24l6 6 12-12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
+        <h1>Welcome!</h1>
+    </div>
+
+    {{if .AppName}}
+    <p class="app-info">
+        You've been invited to join <strong>{{.AppName}}</strong>
+    </p>
+    {{end}}
+
+    {{if .Success}}
+    <div class="alert alert-success">
+        {{.Success}}
+    </div>
+    {{else}}
+
+    {{if .Error}}
+    <div class="alert alert-error">
+        {{.Error}}
+    </div>
+    {{end}}
+
+    {{if .Valid}}
+    <p style="text-align: center; color: var(--text-muted); margin-bottom: 1.5rem;">
+        Complete your account setup by setting a password below.
+    </p>
+
+    <form action="/auth/accept-invite" method="POST" class="login-form">
+        <input type="hidden" name="token" value="{{.Token}}">
+
+        <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email"
+                   value="{{.Email}}" readonly
+                   style="background-color: var(--bg-color); cursor: not-allowed;">
+        </div>
+
+        <div class="form-group">
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name"
+                   value="{{.Name}}" required
+                   placeholder="Your full name">
+        </div>
+
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required
+                   placeholder="Choose a strong password" minlength="8">
+        </div>
+
+        <div class="form-group">
+            <label for="confirm_password">Confirm Password</label>
+            <input type="password" id="confirm_password" name="confirm_password" required
+                   placeholder="Confirm your password" minlength="8">
+        </div>
+
+        <button type="submit" class="btn btn-primary">Complete Setup</button>
+    </form>
+
+    <div class="scopes-info">
+        <p>By completing setup, you'll:</p>
+        <ul>
+            <li>Verify your email address</li>
+            <li>Set your account password</li>
+            <li>Get access to {{if .AppName}}{{.AppName}}{{else}}the application{{end}}</li>
+        </ul>
+    </div>
+    {{else}}
+    <div class="alert alert-error">
+        This invitation link is invalid or has expired.
+    </div>
+    <div style="text-align: center; margin-top: 1.5rem;">
+        <p style="color: var(--text-muted);">Please contact your administrator for a new invitation.</p>
+    </div>
+    {{end}}
+    {{end}}
+</div>
+{{end}}

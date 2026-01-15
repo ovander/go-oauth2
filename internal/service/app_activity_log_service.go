@@ -4,8 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/socrate-auth/go-oauth/internal/model"
-	"github.com/socrate-auth/go-oauth/internal/repository"
+	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovandermoten/go-oauth2/internal/repository"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
 type AppActivityLogService interface {
@@ -21,6 +22,10 @@ type appActivityLogService struct {
 }
 
 func NewAppActivityLogService(repo repository.AppActivityLogRepository) AppActivityLogService {
+	logger.WithFields(logger.Fields{
+		"service": "app_activity_log",
+	}).Info("✅ App activity log service initialized")
+
 	return &appActivityLogService{repo: repo}
 }
 

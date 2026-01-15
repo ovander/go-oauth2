@@ -1,0 +1,31 @@
+{{define "title"}}Error - OAuth2 Server{{end}}
+
+{{define "content"}}
+<div class="error-card">
+    <div class="error-icon">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="32" cy="32" r="30" stroke="#e53e3e" stroke-width="2" fill="none"/>
+            <path d="M32 18v20M32 44v4" stroke="#e53e3e" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+    </div>
+
+    <h1>{{if .Title}}{{.Title}}{{else}}Error{{end}}</h1>
+
+    <p class="error-message">{{.Message}}</p>
+
+    {{if .Description}}
+    <p class="error-description">{{.Description}}</p>
+    {{end}}
+
+    <div class="error-actions">
+        {{if .ReturnURL}}
+        <a href="{{.ReturnURL}}" class="btn btn-secondary">Go Back</a>
+        {{end}}
+        <a href="/" class="btn btn-primary">Go to Home</a>
+    </div>
+
+    {{if .ErrorCode}}
+    <p class="error-code">Error code: {{.ErrorCode}}</p>
+    {{end}}
+</div>
+{{end}}

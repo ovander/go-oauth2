@@ -1,0 +1,72 @@
+{{define "content"}}
+<div class="card">
+    <div class="card-header">
+        <h1>Socrate</h1>
+        <p>Accept Invitation</p>
+    </div>
+    <div class="card-body">
+        {{if .Success}}
+        <div class="icon-success">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+        </div>
+        <h2 class="text-center" style="margin-bottom: 12px;">Welcome to {{.AppName}}!</h2>
+        <p class="text-center text-muted" style="margin-bottom: 20px;">
+            Your account has been set up successfully. You can now sign in.
+        </p>
+        <a href="/auth/login" class="btn">Sign in</a>
+        {{else if .TokenError}}
+        <div class="icon-error">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        </div>
+        <h2 class="text-center" style="margin-bottom: 12px;">Invalid or expired invitation</h2>
+        <p class="text-center text-muted" style="margin-bottom: 20px;">
+            This invitation link is invalid or has expired. Please contact the person who invited you to request a new invitation.
+        </p>
+        <a href="/auth/login" class="btn">Sign in</a>
+        {{else}}
+        {{if .Error}}
+        <div class="alert alert-error">
+            {{.Error}}
+        </div>
+        {{end}}
+
+        <div class="alert alert-info">
+            You've been invited to join <strong>{{.AppName}}</strong>
+        </div>
+
+        <form method="POST" action="/auth/accept-invite">
+            <input type="hidden" name="token" value="{{.Token}}">
+
+            <div class="form-group">
+                <label for="email">Email address</label>
+                <input type="email" id="email" name="email" value="{{.Email}}" readonly style="background: #f3f4f6;">
+            </div>
+
+            <div class="form-group">
+                <label for="name">Full name</label>
+                <input type="text" id="name" name="name" value="{{.Name}}" required placeholder="Enter your name">
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required autofocus placeholder="Choose a password">
+                <div class="password-requirements">
+                    Password must be at least 8 characters.
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="password_confirm">Confirm password</label>
+                <input type="password" id="password_confirm" name="password_confirm" required placeholder="Confirm password">
+            </div>
+
+            <button type="submit" class="btn">Accept invitation</button>
+        </form>
+        {{end}}
+    </div>
+</div>
+{{end}}

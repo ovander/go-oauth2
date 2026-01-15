@@ -17,6 +17,12 @@ type LoginRequest struct {
 	AppClientID string `json:"app_client_id"`
 }
 
+// AdminLoginRequest is for admin portal login (no app context required)
+type AdminLoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
@@ -36,6 +42,7 @@ type ResetPasswordRequest struct {
 
 type AcceptInviteRequest struct {
 	Token    string `json:"token"`
+	Name     string `json:"name"`
 	Password string `json:"password"`
 }
 
@@ -48,15 +55,16 @@ type SignupResponse struct {
 }
 
 type LoginResponse struct {
-	AccessToken  string        `json:"access_token"`
-	RefreshToken string        `json:"refresh_token"`
-	IDToken      string        `json:"id_token"`
-	TokenType    string        `json:"token_type"`
-	ExpiresIn    int           `json:"expires_in"`
-	UserID       uint          `json:"user_id"`
-	App          *AppResponse  `json:"app,omitempty"`
-	Roles        []string      `json:"roles"`
-	AppRoles     map[string]string `json:"app_roles"`
+	AccessToken        string            `json:"access_token"`
+	RefreshToken       string            `json:"refresh_token"`
+	IDToken            string            `json:"id_token"`
+	TokenType          string            `json:"token_type"`
+	ExpiresIn          int               `json:"expires_in"`
+	UserID             uint              `json:"user_id"`
+	App                *AppResponse      `json:"app,omitempty"`
+	Roles              []string          `json:"roles"`
+	AppRoles           map[string]string `json:"app_roles"`
+	MustChangePassword bool              `json:"must_change_password,omitempty"`
 }
 
 type RefreshResponse struct {

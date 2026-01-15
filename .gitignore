@@ -1,32 +1,59 @@
-# Go
+# =========================
+# Go / Build artifacts
+# =========================
 /bin/
 /dist/
 *.exe
 *.test
 *.out
+server
 
-# Env & secrets
+# =========================
+# Environment variables
+# =========================
 .env
 .env.*
+
+# Allow example env file
+!.env.example
+
+# Local env overrides
+.env.local
+.env.*.local
+
+# =========================
+# Secrets & certificates
+# =========================
 *.key
 *.pem
+*.crt
+keys/
 
+# =========================
+# Runtime / local data
+# =========================
+data/
+tmp/
+
+# =========================
+# GeoIP databases
+# =========================
+data/*.mmdb
+
+# =========================
 # IDE
+# =========================
 .idea/
 .vscode/
 *.iml
 
-# OS
+# =========================
+# OS / Logs
+# =========================
 .DS_Store
-
-# Logs
 *.log
 
-# Vendor (si non utilisé)
+# =========================
+# Vendor (if not used)
+# =========================
 vendor/
-
-# Temporary
-tmp/
-
-data/
-keys/

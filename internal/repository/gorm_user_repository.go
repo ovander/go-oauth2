@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/socrate-auth/go-oauth/internal/model"
+	"github.com/ovandermoten/go-oauth2/internal/model"
 	"gorm.io/gorm"
 )
 
@@ -12,6 +12,8 @@ type UserRepository interface {
 	FindAll(ctx context.Context, page, pageSize int) ([]model.User, int64, error)
 	FindByID(ctx context.Context, id uint) (*model.User, error)
 	FindByEmail(ctx context.Context, email string) (*model.User, error)
+	FindByRole(ctx context.Context, role model.UserRole) ([]model.User, error)
+	CountByRole(ctx context.Context, role model.UserRole) (int64, error)
 	Create(ctx context.Context, user *model.User) error
 	Update(ctx context.Context, user *model.User) error
 	Delete(ctx context.Context, id uint) error
@@ -61,6 +63,22 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*model.
 		return nil, err
 	}
 	return &user, nil
+}
+
+func (r *userRepository) FindByRole(ctx context.Context, role model.UserRole) ([]model.User, error) {
+	var users []model.User
+	if err := r.db.WithContext(ctx).Where("role = ?", role).Order("id DESC").Find(&users).Error; err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
+func (r *userRepository) CountByRole(ctx context.Context, role model.UserRole) (int64, error) {
+	var count int64
+	if err := r.db.WithContext(ctx).Model(&model.User{}).Where("role = ?", role).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 func (r *userRepository) Create(ctx context.Context, user *model.User) error {

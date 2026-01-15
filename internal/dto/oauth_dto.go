@@ -25,12 +25,16 @@ type TokenRequest struct {
 }
 
 type IntrospectRequest struct {
-	Token string `json:"token"`
+	Token        string `json:"token"`
+	ClientID     string `json:"client_id,omitempty"`
+	ClientSecret string `json:"client_secret,omitempty"`
 }
 
 type RevokeRequest struct {
 	Token         string `json:"token"`
 	TokenTypeHint string `json:"token_type_hint,omitempty"`
+	ClientID      string `json:"client_id,omitempty"`
+	ClientSecret  string `json:"client_secret,omitempty"`
 }
 
 // OAuth Response DTOs

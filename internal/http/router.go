@@ -7,16 +7,18 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/socrate-auth/go-oauth/internal/handler"
-	"github.com/socrate-auth/go-oauth/internal/middleware"
-	"github.com/socrate-auth/go-oauth/internal/repository"
-	"github.com/socrate-auth/go-oauth/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/internal/handler"
+	"github.com/ovandermoten/go-oauth2/internal/middleware"
+	"github.com/ovandermoten/go-oauth2/internal/repository"
+	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/web"
 )
 
 type RouterConfig struct {
 	AllowedOrigins    []string
 	LoginRateLimiter  *middleware.RateLimiter
 	SignupRateLimiter *middleware.RateLimiter
+	IPBlockChecker    *middleware.IPBlockChecker // Optional: nil disables IP blocking
 }
 
 // Routers holds both the OAuth and Admin routers for separate port binding
@@ -33,8 +35,11 @@ func NewRouters(
 	appUsersHandler *handler.AppUsersHandler,
 	profileHandler *handler.ProfileHandler,
 	adminHandler *handler.AdminHandler,
+	adminAuthHandler *handler.AdminAuthHandler,
+	dashboardHandler *handler.DashboardHandler,
 	healthHandler *handler.HealthHandler,
 	appLogsHandler *handler.AppLogsHandler,
+	monitoringHandler *handler.MonitoringHandler,
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
 	userAppRoleRepo repository.UserAppRoleRepository,
@@ -42,7 +47,7 @@ func NewRouters(
 ) *Routers {
 	return &Routers{
 		OAuth: newOAuthRouter(authHandler, oauthHandler, profileHandler, healthHandler, tokenService, userRepo, config),
-		Admin: newAdminRouter(adminHandler, appUsersHandler, appLogsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config),
+		Admin: newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config),
 	}
 }
 
@@ -68,48 +73,60 @@ func newOAuthRouter(
 	r.Use(middleware.CorrelationID())
 	r.Use(middleware.SecurityHeaders())
 
+	// IP Blocking middleware (automatic defense)
+	if config.IPBlockChecker != nil {
+		r.Use(middleware.IPBlockMiddleware(config.IPBlockChecker))
+	}
+
 	// CORS for public OAuth endpoints
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   config.AllowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Correlation-ID"},
+		ExposedHeaders:   []string{"X-Content-Type-Options", "X-Frame-Options", "Content-Security-Policy", "Strict-Transport-Security", "X-Correlation-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
 
-	r.Use(middleware.JSONContentType())
+	// ==========================================
+	// Static Files (CSS, JS for login pages)
+	// ==========================================
+	r.Handle("/static/*", http.StripPrefix("/static/", web.StaticFileServer()))
 
 	// ==========================================
-	// Health Routes
+	// Health Routes (JSON)
 	// ==========================================
-	r.Get("/health", healthHandler.Health)
-	r.Get("/health/liveness", healthHandler.Liveness)
-	r.Get("/health/readiness", healthHandler.Readiness)
+	r.With(middleware.JSONContentType()).Get("/health", healthHandler.Health)
+	r.With(middleware.JSONContentType()).Get("/health/liveness", healthHandler.Liveness)
+	r.With(middleware.JSONContentType()).Get("/health/readiness", healthHandler.Readiness)
 
 	// ==========================================
-	// OpenID Connect Discovery
+	// OpenID Connect Discovery (JSON)
 	// ==========================================
-	r.Get("/.well-known/openid-configuration", oauthHandler.OpenIDConfiguration)
-	r.Get("/.well-known/jwks.json", oauthHandler.JWKS)
+	r.With(middleware.JSONContentType()).Get("/.well-known/openid-configuration", oauthHandler.OpenIDConfiguration)
+	r.With(middleware.JSONContentType()).Get("/.well-known/jwks.json", oauthHandler.JWKS)
 
 	// ==========================================
 	// OAuth 2.0 Endpoints
 	// ==========================================
 	r.Route("/oauth", func(r chi.Router) {
+		// Authorization endpoint - returns HTML login page or redirects
 		r.With(middleware.OptionalAuthMiddleware(tokenService, userRepo)).
 			Get("/authorize", oauthHandler.Authorize)
+		r.Post("/authorize", oauthHandler.AuthorizePost)
 
-		r.With(middleware.NoCacheHeaders()).
+		// Token endpoint - JSON
+		r.With(middleware.JSONContentType(), middleware.NoCacheHeaders()).
 			Post("/token", oauthHandler.Token)
 
-		r.With(middleware.AuthMiddleware(tokenService, userRepo)).
+		r.With(middleware.JSONContentType(), middleware.AuthMiddleware(tokenService, userRepo)).
 			Get("/userinfo", oauthHandler.UserInfo)
-		r.With(middleware.AuthMiddleware(tokenService, userRepo)).
+		r.With(middleware.JSONContentType(), middleware.AuthMiddleware(tokenService, userRepo)).
 			Post("/userinfo", oauthHandler.UserInfo)
 
-		r.Post("/introspect", oauthHandler.Introspect)
+		r.With(middleware.JSONContentType()).Post("/introspect", oauthHandler.Introspect)
 
-		r.With(middleware.OptionalAuthMiddleware(tokenService, userRepo)).
+		r.With(middleware.JSONContentType(), middleware.OptionalAuthMiddleware(tokenService, userRepo)).
 			Post("/revoke", oauthHandler.Revoke)
 
 		r.With(middleware.OptionalAuthMiddleware(tokenService, userRepo)).
@@ -119,9 +136,26 @@ func newOAuthRouter(
 	})
 
 	// ==========================================
+	// Server-Rendered Auth Pages (HTML)
+	// ==========================================
+	r.Route("/auth", func(r chi.Router) {
+		// Accept invite - combined email verification + password setting
+		r.Get("/accept-invite", oauthHandler.AcceptInvitePage)
+		r.Post("/accept-invite", oauthHandler.AcceptInviteSubmit)
+
+		// Password reset flow
+		r.Get("/forgot-password", oauthHandler.ForgotPasswordPage)
+		r.Post("/forgot-password", oauthHandler.ForgotPasswordSubmit)
+		r.Get("/reset-password", oauthHandler.ResetPasswordPage)
+		r.Post("/reset-password", oauthHandler.ResetPasswordSubmit)
+	})
+
+	// ==========================================
 	// User-Facing API Routes (Authentication & Profile)
 	// ==========================================
 	r.Route("/api", func(r chi.Router) {
+		r.Use(middleware.JSONContentType())
+
 		// UserInfo endpoint
 		r.With(middleware.AuthMiddleware(tokenService, userRepo)).
 			Get("/userinfo", authHandler.GetUserInfo)
@@ -165,8 +199,11 @@ func newOAuthRouter(
 // This should be exposed on an internal port (e.g., 8081) behind a firewall
 func newAdminRouter(
 	adminHandler *handler.AdminHandler,
+	adminAuthHandler *handler.AdminAuthHandler,
+	dashboardHandler *handler.DashboardHandler,
 	appUsersHandler *handler.AppUsersHandler,
 	appLogsHandler *handler.AppLogsHandler,
+	monitoringHandler *handler.MonitoringHandler,
 	healthHandler *handler.HealthHandler,
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
@@ -184,11 +221,17 @@ func newAdminRouter(
 	r.Use(middleware.CorrelationID())
 	r.Use(middleware.SecurityHeaders())
 
+	// IP Blocking middleware (automatic defense)
+	if config.IPBlockChecker != nil {
+		r.Use(middleware.IPBlockMiddleware(config.IPBlockChecker))
+	}
+
 	// More restrictive CORS for admin API (internal use only)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   config.AllowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Correlation-ID"},
+		ExposedHeaders:   []string{"X-Content-Type-Options", "X-Frame-Options", "Content-Security-Policy", "Strict-Transport-Security", "X-Correlation-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
@@ -203,10 +246,19 @@ func newAdminRouter(
 	r.Get("/health/readiness", healthHandler.Readiness)
 
 	// ==========================================
-	// Admin API Routes
+	// Admin Authentication (public - no auth required)
+	// ==========================================
+	r.With(middleware.RateLimitMiddleware(config.LoginRateLimiter)).
+		Post("/api/admin/login", adminAuthHandler.Login)
+
+	// ==========================================
+	// Admin API Routes (protected)
 	// ==========================================
 	r.Route("/api/admin", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware(tokenService, userRepo))
+
+		// Current admin profile
+		r.Get("/profile", adminAuthHandler.GetProfile)
 
 		// Stats and activity
 		r.Get("/stats", adminHandler.GetStats)
@@ -231,10 +283,77 @@ func newAdminRouter(
 
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", adminHandler.GetUser)
+				r.Get("/apps", adminHandler.GetUserApps) // Get all apps user belongs to
+				r.Get("/sessions", monitoringHandler.GetUserSessions)
 				r.Post("/revoke-tokens", adminHandler.RevokeUserTokens)
 				r.Post("/unlock", adminHandler.UnlockUser)
 			})
 		})
+
+		// Dashboard endpoints
+		r.Route("/dashboard", func(r chi.Router) {
+			r.Get("/stats", dashboardHandler.GetStats)
+			r.Get("/activity", dashboardHandler.GetActivity)
+			r.Get("/health", dashboardHandler.GetHealth)
+			r.Get("/login-trends", dashboardHandler.GetLoginTrends)
+			r.Get("/app-usage", dashboardHandler.GetAppUsage)
+		})
+
+		// Superadmin management
+		r.Route("/superadmins", func(r chi.Router) {
+			r.Get("/", adminHandler.ListSuperadmins)
+			r.Post("/", adminHandler.CreateSuperadmin)
+
+			r.Route("/{id}", func(r chi.Router) {
+				r.Get("/", adminHandler.GetSuperadmin)
+				r.Put("/", adminHandler.UpdateSuperadmin)
+				r.Delete("/", adminHandler.DeleteSuperadmin)
+			})
+		})
+
+		// Security monitoring endpoints
+		r.Route("/security", func(r chi.Router) {
+			r.Get("/events", monitoringHandler.GetSecurityEvents)
+			r.Get("/threats", monitoringHandler.GetThreatMetrics)
+			r.Get("/geo", monitoringHandler.GetGeoAnalytics)
+
+			// IP blocking
+			r.Get("/blocked-ips", monitoringHandler.ListBlockedIPs)
+			r.Post("/blocked-ips", monitoringHandler.BlockIP)
+			r.Delete("/blocked-ips/{id}", monitoringHandler.UnblockIP)
+			r.Get("/ip-reputation/{ip}", monitoringHandler.GetIPReputation)
+		})
+
+		// Real-time event streams
+		r.Route("/events", func(r chi.Router) {
+			r.Get("/stream", monitoringHandler.StreamEvents)
+		})
+
+		// Session management
+		r.Route("/sessions", func(r chi.Router) {
+			r.Get("/", monitoringHandler.ListSessions)
+		})
+
+		// Report generation
+		r.Route("/reports", func(r chi.Router) {
+			r.Post("/security", monitoringHandler.GenerateSecurityReport)
+			r.Get("/{id}", monitoringHandler.GetReportStatus)
+			r.Get("/{id}/download", monitoringHandler.DownloadReport)
+		})
+
+		// Alert management
+		r.Route("/alerts", func(r chi.Router) {
+			r.Get("/rules", monitoringHandler.ListAlertRules)
+			r.Post("/rules", monitoringHandler.CreateAlertRule)
+			r.Put("/rules/{id}", monitoringHandler.UpdateAlertRule)
+			r.Delete("/rules/{id}", monitoringHandler.DeleteAlertRule)
+
+			r.Get("/history", monitoringHandler.GetAlertHistory)
+			r.Post("/{id}/acknowledge", monitoringHandler.AcknowledgeAlert)
+		})
+
+		// Token analytics
+		r.Get("/tokens/stats", monitoringHandler.GetTokenStats)
 	})
 
 	// ==========================================
@@ -272,8 +391,11 @@ func NewRouter(
 	appUsersHandler *handler.AppUsersHandler,
 	profileHandler *handler.ProfileHandler,
 	adminHandler *handler.AdminHandler,
+	adminAuthHandler *handler.AdminAuthHandler,
+	dashboardHandler *handler.DashboardHandler,
 	healthHandler *handler.HealthHandler,
 	appLogsHandler *handler.AppLogsHandler,
+	monitoringHandler *handler.MonitoringHandler,
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
 	userAppRoleRepo repository.UserAppRoleRepository,
@@ -294,6 +416,7 @@ func NewRouter(
 		AllowedOrigins:   config.AllowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Correlation-ID"},
+		ExposedHeaders:   []string{"X-Content-Type-Options", "X-Frame-Options", "Content-Security-Policy", "Strict-Transport-Security", "X-Correlation-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
@@ -305,7 +428,7 @@ func NewRouter(
 	r.Mount("/", oauthRouter)
 
 	// Mount Admin router under /admin prefix (for single-port mode)
-	adminRouter := newAdminRouter(adminHandler, appUsersHandler, appLogsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config)
+	adminRouter := newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config)
 	r.Mount("/manage", adminRouter)
 
 	return r

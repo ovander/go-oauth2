@@ -6,10 +6,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/socrate-auth/go-oauth/internal/dto"
-	"github.com/socrate-auth/go-oauth/internal/model"
-	"github.com/socrate-auth/go-oauth/internal/repository"
-	"github.com/socrate-auth/go-oauth/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovandermoten/go-oauth2/internal/repository"
+	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
 // AuthService defines the authentication service interface
@@ -17,12 +18,14 @@ type AuthService interface {
 	Signup(ctx context.Context, req dto.SignupRequest) (*model.User, string, error)
 	VerifyEmail(ctx context.Context, token string) error
 	Login(ctx context.Context, req dto.LoginRequest) (*dto.LoginResponse, error)
+	AdminLogin(ctx context.Context, req dto.AdminLoginRequest) (*dto.LoginResponse, error)
 	RefreshTokens(ctx context.Context, refreshToken string) (*dto.RefreshResponse, error)
 	Logout(ctx context.Context, userID uint) error
 	RequestPasswordReset(ctx context.Context, email string) (string, error)
 	ResetPassword(ctx context.Context, token, newPassword string) error
+	ChangePassword(ctx context.Context, userID uint, currentPassword, newPassword string) error
 	ValidateInviteToken(ctx context.Context, token string) (*dto.InviteValidationResponse, error)
-	AcceptInvite(ctx context.Context, token, password string) (*dto.LoginResponse, error)
+	AcceptInvite(ctx context.Context, token, name, password string) (*dto.LoginResponse, error)
 }
 
 type authService struct {
@@ -32,6 +35,7 @@ type authService struct {
 	usedTokenRepo     repository.UsedTokenRepository
 	auditRepo         repository.SecurityAuditLogRepository
 	tokenService      *auth.TokenService
+	emailService      EmailService
 	maxFailedAttempts int
 	lockoutDuration   time.Duration
 }
@@ -50,6 +54,15 @@ func NewAuthService(
 	tokenService *auth.TokenService,
 	config AuthServiceConfig,
 ) AuthService {
+	logger.WithFields(logger.Fields{
+		"service":             "auth",
+		"max_failed_attempts": config.MaxFailedAttempts,
+		"lockout_duration":    config.LockoutDuration.String(),
+		"used_token_tracking": false,
+		"audit_logging":       false,
+		"email_enabled":       false,
+	}).Info("✅ Auth service initialized")
+
 	return &authService{
 		userRepo:          userRepo,
 		appRepo:           appRepo,
@@ -71,6 +84,15 @@ func NewAuthServiceWithUsedTokenRepo(
 	tokenService *auth.TokenService,
 	config AuthServiceConfig,
 ) AuthService {
+	logger.WithFields(logger.Fields{
+		"service":             "auth",
+		"max_failed_attempts": config.MaxFailedAttempts,
+		"lockout_duration":    config.LockoutDuration.String(),
+		"used_token_tracking": true,
+		"audit_logging":       false,
+		"email_enabled":       false,
+	}).Info("✅ Auth service initialized")
+
 	return &authService{
 		userRepo:          userRepo,
 		appRepo:           appRepo,
@@ -91,8 +113,18 @@ func NewAuthServiceFull(
 	usedTokenRepo repository.UsedTokenRepository,
 	auditRepo repository.SecurityAuditLogRepository,
 	tokenService *auth.TokenService,
+	emailService EmailService,
 	config AuthServiceConfig,
 ) AuthService {
+	logger.WithFields(logger.Fields{
+		"service":             "auth",
+		"max_failed_attempts": config.MaxFailedAttempts,
+		"lockout_duration":    config.LockoutDuration.String(),
+		"used_token_tracking": usedTokenRepo != nil,
+		"audit_logging":       auditRepo != nil,
+		"email_enabled":       emailService != nil,
+	}).Info("✅ Auth service initialized")
+
 	return &authService{
 		userRepo:          userRepo,
 		appRepo:           appRepo,
@@ -100,6 +132,7 @@ func NewAuthServiceFull(
 		usedTokenRepo:     usedTokenRepo,
 		auditRepo:         auditRepo,
 		tokenService:      tokenService,
+		emailService:      emailService,
 		maxFailedAttempts: config.MaxFailedAttempts,
 		lockoutDuration:   config.LockoutDuration,
 	}
@@ -158,6 +191,18 @@ func (s *authService) Signup(ctx context.Context, req dto.SignupRequest) (*model
 	verifyToken, err := s.tokenService.GenerateEmailVerificationToken(user.Email, user.ID)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to generate verification token: %w", err)
+	}
+
+	// Send verification email
+	if s.emailService != nil {
+		if err := s.emailService.SendVerificationEmail(user.Email, user.Name, verifyToken); err != nil {
+			// Log but don't fail - user can request resend
+			s.logSecurityEvent(ctx, model.SecurityEventEmailSendFailed, &user.ID, &app.ID, false, map[string]interface{}{
+				"email": user.Email,
+				"type":  "verification",
+				"error": err.Error(),
+			})
+		}
 	}
 
 	// Log user registration
@@ -264,6 +309,7 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 		return nil, fmt.Errorf("%w: please verify your email first", ErrUserNotVerified)
 	}
 
+	// App-specific login - requires app_client_id
 	app, err := s.appRepo.FindByClientID(ctx, req.AppClientID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: client_id=%s", ErrAppNotFound, req.AppClientID)
@@ -306,15 +352,115 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 	})
 
 	return &dto.LoginResponse{
-		AccessToken:  tokenSet.AccessToken,
-		RefreshToken: tokenSet.RefreshToken,
-		IDToken:      tokenSet.IDToken,
-		TokenType:    "Bearer",
-		ExpiresIn:    tokenSet.ExpiresIn,
-		UserID:       user.ID,
-		App:          &dto.AppResponse{ID: app.ID, Name: app.Name, ClientID: app.ClientID},
-		Roles:        []string{string(userAppRole.Role)},
-		AppRoles:     appRoles,
+		AccessToken:        tokenSet.AccessToken,
+		RefreshToken:       tokenSet.RefreshToken,
+		IDToken:            tokenSet.IDToken,
+		TokenType:          "Bearer",
+		ExpiresIn:          tokenSet.ExpiresIn,
+		UserID:             user.ID,
+		App:                &dto.AppResponse{ID: app.ID, Name: app.Name, ClientID: app.ClientID},
+		Roles:              []string{string(userAppRole.Role)},
+		AppRoles:           appRoles,
+		MustChangePassword: user.MustChangePassword,
+	}, nil
+}
+
+// AdminLogin authenticates an admin user for the admin portal (no app context)
+func (s *authService) AdminLogin(ctx context.Context, req dto.AdminLoginRequest) (*dto.LoginResponse, error) {
+	user, err := s.userRepo.FindByEmail(ctx, req.Email)
+	if err != nil {
+		return nil, ErrInvalidCredentials
+	}
+
+	if user.IsLocked() {
+		return nil, fmt.Errorf("%w: try again later", ErrAccountLocked)
+	}
+
+	if !auth.CheckPassword(req.Password, user.HashedPassword) {
+		if err := s.userRepo.IncrementFailedLoginAttempts(ctx, user.ID); err != nil {
+			// Log error but continue
+		}
+		user, _ = s.userRepo.FindByID(ctx, user.ID)
+		if user.FailedLoginAttempts >= s.maxFailedAttempts {
+			lockUntil := time.Now().Add(s.lockoutDuration)
+			if err := s.userRepo.LockAccount(ctx, user.ID, &lockUntil); err != nil {
+				// Log error but continue
+			}
+			s.logSecurityEvent(ctx, model.SecurityEventAccountLocked, &user.ID, nil, false, map[string]interface{}{
+				"email":           user.Email,
+				"failed_attempts": user.FailedLoginAttempts,
+				"login_type":      "admin_portal",
+			})
+			return nil, ErrAccountLocked
+		}
+		s.logSecurityEvent(ctx, model.SecurityEventLoginFailed, &user.ID, nil, false, map[string]interface{}{
+			"email":           user.Email,
+			"failed_attempts": user.FailedLoginAttempts,
+			"login_type":      "admin_portal",
+		})
+		return nil, ErrInvalidCredentials
+	}
+
+	if !user.IsVerified {
+		return nil, fmt.Errorf("%w: please verify your email first", ErrUserNotVerified)
+	}
+
+	// Only allow superadmins to use admin portal login
+	// App admins should use the regular /api/auth/login with app_client_id
+	if user.Role != model.UserRoleSuperadmin {
+		s.logSecurityEvent(ctx, model.SecurityEventLoginFailed, &user.ID, nil, false, map[string]interface{}{
+			"email":      user.Email,
+			"login_type": "admin_portal",
+			"reason":     "not_superadmin",
+		})
+		return nil, ErrNotAdmin
+	}
+
+	// Reset failed attempts and update last login
+	if err := s.userRepo.ResetFailedLoginAttempts(ctx, user.ID); err != nil {
+		// Log error but continue
+	}
+	now := time.Now()
+	user.LastLogin = &now
+	user.LastLoginAttempt = &now
+	user.UpdatedAt = now
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		// Log error but continue
+	}
+
+	// Create a virtual "admin-portal" app for token generation
+	adminApp := &model.App{
+		ID:       0,
+		ClientID: "admin-portal",
+		Name:     "Admin Portal",
+	}
+
+	tokenSet, err := s.tokenService.GenerateTokenSet(
+		user, adminApp, string(user.Role),
+		"openid email profile offline_access",
+		make(map[string]string), "", now.Unix(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate tokens: %w", err)
+	}
+
+	// Log successful admin login
+	s.logSecurityEvent(ctx, model.SecurityEventLoginSuccess, &user.ID, nil, true, map[string]interface{}{
+		"email":      user.Email,
+		"login_type": "admin_portal",
+	})
+
+	return &dto.LoginResponse{
+		AccessToken:        tokenSet.AccessToken,
+		RefreshToken:       tokenSet.RefreshToken,
+		IDToken:            tokenSet.IDToken,
+		TokenType:          "Bearer",
+		ExpiresIn:          tokenSet.ExpiresIn,
+		UserID:             user.ID,
+		App:                nil, // No app context for admin portal
+		Roles:              []string{string(user.Role)},
+		AppRoles:           make(map[string]string),
+		MustChangePassword: user.MustChangePassword,
 	}, nil
 }
 
@@ -400,6 +546,17 @@ func (s *authService) RequestPasswordReset(ctx context.Context, email string) (s
 		return "", fmt.Errorf("failed to generate reset token: %w", err)
 	}
 
+	// Send password reset email
+	if s.emailService != nil {
+		if err := s.emailService.SendPasswordResetEmail(user.Email, user.Name, token); err != nil {
+			s.logSecurityEvent(ctx, model.SecurityEventEmailSendFailed, &user.ID, nil, false, map[string]interface{}{
+				"email": user.Email,
+				"type":  "password_reset",
+				"error": err.Error(),
+			})
+		}
+	}
+
 	// Log password reset request
 	s.logSecurityEvent(ctx, model.SecurityEventPasswordResetReq, &user.ID, nil, true, map[string]interface{}{
 		"email": user.Email,
@@ -456,8 +613,11 @@ func (s *authService) ResetPassword(ctx context.Context, token, newPassword stri
 		}
 	}
 
+	now := time.Now()
 	user.HashedPassword = hashedPassword
-	user.UpdatedAt = time.Now()
+	user.MustChangePassword = false // Clear the forced password change flag
+	user.PasswordChangedAt = &now
+	user.UpdatedAt = now
 
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
@@ -471,6 +631,57 @@ func (s *authService) ResetPassword(ctx context.Context, token, newPassword stri
 	// Log password change
 	s.logSecurityEvent(ctx, model.SecurityEventPasswordChanged, &user.ID, nil, true, map[string]interface{}{
 		"email": user.Email,
+	})
+
+	return nil
+}
+
+// ChangePassword changes the password for an authenticated user
+func (s *authService) ChangePassword(ctx context.Context, userID uint, currentPassword, newPassword string) error {
+	user, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("%w: user_id=%d", ErrUserNotFound, userID)
+	}
+
+	// Verify current password
+	if !auth.CheckPassword(currentPassword, user.HashedPassword) {
+		return ErrInvalidCredentials
+	}
+
+	// Validate new password
+	if err := auth.ValidatePassword(newPassword); err != nil {
+		return fmt.Errorf("password validation failed: %w", err)
+	}
+
+	// Ensure new password is different from current
+	if auth.CheckPassword(newPassword, user.HashedPassword) {
+		return fmt.Errorf("new password must be different from current password")
+	}
+
+	hashedPassword, err := auth.HashPassword(newPassword)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	now := time.Now()
+	user.HashedPassword = hashedPassword
+	user.MustChangePassword = false
+	user.PasswordChangedAt = &now
+	user.UpdatedAt = now
+
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	// Invalidate all existing tokens (user must re-login)
+	if err := s.userRepo.IncrementTokenVersion(ctx, user.ID); err != nil {
+		return fmt.Errorf("failed to revoke tokens: %w", err)
+	}
+
+	// Log password change
+	s.logSecurityEvent(ctx, model.SecurityEventPasswordChanged, &user.ID, nil, true, map[string]interface{}{
+		"email":  user.Email,
+		"source": "change_password",
 	})
 
 	return nil
@@ -505,7 +716,7 @@ func (s *authService) ValidateInviteToken(ctx context.Context, token string) (*d
 }
 
 // AcceptInvite accepts an invite and creates/updates a user
-func (s *authService) AcceptInvite(ctx context.Context, token, password string) (*dto.LoginResponse, error) {
+func (s *authService) AcceptInvite(ctx context.Context, token, name, password string) (*dto.LoginResponse, error) {
 	claims, err := s.tokenService.VerifyInviteToken(token)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidToken, err)
@@ -539,12 +750,18 @@ func (s *authService) AcceptInvite(ctx context.Context, token, password string) 
 	}
 
 	now := time.Now()
+	// Use provided name or fall back to email
+	userName := name
+	if userName == "" {
+		userName = claims.Email
+	}
+
 	user, err := s.userRepo.FindByEmail(ctx, claims.Email)
 	if err != nil {
 		// Create new user
 		user = &model.User{
 			Email:          claims.Email,
-			Name:           claims.Email,
+			Name:           userName,
 			HashedPassword: hashedPassword,
 			Role:           model.UserRoleUser,
 			IsVerified:     true,
@@ -564,6 +781,9 @@ func (s *authService) AcceptInvite(ctx context.Context, token, password string) 
 		user.IsVerified = true
 		user.ConfirmedAt = &now
 		user.UpdatedAt = now
+		if userName != "" && userName != claims.Email {
+			user.Name = userName
+		}
 
 		if err := s.userRepo.Update(ctx, user); err != nil {
 			return nil, fmt.Errorf("failed to update user: %w", err)

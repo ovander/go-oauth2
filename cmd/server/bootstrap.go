@@ -4,14 +4,16 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/socrate-auth/go-oauth/config"
-	"github.com/socrate-auth/go-oauth/internal/handler"
-	internalhttp "github.com/socrate-auth/go-oauth/internal/http"
-	"github.com/socrate-auth/go-oauth/internal/middleware"
-	"github.com/socrate-auth/go-oauth/internal/repository"
-	"github.com/socrate-auth/go-oauth/internal/service"
-	"github.com/socrate-auth/go-oauth/internal/shared/auth"
-	"github.com/socrate-auth/go-oauth/pkg/database"
+	"github.com/ovandermoten/go-oauth2/config"
+	"github.com/ovandermoten/go-oauth2/internal/handler"
+	internalhttp "github.com/ovandermoten/go-oauth2/internal/http"
+	"github.com/ovandermoten/go-oauth2/internal/middleware"
+	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovandermoten/go-oauth2/internal/repository"
+	"github.com/ovandermoten/go-oauth2/internal/service"
+	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/pkg/database"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 	"gorm.io/gorm"
 )
 
@@ -30,6 +32,8 @@ type App struct {
 	codeStore         *auth.CodeStore
 	loginRateLimiter  *middleware.RateLimiter
 	signupRateLimiter *middleware.RateLimiter
+	autoDefense       *service.AutoDefenseService
+	ipBlockChecker    *middleware.IPBlockChecker
 }
 
 // Stop gracefully stops all background goroutines
@@ -43,6 +47,12 @@ func (a *App) Stop() {
 	if a.signupRateLimiter != nil {
 		a.signupRateLimiter.Stop()
 	}
+	if a.autoDefense != nil {
+		a.autoDefense.Stop()
+	}
+	if a.ipBlockChecker != nil {
+		a.ipBlockChecker.Stop()
+	}
 }
 
 func Bootstrap(cfg *config.Config) *App {
@@ -50,6 +60,38 @@ func Bootstrap(cfg *config.Config) *App {
 	// Database
 	// ==========================================
 	db := database.Connect(cfg.DatabaseURL, cfg.DBPoolSize)
+
+	// ==========================================
+	// Pre-migration fixes for schema changes
+	// ==========================================
+	// Fix: Rename inserted_at to blocked_at in blocked_ips table if it exists
+	if db.Migrator().HasTable("blocked_ips") && db.Migrator().HasColumn(&model.BlockedIP{}, "inserted_at") {
+		if err := db.Migrator().RenameColumn(&model.BlockedIP{}, "inserted_at", "blocked_at"); err != nil {
+			logger.Warnf("Could not rename inserted_at to blocked_at: %v", err)
+		} else {
+			logger.Info("✅ Renamed inserted_at to blocked_at in blocked_ips table")
+		}
+	}
+
+	// ==========================================
+	// Auto-migrate database schema
+	// ==========================================
+	if err := db.AutoMigrate(
+		&model.User{},
+		&model.App{},
+		&model.UserAppRole{},
+		&model.AdminLog{},
+		&model.AppActivityLog{},
+		&model.AuthorizationCode{},
+		&model.UsedToken{},
+		&model.SecurityAuditLog{},
+		&model.AlertRule{},
+		&model.TriggeredAlert{},
+		&model.BlockedIP{},
+	); err != nil {
+		logger.Fatalf("Failed to auto-migrate database: %v", err)
+	}
+	logger.Info("✅ Database schema migrated successfully")
 
 	// ==========================================
 	// Key Manager
@@ -83,6 +125,11 @@ func Bootstrap(cfg *config.Config) *App {
 	usedTokenRepo := repository.NewUsedTokenRepository(db)
 	securityAuditRepo := repository.NewSecurityAuditLogRepository(db)
 
+	// Monitoring repositories
+	alertRuleRepo := repository.NewAlertRuleRepository(db)
+	triggeredAlertRepo := repository.NewTriggeredAlertRepository(db)
+	blockedIPRepo := repository.NewBlockedIPRepository(db)
+
 	// ==========================================
 	// Code Store (database-backed with cleanup)
 	// ==========================================
@@ -100,6 +147,23 @@ func Bootstrap(cfg *config.Config) *App {
 	adminLogService := service.NewAdminLogService(adminLogRepo)
 	appActivityLogService := service.NewAppActivityLogService(appActivityLogRepo)
 
+	// Email service (nil if SMTP not configured)
+	var emailService service.EmailService
+	if cfg.SMTPHost != "" {
+		emailService = service.NewEmailService(service.SMTPConfig{
+			Host:     cfg.SMTPHost,
+			Port:     cfg.SMTPPort,
+			Username: cfg.SMTPUsername,
+			Password: cfg.SMTPPassword,
+			Security: cfg.SMTPSecurity,
+			From:     cfg.FromEmail,
+			BaseURL:  cfg.OAuthIssuer,
+		})
+		logger.Info("✅ Email service configured with SMTP")
+	} else {
+		logger.Info("⚠️  Email service not configured (SMTP_HOST not set)")
+	}
+
 	// Use auth service with full features (single-use tokens + audit logging)
 	authService := service.NewAuthServiceFull(
 		userRepo,
@@ -108,6 +172,7 @@ func Bootstrap(cfg *config.Config) *App {
 		usedTokenRepo,
 		securityAuditRepo,
 		tokenService,
+		emailService,
 		service.AuthServiceConfig{
 			MaxFailedAttempts: cfg.MaxFailedAttempts,
 			LockoutDuration:   time.Duration(cfg.LockoutDurationSecs) * time.Second,
@@ -126,18 +191,68 @@ func Bootstrap(cfg *config.Config) *App {
 		tokenService,
 		keyManager,
 		cfg.OAuthIssuer,
+		securityAuditRepo,
 	)
+
+	// ==========================================
+	// Template Service
+	// ==========================================
+	templateService := service.NewTemplateService()
+
+	// ==========================================
+	// GeoIP Service
+	// ==========================================
+	var geoIPService service.GeoIPService
+	if cfg.GeoIPCityDBPath != "" {
+		geoIPService = service.NewGeoIPService(service.GeoIPConfig{
+			CityDBPath: cfg.GeoIPCityDBPath,
+			ASNDBPath:  cfg.GeoIPASNDBPath,
+		})
+		logger.Info("GeoIP service initialized")
+	} else {
+		geoIPService = service.NewGeoIPServiceDisabled()
+		logger.Info("GeoIP service running in fallback mode (no database configured)")
+	}
 
 	// ==========================================
 	// Handlers
 	// ==========================================
-	authHandler := handler.NewAuthHandler(authService, cfg.Environment, cfg.OAuthIssuer)
-	oauthHandler := handler.NewOAuthHandler(oauthService, cfg.OAuthIssuer)
-	appUsersHandler := handler.NewAppUsersHandler(userService, userAppRoleService, adminLogService, tokenService)
+	authHandler := handler.NewAuthHandler(authService, userService, cfg.Environment, cfg.OAuthIssuer)
+	oauthHandler := handler.NewOAuthHandler(oauthService, authService, appService, templateService, cfg.OAuthIssuer)
+	appUsersHandler := handler.NewAppUsersHandler(userService, userAppRoleService, appService, adminLogService, emailService, tokenService)
 	profileHandler := handler.NewProfileHandler(userService)
-	adminHandler := handler.NewAdminHandler(appService, userService, adminLogService, appActivityLogService)
+	adminHandler := handler.NewAdminHandler(appService, userService, userAppRoleService, adminLogService, appActivityLogService, emailService)
+	adminAuthHandler := handler.NewAdminAuthHandler(authService, userService)
+	dashboardHandler := handler.NewDashboardHandler(db, userRepo, appRepo, userAppRoleRepo)
 	healthHandler := handler.NewHealthHandler(db)
 	appLogsHandler := handler.NewAppLogsHandler(appActivityLogService)
+	monitoringHandler := handler.NewMonitoringHandler(db, alertRuleRepo, triggeredAlertRepo, blockedIPRepo, securityAuditRepo, geoIPService)
+
+	// ==========================================
+	// Auto-Defense System (automatic IP blocking)
+	// ==========================================
+	autoDefense := service.NewAutoDefenseService(
+		blockedIPRepo,
+		securityAuditRepo,
+		service.DefaultAutoDefenseConfig(),
+	)
+	logger.Info("✅ Auto-defense system initialized")
+
+	// IP Block Checker (middleware cache)
+	ipBlockChecker := middleware.NewIPBlockChecker(
+		blockedIPRepo,
+		middleware.DefaultIPBlockCheckerConfig(),
+	)
+	logger.Info("✅ IP block checker initialized")
+
+	// Connect auto-defense to IP block checker for immediate cache invalidation
+	autoDefense.SetOnBlockCallback(func(ip string) {
+		ipBlockChecker.InvalidateCache()
+	})
+
+	// Wire auto-defense to auth handlers
+	authHandler.SetAutoDefenseService(autoDefense)
+	adminAuthHandler.SetAutoDefenseService(autoDefense)
 
 	// ==========================================
 	// Rate Limiters (with graceful shutdown support)
@@ -163,6 +278,7 @@ func Bootstrap(cfg *config.Config) *App {
 		AllowedOrigins:    []string{"*"}, // Configure in production
 		LoginRateLimiter:  loginRateLimiter,
 		SignupRateLimiter: signupRateLimiter,
+		IPBlockChecker:    ipBlockChecker,
 	}
 
 	// ==========================================
@@ -175,8 +291,11 @@ func Bootstrap(cfg *config.Config) *App {
 		appUsersHandler,
 		profileHandler,
 		adminHandler,
+		adminAuthHandler,
+		dashboardHandler,
 		healthHandler,
 		appLogsHandler,
+		monitoringHandler,
 		tokenService,
 		userRepo,
 		userAppRoleRepo,
@@ -190,8 +309,11 @@ func Bootstrap(cfg *config.Config) *App {
 		appUsersHandler,
 		profileHandler,
 		adminHandler,
+		adminAuthHandler,
+		dashboardHandler,
 		healthHandler,
 		appLogsHandler,
+		monitoringHandler,
 		tokenService,
 		userRepo,
 		userAppRoleRepo,
@@ -206,5 +328,7 @@ func Bootstrap(cfg *config.Config) *App {
 		codeStore:         codeStore,
 		loginRateLimiter:  loginRateLimiter,
 		signupRateLimiter: signupRateLimiter,
+		autoDefense:       autoDefense,
+		ipBlockChecker:    ipBlockChecker,
 	}
 }

@@ -10,7 +10,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/socrate-auth/go-oauth/internal/model"
+	"github.com/ovandermoten/go-oauth2/internal/model"
 )
 
 // Token-related errors
@@ -83,15 +83,16 @@ type RefreshTokenClaims struct {
 // IDTokenClaims represents ID token claims (OpenID Connect)
 type IDTokenClaims struct {
 	jwt.RegisteredClaims
-	Email             string `json:"email,omitempty"`
-	EmailVerified     bool   `json:"email_verified,omitempty"`
-	Name              string `json:"name,omitempty"`
-	PreferredUsername string `json:"preferred_username,omitempty"`
-	AuthTime          int64  `json:"auth_time,omitempty"`
-	Role              string `json:"role,omitempty"`
-	Type              string `json:"type"`
-	Nonce             string `json:"nonce,omitempty"`
-	AtHash            string `json:"at_hash,omitempty"`
+	Email             string            `json:"email,omitempty"`
+	EmailVerified     bool              `json:"email_verified,omitempty"`
+	Name              string            `json:"name,omitempty"`
+	PreferredUsername string            `json:"preferred_username,omitempty"`
+	AuthTime          int64             `json:"auth_time,omitempty"`
+	Role              string            `json:"role,omitempty"`               // App-scoped role (user, admin, etc.)
+	AppRoles          map[string]string `json:"app_roles,omitempty"`          // All app roles for this user
+	Type              string            `json:"type"`
+	Nonce             string            `json:"nonce,omitempty"`
+	AtHash            string            `json:"at_hash,omitempty"`
 }
 
 // EmailTokenClaims represents email verification/reset token claims
@@ -139,8 +140,8 @@ func (ts *TokenService) GenerateTokenSet(user *model.User, app *model.App, role 
 		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
 
-	// Generate ID token
-	idToken, err := ts.generateIDToken(user, app, nonce, now, authTime, accessToken)
+	// Generate ID token with app-scoped role (not global user.Role)
+	idToken, err := ts.generateIDToken(user, app, role, appRoles, nonce, now, authTime, accessToken)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate ID token: %w", err)
 	}
@@ -211,7 +212,7 @@ func (ts *TokenService) generateRefreshToken(user *model.User, app *model.App, r
 }
 
 // generateIDToken generates an OpenID Connect ID token
-func (ts *TokenService) generateIDToken(user *model.User, app *model.App, nonce string, now time.Time, authTime int64, accessToken string) (string, error) {
+func (ts *TokenService) generateIDToken(user *model.User, app *model.App, role string, appRoles map[string]string, nonce string, now time.Time, authTime int64, accessToken string) (string, error) {
 	// Calculate at_hash (access token hash)
 	atHash := ts.calculateAtHash(accessToken)
 
@@ -230,7 +231,8 @@ func (ts *TokenService) generateIDToken(user *model.User, app *model.App, nonce 
 		Name:              user.Name,
 		PreferredUsername: user.Email,
 		AuthTime:          authTime,
-		Role:              string(user.Role),
+		Role:              role,     // App-scoped role (e.g., "admin", "user")
+		AppRoles:          appRoles, // All app roles for this user
 		Type:              "id_token",
 		Nonce:             nonce,
 		AtHash:            atHash,

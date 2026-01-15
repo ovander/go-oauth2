@@ -11,7 +11,7 @@ type App struct {
 	ClientSecretHash string    `gorm:"column:client_secret_hash" json:"-"`
 	Active           bool      `gorm:"default:true" json:"active"`
 	URL              *string   `json:"url,omitempty"`
-	RedirectURIs     []string  `gorm:"type:text[];column:redirect_uris" json:"redirect_uris"`
+	RedirectURIs     StringArray `gorm:"type:text[];column:redirect_uris" json:"redirect_uris"`
 	OwnerID          *uint     `gorm:"column:owner_id" json:"owner_id,omitempty"`
 	Owner            *User     `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
 	CreatedAt        time.Time `gorm:"column:inserted_at" json:"created_at"`

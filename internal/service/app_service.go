@@ -7,10 +7,11 @@ import (
 	"errors"
 	"time"
 
-	"github.com/socrate-auth/go-oauth/internal/dto"
-	"github.com/socrate-auth/go-oauth/internal/model"
-	"github.com/socrate-auth/go-oauth/internal/repository"
-	"github.com/socrate-auth/go-oauth/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovandermoten/go-oauth2/internal/repository"
+	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 	"gorm.io/gorm"
 )
 
@@ -32,6 +33,10 @@ type appService struct {
 }
 
 func NewAppService(repo repository.AppRepository) AppService {
+	logger.WithFields(logger.Fields{
+		"service": "app",
+	}).Info("✅ App service initialized")
+
 	return &appService{repo: repo}
 }
 
@@ -97,7 +102,7 @@ func (s *appService) Create(ctx context.Context, req dto.CreateAppRequest, owner
 		ClientSecretHash: clientSecretHash,
 		Active:           true,
 		URL:              req.URL,
-		RedirectURIs:     req.RedirectURIs,
+		RedirectURIs:     model.StringArray(req.RedirectURIs),
 		OwnerID:          &ownerID,
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
@@ -123,7 +128,7 @@ func (s *appService) Update(ctx context.Context, id uint, req dto.UpdateAppReque
 		app.URL = req.URL
 	}
 	if req.RedirectURIs != nil {
-		app.RedirectURIs = req.RedirectURIs
+		app.RedirectURIs = model.StringArray(req.RedirectURIs)
 	}
 	if req.Active != nil {
 		app.Active = *req.Active

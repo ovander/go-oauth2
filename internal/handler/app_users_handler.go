@@ -8,30 +8,36 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/socrate-auth/go-oauth/internal/dto"
-	"github.com/socrate-auth/go-oauth/internal/middleware"
-	"github.com/socrate-auth/go-oauth/internal/model"
-	"github.com/socrate-auth/go-oauth/internal/service"
-	"github.com/socrate-auth/go-oauth/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovandermoten/go-oauth2/internal/middleware"
+	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovandermoten/go-oauth2/internal/service"
+	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 )
 
 type AppUsersHandler struct {
 	userService        service.UserService
 	userAppRoleService service.UserAppRoleService
+	appService         service.AppService
 	adminLogService    service.AdminLogService
+	emailService       service.EmailService
 	tokenService       *auth.TokenService
 }
 
 func NewAppUsersHandler(
 	userService service.UserService,
 	userAppRoleService service.UserAppRoleService,
+	appService service.AppService,
 	adminLogService service.AdminLogService,
+	emailService service.EmailService,
 	tokenService *auth.TokenService,
 ) *AppUsersHandler {
 	return &AppUsersHandler{
 		userService:        userService,
 		userAppRoleService: userAppRoleService,
+		appService:         appService,
 		adminLogService:    adminLogService,
+		emailService:       emailService,
 		tokenService:       tokenService,
 	}
 }
@@ -183,6 +189,19 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	// Send invite email
+	if h.emailService != nil {
+		app, appErr := h.appService.GetByID(r.Context(), appID)
+		appName := "the application"
+		if appErr == nil && app != nil {
+			appName = app.Name
+		}
+		if emailErr := h.emailService.SendInviteEmail(user.Email, appName, inviteToken); emailErr != nil {
+			// Log error but don't fail the operation
+			// Email sending is best-effort
+		}
 	}
 
 	// Mark invite as sent

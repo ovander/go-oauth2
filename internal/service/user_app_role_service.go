@@ -5,8 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/socrate-auth/go-oauth/internal/model"
-	"github.com/socrate-auth/go-oauth/internal/repository"
+	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovandermoten/go-oauth2/internal/repository"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 	"gorm.io/gorm"
 )
 
@@ -26,6 +27,10 @@ type userAppRoleService struct {
 }
 
 func NewUserAppRoleService(repo repository.UserAppRoleRepository) UserAppRoleService {
+	logger.WithFields(logger.Fields{
+		"service": "user_app_role",
+	}).Info("✅ User app role service initialized")
+
 	return &userAppRoleService{repo: repo}
 }
 

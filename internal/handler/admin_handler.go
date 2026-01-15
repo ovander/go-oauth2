@@ -6,42 +6,51 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/socrate-auth/go-oauth/internal/dto"
-	"github.com/socrate-auth/go-oauth/internal/middleware"
-	"github.com/socrate-auth/go-oauth/internal/model"
-	"github.com/socrate-auth/go-oauth/internal/service"
+	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
+	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovandermoten/go-oauth2/internal/middleware"
+	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovandermoten/go-oauth2/internal/service"
 )
 
 type AdminHandler struct {
 	appService         service.AppService
 	userService        service.UserService
+	userAppRoleService service.UserAppRoleService
 	adminLogService    service.AdminLogService
 	appActivityService service.AppActivityLogService
+	emailService       service.EmailService
 }
 
 func NewAdminHandler(
 	appService service.AppService,
 	userService service.UserService,
+	userAppRoleService service.UserAppRoleService,
 	adminLogService service.AdminLogService,
 	appActivityService service.AppActivityLogService,
+	emailService service.EmailService,
 ) *AdminHandler {
 	return &AdminHandler{
 		appService:         appService,
 		userService:        userService,
+		userAppRoleService: userAppRoleService,
 		adminLogService:    adminLogService,
 		appActivityService: appActivityService,
+		emailService:       emailService,
 	}
 }
 
 // GET /api/admin/apps
+// Superadmin can see ALL apps in the system
 func (h *AdminHandler) ListApps(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	_, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		writeError(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	apps, err := h.appService.GetByOwnerID(r.Context(), userID)
+	// Superadmin sees all apps
+	apps, err := h.appService.List(r.Context())
 	if err != nil {
 		writeError(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -88,7 +97,7 @@ func (h *AdminHandler) GetApp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check ownership or global admin
-	user, _ := r.Context().Value("current_user").(*model.User)
+	user, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
 	if app.OwnerID != nil && *app.OwnerID != userID {
 		if user == nil || !user.IsGlobalAdmin() {
 			writeError(w, "forbidden", http.StatusForbidden)
@@ -133,6 +142,15 @@ func (h *AdminHandler) CreateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Send credentials email to admin
+	if h.emailService != nil {
+		admin, adminErr := h.userService.GetByID(r.Context(), userID)
+		if adminErr == nil && admin != nil {
+			// Email sending is best-effort, don't fail the request if it fails
+			_ = h.emailService.SendAppCredentialsEmail(admin.Email, admin.Name, app.Name, app.ClientID, clientSecret)
+		}
+	}
+
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(dto.AppWithSecretResponse{
 		AppResponse: dto.AppResponse{
@@ -170,7 +188,7 @@ func (h *AdminHandler) UpdateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, _ := r.Context().Value("current_user").(*model.User)
+	user, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
 	if app.OwnerID != nil && *app.OwnerID != userID {
 		if user == nil || !user.IsGlobalAdmin() {
 			writeError(w, "forbidden", http.StatusForbidden)
@@ -223,7 +241,7 @@ func (h *AdminHandler) DeleteApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, _ := r.Context().Value("current_user").(*model.User)
+	user, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
 	if app.OwnerID != nil && *app.OwnerID != userID {
 		if user == nil || !user.IsGlobalAdmin() {
 			writeError(w, "forbidden", http.StatusForbidden)
@@ -260,7 +278,7 @@ func (h *AdminHandler) RotateSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, _ := r.Context().Value("current_user").(*model.User)
+	user, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
 	if app.OwnerID != nil && *app.OwnerID != userID {
 		if user == nil || !user.IsGlobalAdmin() {
 			writeError(w, "forbidden", http.StatusForbidden)
@@ -279,6 +297,14 @@ func (h *AdminHandler) RotateSecret(w http.ResponseWriter, r *http.Request) {
 		h.appActivityService.LogEvent(r.Context(), uint(appID), &userID, model.EventTypeSecretRotated, model.EventCategoryAdmin, map[string]interface{}{
 			"rotated_by": userID,
 		}, middleware.GetClientIP(r), r.UserAgent(), true)
+	}
+
+	// Send new credentials email to admin
+	if h.emailService != nil {
+		admin, adminErr := h.userService.GetByID(r.Context(), userID)
+		if adminErr == nil && admin != nil {
+			_ = h.emailService.SendAppCredentialsEmail(admin.Email, admin.Name, updatedApp.Name, updatedApp.ClientID, newSecret)
+		}
 	}
 
 	json.NewEncoder(w).Encode(dto.AppWithSecretResponse{
@@ -329,7 +355,7 @@ func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if user is global admin
-	user, _ := r.Context().Value("current_user").(*model.User)
+	user, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
 	if user == nil || !user.IsGlobalAdmin() {
 		writeError(w, "forbidden: global admin required", http.StatusForbidden)
 		return
@@ -379,7 +405,7 @@ func (h *AdminHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if user is global admin
-	currentUser, _ := r.Context().Value("current_user").(*model.User)
+	currentUser, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
 	if currentUser == nil || !currentUser.IsGlobalAdmin() {
 		writeError(w, "forbidden: global admin required", http.StatusForbidden)
 		return
@@ -407,6 +433,64 @@ func (h *AdminHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GET /api/admin/users/:id/apps
+// Returns all apps this user belongs to with their roles
+func (h *AdminHandler) GetUserApps(w http.ResponseWriter, r *http.Request) {
+	_, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Check if user is global admin
+	currentUser, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
+	if currentUser == nil || !currentUser.IsGlobalAdmin() {
+		writeError(w, "forbidden: global admin required", http.StatusForbidden)
+		return
+	}
+
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, "invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	// Get user info
+	user, err := h.userService.GetByID(r.Context(), uint(userID))
+	if err != nil {
+		writeError(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	// Get user's app memberships
+	roles, err := h.userAppRoleService.GetUserRoles(r.Context(), uint(userID))
+	if err != nil {
+		writeError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	memberships := make([]dto.UserAppMembershipResponse, 0, len(roles))
+	for _, role := range roles {
+		if role.App != nil {
+			memberships = append(memberships, dto.UserAppMembershipResponse{
+				AppID:     role.AppID,
+				AppName:   role.App.Name,
+				ClientID:  role.App.ClientID,
+				Role:      string(role.Role),
+				CreatedAt: role.CreatedAt,
+			})
+		}
+	}
+
+	json.NewEncoder(w).Encode(dto.UserAppMembershipsResponse{
+		UserID:      user.ID,
+		Email:       user.Email,
+		Name:        user.Name,
+		Memberships: memberships,
+		TotalCount:  len(memberships),
+	})
+}
+
 // POST /api/admin/users/:id/revoke-tokens
 func (h *AdminHandler) RevokeUserTokens(w http.ResponseWriter, r *http.Request) {
 	adminID, ok := middleware.GetUserIDFromContext(r.Context())
@@ -416,7 +500,7 @@ func (h *AdminHandler) RevokeUserTokens(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Check if user is global admin
-	currentUser, _ := r.Context().Value("current_user").(*model.User)
+	currentUser, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
 	if currentUser == nil || !currentUser.IsGlobalAdmin() {
 		writeError(w, "forbidden: global admin required", http.StatusForbidden)
 		return
@@ -462,7 +546,7 @@ func (h *AdminHandler) UnlockUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if user is global admin
-	currentUser, _ := r.Context().Value("current_user").(*model.User)
+	currentUser, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
 	if currentUser == nil || !currentUser.IsGlobalAdmin() {
 		writeError(w, "forbidden: global admin required", http.StatusForbidden)
 		return
@@ -541,4 +625,235 @@ func (h *AdminHandler) GetActivity(w http.ResponseWriter, r *http.Request) {
 		Page:       page,
 		PageSize:   pageSize,
 	})
+}
+
+// ==========================================
+// Superadmin Management
+// ==========================================
+
+// GET /api/admin/superadmins
+func (h *AdminHandler) ListSuperadmins(w http.ResponseWriter, r *http.Request) {
+	_, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	superadmins, err := h.userService.ListSuperadmins(r.Context())
+	if err != nil {
+		writeError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := make([]dto.SuperadminResponse, len(superadmins))
+	for i, u := range superadmins {
+		response[i] = dto.SuperadminResponse{
+			ID:           u.ID,
+			Email:        u.Email,
+			Name:         u.Name,
+			IsVerified:   u.IsVerified,
+			LastLogin:    u.LastLogin,
+			FailedLogins: u.FailedLoginAttempts,
+			LockedUntil:  u.LockedUntil,
+			CreatedAt:    u.CreatedAt,
+			UpdatedAt:    u.UpdatedAt,
+		}
+	}
+
+	json.NewEncoder(w).Encode(dto.SuperadminListResponse{
+		Superadmins: response,
+		TotalCount:  int64(len(superadmins)),
+	})
+}
+
+// GET /api/admin/superadmins/:id
+func (h *AdminHandler) GetSuperadmin(w http.ResponseWriter, r *http.Request) {
+	_, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, "invalid superadmin ID", http.StatusBadRequest)
+		return
+	}
+
+	user, err := h.userService.GetByID(r.Context(), uint(userID))
+	if err != nil {
+		writeError(w, "superadmin not found", http.StatusNotFound)
+		return
+	}
+
+	// Verify the user is a superadmin
+	if user.Role != model.UserRoleSuperadmin {
+		writeError(w, "user is not a superadmin", http.StatusNotFound)
+		return
+	}
+
+	json.NewEncoder(w).Encode(dto.SuperadminResponse{
+		ID:           user.ID,
+		Email:        user.Email,
+		Name:         user.Name,
+		IsVerified:   user.IsVerified,
+		LastLogin:    user.LastLogin,
+		FailedLogins: user.FailedLoginAttempts,
+		LockedUntil:  user.LockedUntil,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
+	})
+}
+
+// POST /api/admin/superadmins
+func (h *AdminHandler) CreateSuperadmin(w http.ResponseWriter, r *http.Request) {
+	adminID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req dto.CreateSuperadminRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if req.Email == "" || req.Name == "" || req.Password == "" {
+		writeError(w, "email, name, and password are required", http.StatusBadRequest)
+		return
+	}
+
+	user, err := h.userService.CreateSuperadmin(r.Context(), req)
+	if err != nil {
+		if err == service.ErrEmailAlreadyExists {
+			writeError(w, err.Error(), http.StatusConflict)
+			return
+		}
+		writeError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Log the action
+	if h.adminLogService != nil {
+		h.adminLogService.LogAction(r.Context(), adminID, nil, &user.ID, model.AdminActionCreateSuperadmin, map[string]interface{}{
+			"email": req.Email,
+		})
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(dto.SuperadminResponse{
+		ID:           user.ID,
+		Email:        user.Email,
+		Name:         user.Name,
+		IsVerified:   user.IsVerified,
+		LastLogin:    user.LastLogin,
+		FailedLogins: user.FailedLoginAttempts,
+		LockedUntil:  user.LockedUntil,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
+	})
+}
+
+// PUT /api/admin/superadmins/:id
+func (h *AdminHandler) UpdateSuperadmin(w http.ResponseWriter, r *http.Request) {
+	adminID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, "invalid superadmin ID", http.StatusBadRequest)
+		return
+	}
+
+	var req dto.UpdateSuperadminRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	user, err := h.userService.UpdateSuperadmin(r.Context(), uint(userID), req)
+	if err != nil {
+		if err == service.ErrUserNotFound {
+			writeError(w, "superadmin not found", http.StatusNotFound)
+			return
+		}
+		if err == service.ErrNotAdmin {
+			writeError(w, "user is not a superadmin", http.StatusBadRequest)
+			return
+		}
+		if err == service.ErrEmailAlreadyExists {
+			writeError(w, err.Error(), http.StatusConflict)
+			return
+		}
+		writeError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Log the action
+	if h.adminLogService != nil {
+		h.adminLogService.LogAction(r.Context(), adminID, nil, &user.ID, model.AdminActionUpdateSuperadmin, map[string]interface{}{
+			"email": user.Email,
+		})
+	}
+
+	json.NewEncoder(w).Encode(dto.SuperadminResponse{
+		ID:           user.ID,
+		Email:        user.Email,
+		Name:         user.Name,
+		IsVerified:   user.IsVerified,
+		LastLogin:    user.LastLogin,
+		FailedLogins: user.FailedLoginAttempts,
+		LockedUntil:  user.LockedUntil,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
+	})
+}
+
+// DELETE /api/admin/superadmins/:id
+func (h *AdminHandler) DeleteSuperadmin(w http.ResponseWriter, r *http.Request) {
+	adminID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, "invalid superadmin ID", http.StatusBadRequest)
+		return
+	}
+
+	// Get user info for logging before deletion
+	user, _ := h.userService.GetByID(r.Context(), uint(userID))
+
+	err = h.userService.DeleteSuperadmin(r.Context(), uint(userID), adminID)
+	if err != nil {
+		switch err {
+		case service.ErrUserNotFound:
+			writeError(w, "superadmin not found", http.StatusNotFound)
+		case service.ErrNotAdmin:
+			writeError(w, "user is not a superadmin", http.StatusBadRequest)
+		case service.ErrCannotDeleteSelf:
+			writeError(w, err.Error(), http.StatusForbidden)
+		case service.ErrCannotDeleteLastSuperadmin:
+			writeError(w, err.Error(), http.StatusForbidden)
+		default:
+			writeError(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Log the action
+	if h.adminLogService != nil && user != nil {
+		targetID := uint(userID)
+		h.adminLogService.LogAction(r.Context(), adminID, nil, &targetID, model.AdminActionDeleteSuperadmin, map[string]interface{}{
+			"email": user.Email,
+		})
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

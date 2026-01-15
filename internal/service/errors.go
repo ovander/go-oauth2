@@ -5,11 +5,14 @@ import "errors"
 // Common service errors
 var (
 	// User errors
-	ErrUserNotFound       = errors.New("user not found")
-	ErrEmailAlreadyExists = errors.New("email already exists")
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrAccountLocked      = errors.New("account is locked")
-	ErrUserNotVerified    = errors.New("user email not verified")
+	ErrUserNotFound               = errors.New("user not found")
+	ErrEmailAlreadyExists         = errors.New("email already exists")
+	ErrInvalidCredentials         = errors.New("invalid credentials")
+	ErrAccountLocked              = errors.New("account is locked")
+	ErrUserNotVerified            = errors.New("user email not verified")
+	ErrNotAdmin                   = errors.New("admin access required")
+	ErrCannotDeleteSelf           = errors.New("cannot delete your own account")
+	ErrCannotDeleteLastSuperadmin = errors.New("cannot delete the last superadmin")
 
 	// App errors
 	ErrAppNotFound        = errors.New("app not found")

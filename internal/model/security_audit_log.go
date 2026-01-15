@@ -23,6 +23,7 @@ const (
 	SecurityEventUserRegistered     SecurityEventType = "user_registered"
 	SecurityEventUserInvited        SecurityEventType = "user_invited"
 	SecurityEventInviteAccepted     SecurityEventType = "invite_accepted"
+	SecurityEventEmailSendFailed    SecurityEventType = "email_send_failed"
 
 	// Token events
 	SecurityEventTokenIssued        SecurityEventType = "token_issued"

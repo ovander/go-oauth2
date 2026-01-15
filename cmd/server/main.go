@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ovandermoten/go-oauth2/config"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
 func main() {
@@ -18,7 +18,7 @@ func main() {
 
 	// Validate configuration (fails on critical missing settings in production)
 	if err := cfg.Validate(); err != nil {
-		log.Fatalf("Configuration validation failed: %v", err)
+		logger.Fatalf("Configuration validation failed: %v", err)
 	}
 
 	// Initialize application
@@ -48,13 +48,13 @@ func startSinglePortMode(cfg *config.Config, app *App) {
 	}
 
 	go func() {
-		log.Printf("🚀 OAuth 2.0 Server starting on port %s (single-port mode)", cfg.Port)
-		log.Printf("📍 Issuer: %s", cfg.OAuthIssuer)
-		log.Printf("🌍 Environment: %s", cfg.Environment)
-		log.Printf("⚠️  Admin API available at /manage/api/admin/* (consider using dual-port mode for production)")
+		logger.Infof("🚀 OAuth 2.0 Server starting on port %s (single-port mode)", cfg.Port)
+		logger.Infof("📍 Issuer: %s", cfg.OAuthIssuer)
+		logger.Infof("🌍 Environment: %s", cfg.Environment)
+		logger.Warnf("⚠️  Admin API available at /manage/api/admin/* (consider using dual-port mode for production)")
 
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to start server: %v", err)
+			logger.Fatalf("Failed to start server: %v", err)
 		}
 	}()
 
@@ -84,22 +84,22 @@ func startDualPortMode(cfg *config.Config, app *App) {
 
 	// Start OAuth server
 	go func() {
-		log.Printf("🚀 OAuth 2.0 Server starting on port %s (public)", cfg.Port)
-		log.Printf("📍 Issuer: %s", cfg.OAuthIssuer)
-		log.Printf("🌍 Environment: %s", cfg.Environment)
+		logger.Infof("🚀 OAuth 2.0 Server starting on port %s (public)", cfg.Port)
+		logger.Infof("📍 Issuer: %s", cfg.OAuthIssuer)
+		logger.Infof("🌍 Environment: %s", cfg.Environment)
 
 		if err := oauthSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to start OAuth server: %v", err)
+			logger.Fatalf("Failed to start OAuth server: %v", err)
 		}
 	}()
 
 	// Start Admin server
 	go func() {
-		log.Printf("🔒 Admin API starting on port %s (internal)", cfg.AdminPort)
-		log.Printf("   Ensure this port is firewalled from public access!")
+		logger.Infof("🔒 Admin API starting on port %s (internal)", cfg.AdminPort)
+		logger.Info("   Ensure this port is firewalled from public access!")
 
 		if err := adminSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to start Admin server: %v", err)
+			logger.Fatalf("Failed to start Admin server: %v", err)
 		}
 	}()
 
@@ -113,7 +113,7 @@ func waitForShutdown(srv1, srv2 *http.Server, app *App) {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("🛑 Shutting down servers...")
+	logger.Info("🛑 Shutting down servers...")
 
 	// Graceful shutdown with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -121,18 +121,18 @@ func waitForShutdown(srv1, srv2 *http.Server, app *App) {
 
 	// Shutdown first server
 	if err := srv1.Shutdown(ctx); err != nil {
-		log.Printf("Server 1 forced to shutdown: %v", err)
+		logger.Warnf("Server 1 forced to shutdown: %v", err)
 	}
 
 	// Shutdown second server if present
 	if srv2 != nil {
 		if err := srv2.Shutdown(ctx); err != nil {
-			log.Printf("Server 2 forced to shutdown: %v", err)
+			logger.Warnf("Server 2 forced to shutdown: %v", err)
 		}
 	}
 
 	// Stop background workers (code store cleanup, rate limiter cleanup, etc.)
-	log.Println("Stopping background workers...")
+	logger.Info("Stopping background workers...")
 	app.Stop()
 
 	// Close database connection
@@ -141,5 +141,5 @@ func waitForShutdown(srv1, srv2 *http.Server, app *App) {
 		sqlDB.Close()
 	}
 
-	log.Println("Servers stopped")
+	logger.Info("👋 Servers stopped")
 }

@@ -22,6 +22,7 @@ type AppUsersHandler struct {
 	adminLogService    service.AdminLogService
 	emailService       service.EmailService
 	tokenService       *auth.TokenService
+	baseURL            string
 }
 
 func NewAppUsersHandler(
@@ -31,6 +32,7 @@ func NewAppUsersHandler(
 	adminLogService service.AdminLogService,
 	emailService service.EmailService,
 	tokenService *auth.TokenService,
+	baseURL string,
 ) *AppUsersHandler {
 	return &AppUsersHandler{
 		userService:        userService,
@@ -39,6 +41,7 @@ func NewAppUsersHandler(
 		adminLogService:    adminLogService,
 		emailService:       emailService,
 		tokenService:       tokenService,
+		baseURL:            baseURL,
 	}
 }
 
@@ -358,8 +361,14 @@ func (h *AppUsersHandler) ResendVerification(w http.ResponseWriter, r *http.Requ
 		})
 	}
 
-	// TODO: Send email
-	_ = token
+	// Send verification email
+	if h.emailService != nil {
+		verifyURL := h.baseURL + "/auth/verify-email?token=" + token
+		if err := h.emailService.SendVerificationEmail(user.Email, user.Name, verifyURL); err != nil {
+			writeError(w, "failed to send verification email: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 
 	json.NewEncoder(w).Encode(dto.MessageResponse{Message: "Verification email sent"})
 }

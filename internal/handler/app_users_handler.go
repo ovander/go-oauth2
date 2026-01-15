@@ -409,8 +409,14 @@ func (h *AppUsersHandler) ForcePasswordReset(w http.ResponseWriter, r *http.Requ
 		})
 	}
 
-	// TODO: Send email
-	_ = token
+	// Send password reset email
+	if h.emailService != nil {
+		resetURL := h.baseURL + "/auth/reset-password?token=" + token
+		if err := h.emailService.SendPasswordResetEmail(user.Email, user.Name, resetURL); err != nil {
+			writeError(w, "failed to send password reset email: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 
 	json.NewEncoder(w).Encode(dto.MessageResponse{Message: "Password reset email sent"})
 }

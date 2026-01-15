@@ -57,6 +57,11 @@ func NewTokenService(keyManager *KeyManager, config TokenConfig) *TokenService {
 	}
 }
 
+// GetIssuer returns the configured issuer URL
+func (s *TokenService) GetIssuer() string {
+	return s.issuer
+}
+
 // AccessTokenClaims represents access token claims
 type AccessTokenClaims struct {
 	jwt.RegisteredClaims

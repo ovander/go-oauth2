@@ -191,16 +191,20 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Send invite email
+	// Get app name for email
+	var appName string
+	if app, err := h.appService.GetByID(r.Context(), appID); err == nil {
+		appName = app.Name
+	} else {
+		appName = "the application"
+	}
+
+	// Send invitation email
 	if h.emailService != nil {
-		app, appErr := h.appService.GetByID(r.Context(), appID)
-		appName := "the application"
-		if appErr == nil && app != nil {
-			appName = app.Name
-		}
-		if emailErr := h.emailService.SendInviteEmail(user.Email, appName, inviteToken); emailErr != nil {
-			// Log error but don't fail the operation
-			// Email sending is best-effort
+		inviteURL := h.tokenService.GetIssuer() + "/auth/invite?token=" + inviteToken
+		if err := h.emailService.SendInviteEmail(user.Email, appName, inviteURL); err != nil {
+			// Log error but don't fail the request
+			// The invite token is still valid and can be resent
 		}
 	}
 

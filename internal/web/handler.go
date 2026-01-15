@@ -165,8 +165,8 @@ func (h *WebHandler) ForgotPasswordSubmit(w http.ResponseWriter, r *http.Request
 func (h *WebHandler) ResetPasswordPage(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 
-	// Validate token
-	_, err := h.tokenService.VerifyEmailToken(token)
+	// Validate token and extract app context
+	claims, err := h.tokenService.VerifyEmailToken(token)
 	if err != nil {
 		data := map[string]interface{}{
 			"Title":      "Reset Password",
@@ -176,9 +176,16 @@ func (h *WebHandler) ResetPasswordPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get app name from token claims
+	appName := claims.AppName
+	if appName == "" {
+		appName = "Socrate"
+	}
+
 	data := map[string]interface{}{
-		"Title": "Reset Password",
-		"Token": token,
+		"Title":   "Reset Password",
+		"AppName": appName,
+		"Token":   token,
 	}
 	h.render(w, "reset_password.html", data)
 }

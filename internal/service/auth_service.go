@@ -726,6 +726,11 @@ func (s *authService) AcceptInvite(ctx context.Context, token, name, password st
 		return nil, fmt.Errorf("%w: %v", ErrInvalidToken, err)
 	}
 
+	// Validate role from token
+	if !model.IsValidAppRole(claims.Role) {
+		return nil, fmt.Errorf("invalid role in invite token: %s", claims.Role)
+	}
+
 	// Check if token has already been used
 	if s.usedTokenRepo != nil {
 		used, err := s.usedTokenRepo.IsUsed(ctx, claims.ID)

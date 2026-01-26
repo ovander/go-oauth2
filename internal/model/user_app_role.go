@@ -14,6 +14,25 @@ const (
 	AppRoleUser    AppRole = "user"
 )
 
+// ValidAppRoles contains all valid app roles
+var ValidAppRoles = []AppRole{
+	AppRoleAdmin,
+	AppRoleManager,
+	AppRoleEditor,
+	AppRoleViewer,
+	AppRoleUser,
+}
+
+// IsValidAppRole checks if the given role is valid
+func IsValidAppRole(role string) bool {
+	for _, r := range ValidAppRoles {
+		if string(r) == role {
+			return true
+		}
+	}
+	return false
+}
+
 type UserAppRole struct {
 	ID         uint      `gorm:"primaryKey" json:"id"`
 	UserID     uint      `gorm:"not null;uniqueIndex:idx_user_app_roles_user_app" json:"user_id"`

@@ -157,6 +157,12 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate role
+	if !model.IsValidAppRole(req.Role) {
+		writeError(w, "invalid role: must be one of admin, manager, editor, viewer, user", http.StatusBadRequest)
+		return
+	}
+
 	// Check if user exists
 	user, err := h.userService.GetByEmail(r.Context(), req.Email)
 	isNewUser := err != nil
@@ -268,6 +274,12 @@ func (h *AppUsersHandler) UpdateUserRole(w http.ResponseWriter, r *http.Request)
 
 	if req.Role == "" {
 		writeError(w, "role is required", http.StatusBadRequest)
+		return
+	}
+
+	// Validate role
+	if !model.IsValidAppRole(req.Role) {
+		writeError(w, "invalid role: must be one of admin, manager, editor, viewer, user", http.StatusBadRequest)
 		return
 	}
 

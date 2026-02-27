@@ -25,6 +25,10 @@
     {{end}}
 
     <form action="/oauth/authorize" method="POST" class="login-form">
+        <!-- Action discriminator -->
+        <input type="hidden" name="action" value="login">
+        <!-- CRIT-03: CSRF double-submit token -->
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <!-- Preserve OAuth parameters -->
         <input type="hidden" name="client_id" value="{{.ClientID}}">
         <input type="hidden" name="redirect_uri" value="{{.RedirectURI}}">

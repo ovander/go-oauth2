@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -234,32 +235,26 @@ func (s *authService) VerifyEmail(ctx context.Context, token string) error {
 		return fmt.Errorf("%w: wrong token type", ErrInvalidToken)
 	}
 
-	// Check if token has already been used (single-use enforcement)
-	if s.usedTokenRepo != nil {
-		used, err := s.usedTokenRepo.IsUsed(ctx, claims.ID)
-		if err != nil {
-			return fmt.Errorf("failed to check token usage: %w", err)
-		}
-		if used {
-			return ErrTokenAlreadyUsed
-		}
-	}
-
 	userID, err := strconv.ParseUint(claims.Subject, 10, 64)
 	if err != nil {
 		return fmt.Errorf("%w: invalid subject", ErrInvalidToken)
 	}
 
+	// Atomically claim this token via INSERT … ON CONFLICT DO NOTHING.
+	// This eliminates the TOCTOU race: two concurrent requests racing on the
+	// same JTI will both try to insert; only one succeeds (RowsAffected==1).
+	if s.usedTokenRepo != nil {
+		if err := s.usedTokenRepo.MarkAsUsed(ctx, claims.ID, claims.Type, uint(userID), claims.ExpiresAt.Time); err != nil {
+			if errors.Is(err, repository.ErrTokenAlreadyUsed) {
+				return ErrTokenAlreadyUsed
+			}
+			return fmt.Errorf("failed to claim token: %w", err)
+		}
+	}
+
 	user, err := s.userRepo.FindByID(ctx, uint(userID))
 	if err != nil {
 		return fmt.Errorf("%w: user_id=%d", ErrUserNotFound, userID)
-	}
-
-	// Mark token as used before making changes
-	if s.usedTokenRepo != nil {
-		if err := s.usedTokenRepo.MarkAsUsed(ctx, claims.ID, claims.Type, uint(userID), claims.ExpiresAt.Time); err != nil {
-			return fmt.Errorf("failed to mark token as used: %w", err)
-		}
 	}
 
 	user.IsVerified = true
@@ -580,17 +575,6 @@ func (s *authService) ResetPassword(ctx context.Context, token, newPassword stri
 		return fmt.Errorf("%w: wrong token type", ErrInvalidToken)
 	}
 
-	// Check if token has already been used (single-use enforcement)
-	if s.usedTokenRepo != nil {
-		used, err := s.usedTokenRepo.IsUsed(ctx, claims.ID)
-		if err != nil {
-			return fmt.Errorf("failed to check token usage: %w", err)
-		}
-		if used {
-			return ErrTokenAlreadyUsed
-		}
-	}
-
 	if err := auth.ValidatePassword(newPassword); err != nil {
 		return fmt.Errorf("password validation failed: %w", err)
 	}
@@ -598,6 +582,16 @@ func (s *authService) ResetPassword(ctx context.Context, token, newPassword stri
 	userID, err := strconv.ParseUint(claims.Subject, 10, 64)
 	if err != nil {
 		return fmt.Errorf("%w: invalid subject", ErrInvalidToken)
+	}
+
+	// Atomically claim this token before making any state changes.
+	if s.usedTokenRepo != nil {
+		if err := s.usedTokenRepo.MarkAsUsed(ctx, claims.ID, claims.Type, uint(userID), claims.ExpiresAt.Time); err != nil {
+			if errors.Is(err, repository.ErrTokenAlreadyUsed) {
+				return ErrTokenAlreadyUsed
+			}
+			return fmt.Errorf("failed to claim token: %w", err)
+		}
 	}
 
 	user, err := s.userRepo.FindByID(ctx, uint(userID))
@@ -608,13 +602,6 @@ func (s *authService) ResetPassword(ctx context.Context, token, newPassword stri
 	hashedPassword, err := auth.HashPassword(newPassword)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
-	}
-
-	// Mark token as used before making changes
-	if s.usedTokenRepo != nil {
-		if err := s.usedTokenRepo.MarkAsUsed(ctx, claims.ID, claims.Type, uint(userID), claims.ExpiresAt.Time); err != nil {
-			return fmt.Errorf("failed to mark token as used: %w", err)
-		}
 	}
 
 	now := time.Now()
@@ -731,17 +718,6 @@ func (s *authService) AcceptInvite(ctx context.Context, token, name, password st
 		return nil, fmt.Errorf("invalid role in invite token: %s", claims.Role)
 	}
 
-	// Check if token has already been used
-	if s.usedTokenRepo != nil {
-		used, err := s.usedTokenRepo.IsUsed(ctx, claims.ID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to check token usage: %w", err)
-		}
-		if used {
-			return nil, ErrTokenAlreadyUsed
-		}
-	}
-
 	if err := auth.ValidatePassword(password); err != nil {
 		return nil, fmt.Errorf("password validation failed: %w", err)
 	}
@@ -751,10 +727,13 @@ func (s *authService) AcceptInvite(ctx context.Context, token, name, password st
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	// Mark token as used before making changes
+	// Atomically claim this token before creating/updating the user.
 	if s.usedTokenRepo != nil {
 		if err := s.usedTokenRepo.MarkAsUsed(ctx, claims.ID, claims.Type, 0, claims.ExpiresAt.Time); err != nil {
-			return nil, fmt.Errorf("failed to mark token as used: %w", err)
+			if errors.Is(err, repository.ErrTokenAlreadyUsed) {
+				return nil, ErrTokenAlreadyUsed
+			}
+			return nil, fmt.Errorf("failed to claim token: %w", err)
 		}
 	}
 

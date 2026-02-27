@@ -5,12 +5,12 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
 // CodeStoreConfig holds configuration for the code store
@@ -173,7 +173,9 @@ func (cs *CodeStore) cleanup() {
 	for {
 		select {
 		case <-cs.stopCh:
-			log.Println("Code store cleanup goroutine stopped")
+			// NEW-01 fix: use structured logger so cleanup events appear in
+			// production log aggregation systems alongside other service logs.
+			logger.Info("code store: cleanup goroutine stopped")
 			return
 		case <-ticker.C:
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -181,9 +183,9 @@ func (cs *CodeStore) cleanup() {
 			cancel()
 
 			if err != nil {
-				log.Printf("Error cleaning up expired authorization codes: %v", err)
+				logger.Errorf("code store: cleanup failed to delete expired authorization codes: %v", err)
 			} else if deleted > 0 {
-				log.Printf("Cleaned up %d expired authorization codes", deleted)
+				logger.Infof("code store: cleanup deleted %d expired authorization codes", deleted)
 			}
 		}
 	}

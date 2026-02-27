@@ -28,17 +28,24 @@ func VerifyPKCE(codeVerifier, codeChallenge, codeChallengeMethod string) error {
 
 	switch codeChallengeMethod {
 	case "S256":
-		// SHA-256 hash of the code verifier
+		// SHA-256 hash of the code verifier, base64url-encoded (RFC 7636 §4.2).
 		hash := sha256.Sum256([]byte(codeVerifier))
 		computed := base64.RawURLEncoding.EncodeToString(hash[:])
 		if computed != codeChallenge {
 			return ErrPKCEVerificationFailed
 		}
-	case "plain", "":
-		// Plain comparison
+	case "":
+		// No method specified with no challenge: PKCE not in use — allowed for
+		// confidential clients that authenticate via client_secret.
 		if codeVerifier != codeChallenge {
 			return ErrPKCEVerificationFailed
 		}
+	case "plain":
+		// H-02 fix: "plain" is explicitly rejected.  With plain PKCE the
+		// code_verifier equals the code_challenge, so an attacker who can
+		// intercept the authorisation request obtains the verifier for free —
+		// providing zero additional security over no PKCE at all.
+		return ErrInvalidChallengeMethod
 	default:
 		return ErrInvalidChallengeMethod
 	}

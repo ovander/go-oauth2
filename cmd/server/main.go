@@ -45,6 +45,11 @@ func startSinglePortMode(cfg *config.Config, app *App) {
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
+		// L-04 fix: the default (1 MB) is excessive for a token endpoint whose
+		// largest expected header is a Bearer JWT (~2 KB).  16 KB is generous
+		// for all legitimate OAuth/OIDC clients while capping memory spent on
+		// oversized (or malicious) requests before the body is even read.
+		MaxHeaderBytes: 16 * 1024,
 	}
 
 	go func() {
@@ -66,20 +71,22 @@ func startSinglePortMode(cfg *config.Config, app *App) {
 func startDualPortMode(cfg *config.Config, app *App) {
 	// OAuth server (public-facing)
 	oauthSrv := &http.Server{
-		Addr:         ":" + cfg.Port,
-		Handler:      app.OAuthRouter,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:           ":" + cfg.Port,
+		Handler:        app.OAuthRouter,
+		ReadTimeout:    15 * time.Second,
+		WriteTimeout:   15 * time.Second,
+		IdleTimeout:    60 * time.Second,
+		MaxHeaderBytes: 16 * 1024, // L-04: 16 KB — generous for OAuth/OIDC, far below the 1 MB default
 	}
 
-	// Admin server (internal)
+	// Admin server (internal — slightly larger limit for dashboard/API payloads)
 	adminSrv := &http.Server{
-		Addr:         ":" + cfg.AdminPort,
-		Handler:      app.AdminRouter,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:           ":" + cfg.AdminPort,
+		Handler:        app.AdminRouter,
+		ReadTimeout:    15 * time.Second,
+		WriteTimeout:   15 * time.Second,
+		IdleTimeout:    60 * time.Second,
+		MaxHeaderBytes: 16 * 1024, // L-04: same conservative limit as the public server
 	}
 
 	// Start OAuth server

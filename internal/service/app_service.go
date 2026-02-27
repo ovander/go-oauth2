@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ovandermoten/go-oauth2/internal/dto"
@@ -93,8 +94,11 @@ func (s *appService) Create(ctx context.Context, req dto.CreateAppRequest, owner
 		return nil, "", err
 	}
 
-	// Hash the client secret
-	clientSecretHash := auth.HashClientSecret(clientSecret)
+	// Hash the client secret (bcrypt — see H-03 fix)
+	clientSecretHash, err := auth.HashClientSecret(clientSecret)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to hash client secret: %w", err)
+	}
 
 	app := &model.App{
 		Name:             req.Name,
@@ -163,8 +167,12 @@ func (s *appService) RotateSecret(ctx context.Context, id uint) (*model.App, str
 		return nil, "", err
 	}
 
-	// Hash the new client secret
-	app.ClientSecretHash = auth.HashClientSecret(clientSecret)
+	// Hash the new client secret (bcrypt — see H-03 fix)
+	newHash, err := auth.HashClientSecret(clientSecret)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to hash client secret: %w", err)
+	}
+	app.ClientSecretHash = newHash
 	app.UpdatedAt = time.Now()
 
 	if err := s.repo.Update(ctx, app); err != nil {

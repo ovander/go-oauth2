@@ -1,0 +1,59 @@
+{{define "title"}}Authorize Access - OAuth2 Server{{end}}
+
+{{define "content"}}
+<div class="login-card">
+    <div class="login-header">
+        <div class="logo">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="24" cy="24" r="22" stroke="currentColor" stroke-width="2" fill="none"/>
+                <path d="M32 16L20 28M20 16l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+        </div>
+        <h1>Authorize Access</h1>
+    </div>
+
+    {{if .AppName}}
+    <p class="app-info">
+        <strong>{{.AppName}}</strong> is requesting access to your account
+    </p>
+    {{end}}
+
+    {{if .Scopes}}
+    <div class="scopes-info">
+        <p>This app will be able to:</p>
+        <ul>
+            {{range .Scopes}}
+            <li>{{.}}</li>
+            {{end}}
+        </ul>
+    </div>
+    {{end}}
+
+    <form action="/oauth/authorize" method="POST" class="login-form">
+        <!-- Action discriminator -->
+        <input type="hidden" name="action" value="consent">
+        <!-- Preserve OAuth parameters -->
+        <input type="hidden" name="client_id" value="{{.ClientID}}">
+        <input type="hidden" name="redirect_uri" value="{{.RedirectURI}}">
+        <input type="hidden" name="response_type" value="{{.ResponseType}}">
+        <input type="hidden" name="scope" value="{{.Scope}}">
+        <input type="hidden" name="state" value="{{.State}}">
+        {{if .CodeChallenge}}
+        <input type="hidden" name="code_challenge" value="{{.CodeChallenge}}">
+        <input type="hidden" name="code_challenge_method" value="{{.CodeChallengeMethod}}">
+        {{end}}
+        {{if .Nonce}}
+        <input type="hidden" name="nonce" value="{{.Nonce}}">
+        {{end}}
+        <!-- CRIT-03: CSRF double-submit token -->
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <!-- CRIT-04: Signed user identity carrier (stateless consent) -->
+        <input type="hidden" name="consent_token" value="{{.ConsentToken}}">
+
+        <div class="consent-actions" style="display:flex; gap:1rem; margin-top:1.5rem;">
+            <button type="submit" name="authorized" value="true" class="btn btn-primary" style="flex:1;">Allow</button>
+            <button type="submit" name="authorized" value="false" class="btn btn-secondary" style="flex:1;">Deny</button>
+        </div>
+    </form>
+</div>
+{{end}}

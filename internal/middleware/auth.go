@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -47,8 +48,19 @@ func AuthMiddleware(tokenService *auth.TokenService, userRepo repository.UserRep
 
 			// CRITICAL: Verify token version to support token revocation
 			// If the user's token version has been incremented (via logout, password reset, etc.),
-			// all previously issued tokens become invalid
-			if claims.TokenVersion > 0 && user.TokenVersion != claims.TokenVersion {
+			// all previously issued tokens become invalid.
+			//
+			// FIND-01 fix: the previous guard `claims.TokenVersion > 0 &&` created a
+			// bypass for tokens minted when TokenVersion was 0 (every new user before
+			// their first nuclear revocation event).  After IncrementTokenVersion bumps
+			// the DB row to 1, old tokens with TokenVersion=0 passed the "> 0" guard
+			// as false and the check was silently skipped — the attacker remained
+			// authenticated despite the revocation.
+			//
+			// The correct comparison is user.TokenVersion > claims.TokenVersion, which
+			// matches the Introspect implementation (NEW-03 fix) and correctly catches
+			// the 0→1, 1→2, and any N→N+k transitions.
+			if user.TokenVersion > claims.TokenVersion {
 				writeAuthError(w, "token has been revoked", http.StatusUnauthorized)
 				return
 			}
@@ -104,8 +116,14 @@ func OptionalAuthMiddleware(tokenService *auth.TokenService, userRepo repository
 				return
 			}
 
-			// Verify token version - silently skip if token is revoked
-			if claims.TokenVersion > 0 && user.TokenVersion != claims.TokenVersion {
+			// Verify token version — silently treat the request as unauthenticated
+			// when the token has been revoked via nuclear revocation.
+			//
+			// FIND-01 fix: same correction as AuthMiddleware above.  The "> 0"
+			// guard on claims.TokenVersion meant tokens minted when TokenVersion
+			// was 0 were never rejected here, defeating nuclear revocation on the
+			// OptionalAuth paths (e.g. POST /oauth/revoke Path 1 classification).
+			if user.TokenVersion > claims.TokenVersion {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -138,10 +156,17 @@ func GetUserRoleFromContext(ctx context.Context) (string, bool) {
 	return role, ok
 }
 
-// writeAuthError writes a JSON error response for authentication failures
+// writeAuthError writes a JSON error response for authentication failures.
+//
+// M-05 fix: the previous implementation used raw string concatenation
+// (`{"error": "` + message + `"}`), which produces malformed JSON when
+// message contains a double-quote or backslash.  json.NewEncoder escapes
+// all special characters automatically.
 func writeAuthError(w http.ResponseWriter, message string, statusCode int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("WWW-Authenticate", `Bearer realm="oauth2", error="invalid_token"`)
 	w.WriteHeader(statusCode)
-	w.Write([]byte(`{"error": "` + message + `"}`))
+	json.NewEncoder(w).Encode(struct {
+		Error string `json:"error"`
+	}{Error: message})
 }

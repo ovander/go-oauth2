@@ -1,6 +1,7 @@
 package http
 
 import (
+	"net"
 	"net/http"
 	"time"
 
@@ -15,11 +16,49 @@ import (
 	"github.com/ovandermoten/go-oauth2/web"
 )
 
+// corsHandler builds a chi/cors handler from the RouterConfig.
+//
+// H-06 fix: go-chi/cors reflects any Origin back when AllowedOrigins is ["*"]
+// and AllowCredentials is true, effectively allowing cross-origin credentialed
+// requests from any domain.  The CORS spec forbids combining a wildcard with
+// credentials, so we enforce AllowCredentials: false whenever the origin list
+// contains only the wildcard.  Callers that need credentialed cross-origin
+// requests must supply an explicit origin list via ALLOWED_ORIGINS.
+func corsHandler(config RouterConfig) func(http.Handler) http.Handler {
+	allowCredentials := len(config.AllowedOrigins) > 0
+	for _, o := range config.AllowedOrigins {
+		if o == "*" {
+			allowCredentials = false
+			break
+		}
+	}
+	origins := config.AllowedOrigins
+	if len(origins) == 0 {
+		origins = []string{"*"}
+	}
+	return cors.Handler(cors.Options{
+		AllowedOrigins:   origins,
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Correlation-ID"},
+		ExposedHeaders:   []string{"X-Content-Type-Options", "X-Frame-Options", "Content-Security-Policy", "Strict-Transport-Security", "X-Correlation-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"},
+		AllowCredentials: allowCredentials,
+		MaxAge:           300,
+	})
+}
+
 type RouterConfig struct {
 	AllowedOrigins    []string
 	LoginRateLimiter  *middleware.RateLimiter
 	SignupRateLimiter *middleware.RateLimiter
-	IPBlockChecker    *middleware.IPBlockChecker // Optional: nil disables IP blocking
+	// MED-05: TokenRateLimiter throttles POST /oauth/token to prevent
+	// authorization-code brute-force, refresh-token scanning, and client
+	// credential password-spraying.  Keyed by client IP.  Nil disables.
+	TokenRateLimiter *middleware.RateLimiter
+	IPBlockChecker   *middleware.IPBlockChecker // Optional: nil disables IP blocking
+	// TrustedProxyCIDRs lists upstream proxies whose X-Forwarded-For / X-Real-IP
+	// headers are trusted for real-IP extraction.  Leave nil to always use
+	// RemoteAddr (safe when the server is exposed directly to the internet).
+	TrustedProxyCIDRs []*net.IPNet
 }
 
 // Routers holds both the OAuth and Admin routers for separate port binding
@@ -78,18 +117,11 @@ func newOAuthRouter(
 
 	// IP Blocking middleware (automatic defense)
 	if config.IPBlockChecker != nil {
-		r.Use(middleware.IPBlockMiddleware(config.IPBlockChecker))
+		r.Use(middleware.IPBlockMiddleware(config.IPBlockChecker, config.TrustedProxyCIDRs))
 	}
 
-	// CORS for public OAuth endpoints
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   config.AllowedOrigins,
-		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Correlation-ID"},
-		ExposedHeaders:   []string{"X-Content-Type-Options", "X-Frame-Options", "Content-Security-Policy", "Strict-Transport-Security", "X-Correlation-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"},
-		AllowCredentials: true,
-		MaxAge:           300,
-	}))
+	// CORS for public OAuth endpoints (H-06: wildcard + credentials disallowed)
+	r.Use(corsHandler(config))
 
 	// ==========================================
 	// Static Files (CSS, JS for login pages)
@@ -116,11 +148,22 @@ func newOAuthRouter(
 		// Authorization endpoint - returns HTML login page or redirects
 		r.With(middleware.OptionalAuthMiddleware(tokenService, userRepo)).
 			Get("/authorize", oauthHandler.Authorize)
-		r.Post("/authorize", oauthHandler.AuthorizePost)
+		// H-07 fix: POST /authorize processes credentials; rate-limit it the same
+		// way as the direct login endpoint to prevent credential-stuffing attacks.
+		r.With(middleware.RateLimitMiddleware(config.LoginRateLimiter, config.TrustedProxyCIDRs)).
+			Post("/authorize", oauthHandler.AuthorizePost)
 
 		// Token endpoint - JSON
-		r.With(middleware.JSONContentType(), middleware.NoCacheHeaders()).
-			Post("/token", oauthHandler.Token)
+		// MED-05: apply per-IP rate limiting to prevent brute-force attacks
+		// against authorization codes, refresh tokens, and client credentials.
+		if config.TokenRateLimiter != nil {
+			r.With(middleware.JSONContentType(), middleware.NoCacheHeaders(),
+				middleware.RateLimitMiddleware(config.TokenRateLimiter, config.TrustedProxyCIDRs)).
+				Post("/token", oauthHandler.Token)
+		} else {
+			r.With(middleware.JSONContentType(), middleware.NoCacheHeaders()).
+				Post("/token", oauthHandler.Token)
+		}
 
 		r.With(middleware.JSONContentType(), middleware.AuthMiddleware(tokenService, userRepo)).
 			Get("/userinfo", oauthHandler.UserInfo)
@@ -144,17 +187,23 @@ func newOAuthRouter(
 	r.Route("/auth", func(r chi.Router) {
 		// Login flow
 		r.Get("/login", webHandler.LoginPage)
-		r.With(middleware.RateLimitMiddleware(config.LoginRateLimiter)).
+		r.With(middleware.RateLimitMiddleware(config.LoginRateLimiter, config.TrustedProxyCIDRs)).
 			Post("/login", webHandler.LoginSubmit)
 
 		// Signup flow
 		r.Get("/signup", webHandler.SignupPage)
-		r.With(middleware.RateLimitMiddleware(config.SignupRateLimiter)).
+		r.With(middleware.RateLimitMiddleware(config.SignupRateLimiter, config.TrustedProxyCIDRs)).
 			Post("/signup", webHandler.SignupSubmit)
 
 		// Password reset flow
+		// LOW-06 fix: rate-limit password reset and invite submission to
+		// prevent email flooding / mailbombing.  The forgot-password form
+		// triggers email sending; an attacker who submits it rapidly can
+		// flood a victim's inbox.  We re-use the login rate limiter (same
+		// IP-keyed window) since this is a low-frequency legitimate action.
 		r.Get("/forgot-password", webHandler.ForgotPasswordPage)
-		r.Post("/forgot-password", webHandler.ForgotPasswordSubmit)
+		r.With(middleware.RateLimitMiddleware(config.LoginRateLimiter, config.TrustedProxyCIDRs)).
+			Post("/forgot-password", webHandler.ForgotPasswordSubmit)
 		r.Get("/reset-password", webHandler.ResetPasswordPage)
 		r.Post("/reset-password", webHandler.ResetPasswordSubmit)
 
@@ -178,22 +227,38 @@ func newOAuthRouter(
 
 		// Auth Routes (Public)
 		r.Route("/auth", func(r chi.Router) {
-			r.With(middleware.RateLimitMiddleware(config.SignupRateLimiter)).
+			r.With(middleware.RateLimitMiddleware(config.SignupRateLimiter, config.TrustedProxyCIDRs)).
 				Post("/signup", authHandler.Signup)
 
 			r.Get("/verify-email", authHandler.VerifyEmail)
 
-			r.With(middleware.RateLimitMiddleware(config.LoginRateLimiter)).
+			r.With(middleware.RateLimitMiddleware(config.LoginRateLimiter, config.TrustedProxyCIDRs)).
 				Post("/login", authHandler.Login)
 
-			r.Post("/refresh", authHandler.Refresh)
+			// FIND-02 fix: apply the same per-IP token rate limiter to the direct
+			// API refresh endpoint as is applied to POST /oauth/token (MED-05).
+			// Without this, an attacker could bypass the token endpoint limiter by
+			// sending refresh token probes directly to /api/auth/refresh at
+			// unlimited speed, defeating the brute-force protection added in MED-05.
+			// Using the same config.TokenRateLimiter instance also means the two
+			// endpoints share a single per-IP counter — exhausting one exhausts both.
+			if config.TokenRateLimiter != nil {
+				r.With(middleware.RateLimitMiddleware(config.TokenRateLimiter, config.TrustedProxyCIDRs)).
+					Post("/refresh", authHandler.Refresh)
+			} else {
+				r.Post("/refresh", authHandler.Refresh)
+			}
 
 			r.With(middleware.AuthMiddleware(tokenService, userRepo)).
 				Post("/logout", authHandler.Logout)
 
-			r.With(middleware.RateLimitMiddleware(config.LoginRateLimiter)).
+			// LOW-06 fix: request-password-reset triggers email sending; rate-limit
+			// it to prevent mailbombing.  reset-password does not send email but
+			// is rate-limited to slow brute-force attempts on the reset token.
+			r.With(middleware.RateLimitMiddleware(config.LoginRateLimiter, config.TrustedProxyCIDRs)).
 				Post("/request-password-reset", authHandler.RequestPasswordReset)
-			r.Post("/reset-password", authHandler.ResetPassword)
+			r.With(middleware.RateLimitMiddleware(config.LoginRateLimiter, config.TrustedProxyCIDRs)).
+				Post("/reset-password", authHandler.ResetPassword)
 
 			r.Get("/invite", authHandler.ValidateInvite)
 			r.Post("/invite", authHandler.AcceptInvite)
@@ -239,18 +304,11 @@ func newAdminRouter(
 
 	// IP Blocking middleware (automatic defense)
 	if config.IPBlockChecker != nil {
-		r.Use(middleware.IPBlockMiddleware(config.IPBlockChecker))
+		r.Use(middleware.IPBlockMiddleware(config.IPBlockChecker, config.TrustedProxyCIDRs))
 	}
 
-	// More restrictive CORS for admin API (internal use only)
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   config.AllowedOrigins,
-		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Correlation-ID"},
-		ExposedHeaders:   []string{"X-Content-Type-Options", "X-Frame-Options", "Content-Security-Policy", "Strict-Transport-Security", "X-Correlation-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"},
-		AllowCredentials: true,
-		MaxAge:           300,
-	}))
+	// CORS for admin API (H-06: wildcard + credentials disallowed)
+	r.Use(corsHandler(config))
 
 	r.Use(middleware.JSONContentType())
 
@@ -264,7 +322,7 @@ func newAdminRouter(
 	// ==========================================
 	// Admin Authentication (public - no auth required)
 	// ==========================================
-	r.With(middleware.RateLimitMiddleware(config.LoginRateLimiter)).
+	r.With(middleware.RateLimitMiddleware(config.LoginRateLimiter, config.TrustedProxyCIDRs)).
 		Post("/api/admin/login", adminAuthHandler.Login)
 
 	// ==========================================
@@ -429,14 +487,8 @@ func NewRouter(
 	r.Use(middleware.CorrelationID())
 	r.Use(middleware.SecurityHeaders())
 
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   config.AllowedOrigins,
-		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Correlation-ID"},
-		ExposedHeaders:   []string{"X-Content-Type-Options", "X-Frame-Options", "Content-Security-Policy", "Strict-Transport-Security", "X-Correlation-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"},
-		AllowCredentials: true,
-		MaxAge:           300,
-	}))
+	// CORS for combined router (H-06: wildcard + credentials disallowed)
+	r.Use(corsHandler(config))
 
 	r.Use(middleware.JSONContentType())
 

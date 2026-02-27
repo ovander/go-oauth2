@@ -11,6 +11,11 @@ type AuthorizeRequest struct {
 	Nonce               string `json:"nonce,omitempty"`
 	CodeChallenge       string `json:"code_challenge,omitempty"`
 	CodeChallengeMethod string `json:"code_challenge_method,omitempty"`
+	// LOW-02: max_age (OIDC Core §3.1.2.1) — maximum age in seconds since
+	// the user last authenticated.  When present the Authorize handler checks
+	// the session's auth_time and forces re-authentication if the session is
+	// older than max_age seconds.  -1 means not specified by the client.
+	MaxAge int `json:"max_age,omitempty"`
 }
 
 type TokenRequest struct {

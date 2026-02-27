@@ -55,8 +55,12 @@ type oauthService struct {
 	tokenService    *auth.TokenService
 	keyManager      *auth.KeyManager
 	auditRepo       repository.SecurityAuditLogRepository
-	issuer          string
-	requireHTTPS    bool
+	// usedTokenRepo tracks consumed refresh-token JTIs so that each refresh
+	// token can only be used once (HIGH-04).  Nil disables the check (tests
+	// that don't need JTI enforcement may leave it unset).
+	usedTokenRepo repository.UsedTokenRepository
+	issuer        string
+	requireHTTPS  bool
 }
 
 // OAuthServiceConfig holds OAuth service configuration
@@ -74,6 +78,7 @@ func NewOAuthService(
 	keyManager *auth.KeyManager,
 	issuer string,
 	auditRepo repository.SecurityAuditLogRepository,
+	usedTokenRepo repository.UsedTokenRepository,
 ) OAuthService {
 	requireHTTPS := strings.HasPrefix(issuer, "https://")
 
@@ -91,6 +96,7 @@ func NewOAuthService(
 		tokenService:    tokenService,
 		keyManager:      keyManager,
 		auditRepo:       auditRepo,
+		usedTokenRepo:   usedTokenRepo,
 		issuer:          issuer,
 		requireHTTPS:    requireHTTPS,
 	}
@@ -106,6 +112,7 @@ func NewOAuthServiceWithConfig(
 	keyManager *auth.KeyManager,
 	issuer string,
 	auditRepo repository.SecurityAuditLogRepository,
+	usedTokenRepo repository.UsedTokenRepository,
 	config OAuthServiceConfig,
 ) OAuthService {
 	logger.WithFields(logger.Fields{
@@ -122,10 +129,15 @@ func NewOAuthServiceWithConfig(
 		tokenService:    tokenService,
 		keyManager:      keyManager,
 		auditRepo:       auditRepo,
+		usedTokenRepo:   usedTokenRepo,
 		issuer:          issuer,
 		requireHTTPS:    config.RequireHTTPS,
 	}
 }
+
+// ErrReauthRequired is returned when the client's max_age constraint is not
+// satisfied by the current session's auth_time.
+var ErrReauthRequired = errors.New("re-authentication required")
 
 // Authorize handles the OAuth 2.0 authorization request
 func (s *oauthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, userID uint) (string, error) {
@@ -154,6 +166,36 @@ func (s *oauthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, 
 	user, err := s.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		return "", fmt.Errorf("%w: user_id=%d", ErrUserNotFound, userID)
+	}
+
+	// LOW-02 fix: validate max_age (OIDC Core §3.1.2.1).
+	//
+	// max_age is the maximum elapsed time in seconds since the user last
+	// authenticated.  When the client specifies it, the server MUST check
+	// whether the current session satisfies the constraint.  If not the
+	// user needs to re-authenticate before authorization proceeds.
+	//
+	// auth_time is tracked via user.LastLogin (most recent successful login
+	// in the users table).  If LastLogin is nil the check is skipped — new
+	// accounts without a recorded login time cannot satisfy the constraint.
+	//
+	// The nonce omission on refresh grants is intentional: auth_time is
+	// propagated from the original refresh token (preserving the time of
+	// the last actual user authentication) rather than being updated on each
+	// refresh, which is correct OIDC behaviour.  See LOW-04.
+	if req.MaxAge >= 0 && user.LastLogin != nil {
+		sessionAge := int(time.Since(*user.LastLogin).Seconds())
+		if sessionAge > req.MaxAge {
+			return "", fmt.Errorf("%w: session age %ds exceeds max_age %ds",
+				ErrReauthRequired, sessionAge, req.MaxAge)
+		}
+	}
+
+	// MED-02: if this client requires PKCE, reject authorization requests
+	// that arrive without a code_challenge.  This prevents public clients
+	// from accidentally starting an unprotected authorization flow.
+	if app.RequirePKCE && req.CodeChallenge == "" {
+		return "", fmt.Errorf("%w: this client requires PKCE — include code_challenge in the authorization request", ErrPKCERequired)
 	}
 
 	// Get user's role for the app
@@ -195,7 +237,7 @@ func (s *oauthService) Token(ctx context.Context, req dto.TokenRequest, clientID
 	case "authorization_code":
 		return s.handleAuthorizationCodeGrant(ctx, req, clientID, clientSecret)
 	case "refresh_token":
-		return s.handleRefreshTokenGrant(ctx, req, clientID)
+		return s.handleRefreshTokenGrant(ctx, req, clientID, clientSecret)
 	case "client_credentials":
 		return s.handleClientCredentialsGrant(ctx, req, clientID, clientSecret)
 	default:
@@ -220,6 +262,21 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 		return nil, fmt.Errorf("%w: redirect_uri=%s", ErrInvalidRedirectURI, req.RedirectURI)
 	}
 
+	// MED-02 fix: enforce PKCE for clients that require it.
+	//
+	// The app lookup below is needed for both PKCE enforcement and the
+	// CRIT-02 client-secret check, so we do it once here and reuse it.
+	app, err := s.appRepo.FindByClientID(ctx, clientID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: client_id=%s", ErrAppNotFound, clientID)
+	}
+
+	// If the app requires PKCE, the authorization request MUST have included
+	// a code_challenge.  Reject token requests that bypass PKCE entirely.
+	if app.RequirePKCE && authCode.CodeChallenge == "" {
+		return nil, fmt.Errorf("%w: PKCE required for this client but no code_challenge was supplied at authorization", ErrPKCERequired)
+	}
+
 	// Verify PKCE if used
 	if authCode.CodeChallenge != "" {
 		if req.CodeVerifier == "" {
@@ -230,14 +287,22 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 		}
 	}
 
-	// Get the app (for non-public clients, verify secret)
-	app, err := s.appRepo.FindByClientID(ctx, clientID)
-	if err != nil {
-		return nil, fmt.Errorf("%w: client_id=%s", ErrAppNotFound, clientID)
-	}
-
-	// If client secret is provided, verify it
-	if clientSecret != "" {
+	// CRIT-02 fix: enforce client authentication for confidential clients.
+	// (app was already fetched above for MED-02 PKCE enforcement — reused here)
+	//
+	// A client is considered confidential when it has a stored secret hash.
+	// Confidential clients MUST supply their secret at the token endpoint
+	// (RFC 6749 §3.2.1).  Public clients (mobile apps, SPAs) have an empty
+	// ClientSecretHash and authenticate via PKCE instead.
+	//
+	// The previous check was conditioned on `clientSecret != ""`, which
+	// allowed confidential clients to exchange codes without authenticating
+	// by simply omitting the secret.  We now require it whenever the app
+	// has a stored hash.
+	if app.ClientSecretHash != "" {
+		if clientSecret == "" {
+			return nil, fmt.Errorf("%w: client_secret required for confidential client", ErrInvalidCredentials)
+		}
 		if !auth.CheckClientSecret(clientSecret, app.ClientSecretHash) {
 			return nil, ErrInvalidCredentials
 		}
@@ -293,15 +358,57 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 	}, nil
 }
 
-func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.TokenRequest, clientID string) (*dto.TokenResponse, error) {
+func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.TokenRequest, clientID, clientSecret string) (*dto.TokenResponse, error) {
 	claims, err := s.tokenService.VerifyRefreshToken(req.RefreshToken)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidToken, err)
 	}
 
-	// Verify client ID matches
-	if len(claims.Audience) > 0 && claims.Audience[0] != clientID {
+	// Verify client ID matches the token's audience.
+	// HIGH-03 / MED-06 fix: require a non-empty audience AND verify it matches
+	// the requesting client.  A token whose audience is empty must be rejected
+	// outright: the conditional `len > 0` guard in the original code allowed
+	// any clientID to claim a token with no audience, completely bypassing the
+	// binding between a refresh token and its issuing client.
+	if len(claims.Audience) == 0 || claims.Audience[0] != clientID {
 		return nil, fmt.Errorf("%w: audience mismatch", ErrInvalidToken)
+	}
+
+	// HIGH-04 fix: enforce single-use on refresh tokens by checking whether
+	// the token's JTI has already been consumed.  This closes the replay
+	// window that exists when both the attacker and the legitimate user hold
+	// the same stateless JWT refresh token simultaneously.
+	//
+	// The check is best-effort: if usedTokenRepo is nil (e.g. in tests that
+	// don't exercise this path) the guard is skipped rather than panicking.
+	jti := claims.ID
+	if s.usedTokenRepo != nil && jti != "" {
+		used, err := s.usedTokenRepo.IsUsed(ctx, jti)
+		if err != nil {
+			return nil, fmt.Errorf("%w: failed to verify token single-use", ErrInvalidToken)
+		}
+		if used {
+			return nil, fmt.Errorf("%w: refresh token has already been used", ErrInvalidToken)
+		}
+	}
+
+	// HIGH-03 fix: authenticate the client BEFORE looking up user data.
+	// Moving the app lookup and credential check here (ahead of the user
+	// lookup) ensures that an unauthenticated confidential-client request
+	// is rejected with ErrInvalidCredentials rather than leaking whether
+	// the user exists (ErrUserNotFound).
+	app, err := s.appRepo.FindByClientID(ctx, clientID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: client_id=%s", ErrAppNotFound, clientID)
+	}
+
+	if app.ClientSecretHash != "" {
+		if clientSecret == "" {
+			return nil, fmt.Errorf("%w: client_secret required for confidential client", ErrInvalidCredentials)
+		}
+		if !auth.CheckClientSecret(clientSecret, app.ClientSecretHash) {
+			return nil, ErrInvalidCredentials
+		}
 	}
 
 	userID, err := strconv.ParseUint(claims.Subject, 10, 64)
@@ -319,11 +426,6 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 		return nil, fmt.Errorf("%w: token has been revoked", ErrInvalidToken)
 	}
 
-	app, err := s.appRepo.FindByClientID(ctx, clientID)
-	if err != nil {
-		return nil, fmt.Errorf("%w: client_id=%s", ErrAppNotFound, clientID)
-	}
-
 	userAppRole, err := s.userAppRoleRepo.FindByUserAndApp(ctx, user.ID, app.ID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: user has no role for app", ErrRoleNotFound)
@@ -334,17 +436,50 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 		appRoles = make(map[string]string)
 	}
 
+	// LOW-04 / LOW-02 note: nonce is intentionally omitted (passed as "")
+	// when issuing tokens via the refresh grant.
+	//
+	// OIDC Core §12 specifies that the nonce MUST NOT be included in ID
+	// tokens issued via the refresh grant because the nonce binds the ID
+	// token to a specific authentication request — re-using it on a
+	// subsequently issued token would break replay-detection logic in
+	// well-behaved clients.
+	//
+	// auth_time (claims.AuthTime) is propagated from the original refresh
+	// token rather than being updated to time.Now().  This preserves the
+	// time of the last actual user authentication, which is the correct
+	// semantic: refreshing does not constitute a new authentication event.
+	// Resource servers relying on auth_time for session-freshness enforcement
+	// should use max_age on the authorization request to force re-auth when
+	// needed (see LOW-02 / ErrReauthRequired).
 	tokenSet, err := s.tokenService.GenerateTokenSet(
 		user,
 		app,
 		string(userAppRole.Role),
 		claims.Scope,
 		appRoles,
-		"",
+		"", // nonce: intentionally absent on refresh — see LOW-04 comment above
 		claims.AuthTime,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate token set: %w", err)
+	}
+
+	// HIGH-04 fix: mark the consumed refresh token JTI as used so future
+	// attempts to replay the same token are rejected.  We do this after
+	// generating the new token set so that a generation failure does not
+	// poison the JTI and lock the user out.
+	if s.usedTokenRepo != nil && jti != "" {
+		exp := claims.ExpiresAt.Time
+		if markErr := s.usedTokenRepo.MarkAsUsed(ctx, jti, "refresh", user.ID, exp); markErr != nil {
+			// ErrTokenAlreadyUsed indicates a concurrent replay — reject.
+			if errors.Is(markErr, repository.ErrTokenAlreadyUsed) {
+				return nil, fmt.Errorf("%w: concurrent refresh token replay detected", ErrInvalidToken)
+			}
+			// Any other DB error is non-fatal: log it but don't break the
+			// user's session; the IsUsed pre-check provides the main guard.
+			logger.Errorf("HIGH-04: failed to mark refresh token JTI as used: %v", markErr)
+		}
 	}
 
 	roles := []string{string(userAppRole.Role)}
@@ -420,8 +555,31 @@ func (s *oauthService) Introspect(ctx context.Context, token string) (*dto.Intro
 		return &dto.IntrospectResponse{Active: false}, nil
 	}
 
+	// MED-01 fix: check whether this token's JTI has been explicitly revoked.
+	// A token that passed signature and expiry checks but was subsequently
+	// blacklisted via /oauth/revoke must return active:false.
+	if s.usedTokenRepo != nil && claims.ID != "" {
+		if revoked, rErr := s.usedTokenRepo.IsUsed(ctx, claims.ID); rErr == nil && revoked {
+			return &dto.IntrospectResponse{Active: false}, nil
+		}
+	}
+
 	userID, _ := strconv.ParseUint(claims.Subject, 10, 64)
 	user, err := s.userRepo.FindByID(ctx, uint(userID))
+
+	// NEW-03 fix: check token version against the user's current TokenVersion.
+	// Nuclear revocation (IncrementTokenVersion via EndSession or admin API)
+	// bumps the user's stored version.  Any access token whose embedded
+	// TokenVersion is lower than the current value must be treated as revoked,
+	// even if its JTI has not been explicitly blacklisted.
+	//
+	// This aligns Introspect with the auth middleware (internal/middleware/auth.go),
+	// which already performs this check for direct API calls.  Without it,
+	// resource servers relying on introspection would not see nuclear revocations
+	// until the token expires naturally.
+	if err == nil && user.TokenVersion > claims.TokenVersion {
+		return &dto.IntrospectResponse{Active: false}, nil
+	}
 
 	username := ""
 	if err == nil {
@@ -445,16 +603,71 @@ func (s *oauthService) Introspect(ctx context.Context, token string) (*dto.Intro
 	}, nil
 }
 
-// Revoke handles token revocation (RFC 7009)
+// Revoke handles token revocation (RFC 7009).
+//
+// MED-01 fix: implement per-token revocation by blacklisting the specific
+// token's JTI in the used_tokens table (reusing the existing infrastructure
+// from the HIGH-04 single-use refresh token enforcement).
+//
+// RFC 7009 §2 states that revocation MUST apply to the specific token
+// presented.  The previous implementation incremented the user's token
+// version, which silently logged out every device and session — a "nuclear"
+// option that violated the RFC and surprised users.
+//
+// Behaviour:
+//   - If the token parses successfully, block its JTI and return.  This is a
+//     targeted, RFC-compliant revocation.
+//   - If the token is malformed or already expired we cannot extract its JTI,
+//     so we fall back to the nuclear IncrementTokenVersion as a best-effort
+//     safety net (only when a userID is supplied).
+//   - Introspect() now checks whether the JTI is blacklisted, so a revoked
+//     token immediately shows `active: false`.
 func (s *oauthService) Revoke(ctx context.Context, token string, userID uint) error {
-	if err := s.userRepo.IncrementTokenVersion(ctx, userID); err != nil {
-		return fmt.Errorf("failed to revoke tokens: %w", err)
+	// Attempt per-token revocation via JTI blacklist.
+	if token != "" && s.usedTokenRepo != nil {
+		claims, err := s.tokenService.VerifyAccessToken(token)
+		if err == nil && claims.ID != "" {
+			// Token is valid and carries a JTI — blacklist it.
+			exp := claims.ExpiresAt.Time
+			if markErr := s.usedTokenRepo.MarkAsUsed(ctx, claims.ID, "revoked", userID, exp); markErr != nil &&
+				!errors.Is(markErr, repository.ErrTokenAlreadyUsed) {
+				// A real DB error — log and continue; still return success to
+				// caller per RFC 7009 (revocation always returns 200).
+				logger.Errorf("MED-01: failed to blacklist token JTI %s: %v", claims.ID, markErr)
+			}
+			s.logSecurityEvent(ctx, model.SecurityEventTokenRevoked, &userID, nil, true, map[string]interface{}{
+				"action": "revoke_token",
+				"jti":    claims.ID,
+			})
+			return nil
+		}
+		// Try refresh token if access token parse failed.
+		rClaims, rErr := s.tokenService.VerifyRefreshToken(token)
+		if rErr == nil && rClaims.ID != "" {
+			exp := rClaims.ExpiresAt.Time
+			if markErr := s.usedTokenRepo.MarkAsUsed(ctx, rClaims.ID, "revoked", userID, exp); markErr != nil &&
+				!errors.Is(markErr, repository.ErrTokenAlreadyUsed) {
+				logger.Errorf("MED-01: failed to blacklist refresh token JTI %s: %v", rClaims.ID, markErr)
+			}
+			s.logSecurityEvent(ctx, model.SecurityEventTokenRevoked, &userID, nil, true, map[string]interface{}{
+				"action": "revoke_refresh_token",
+				"jti":    rClaims.ID,
+			})
+			return nil
+		}
 	}
 
-	// Log token revocation
-	s.logSecurityEvent(ctx, model.SecurityEventTokenRevokedAll, &userID, nil, true, map[string]interface{}{
-		"action": "revoke_all_tokens",
-	})
+	// Fallback: token is absent or malformed — use nuclear revocation to
+	// ensure the user's session is invalidated (e.g. EndSession without a
+	// token hint, or a token that cannot be parsed).
+	if userID != 0 {
+		if err := s.userRepo.IncrementTokenVersion(ctx, userID); err != nil {
+			return fmt.Errorf("failed to revoke tokens: %w", err)
+		}
+		s.logSecurityEvent(ctx, model.SecurityEventTokenRevokedAll, &userID, nil, true, map[string]interface{}{
+			"action": "revoke_all_tokens_fallback",
+		})
+	}
 
 	return nil
 }
@@ -497,14 +710,21 @@ func (s *oauthService) GetOpenIDConfiguration(issuer string) *dto.OpenIDConfigur
 		JwksURI:                           issuer + "/.well-known/jwks.json",
 		IntrospectionEndpoint:             issuer + "/oauth/introspect",
 		RevocationEndpoint:                issuer + "/oauth/revoke",
-		ResponseTypesSupported:            []string{"code", "token", "id_token", "code id_token"},
+		// H-01 fix: only "code" is advertised — implicit and hybrid flows are removed.
+		ResponseTypesSupported: []string{"code"},
+		// H-02 fix: only "S256" is advertised — "plain" provides no security benefit
+		// (the code_verifier IS the code_challenge, so interception defeats it).
+		CodeChallengeMethodsSupported:     []string{"S256"},
 		GrantTypesSupported:               []string{"authorization_code", "refresh_token", "client_credentials"},
 		SubjectTypesSupported:             []string{"public"},
 		IDTokenSigningAlgValuesSupported:  []string{"RS256"},
 		ScopesSupported:                   []string{"openid", "email", "profile", "offline_access", "api"},
-		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic", "client_secret_post", "none"},
+		// HIGH-08 fix: remove "none" from token_endpoint_auth_methods_supported.
+		// Advertising "none" signals that unauthenticated token requests are
+		// acceptable, which misleads clients and relying parties.  Public clients
+		// using PKCE do not need "none" in this list — they simply omit credentials.
+		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic", "client_secret_post"},
 		ClaimsSupported:                   []string{"sub", "iss", "aud", "exp", "iat", "nbf", "email", "email_verified", "name", "preferred_username", "role", "app_roles", "token_version"},
-		CodeChallengeMethodsSupported:     []string{"plain", "S256"},
 	}
 }
 
@@ -527,14 +747,15 @@ func (s *oauthService) ValidatePasswordResetToken(ctx context.Context, token str
 	return claims.Email, true
 }
 
+// isValidResponseType enforces the OAuth 2.1 / RFC 9700 mandate that only the
+// Authorization Code flow is supported.
+//
+// H-01 fix: "token" (implicit grant) and hybrid flows ("id_token",
+// "code id_token") are removed.  The implicit grant puts access tokens in URL
+// fragments, exposing them via Referer headers, browser history, and server
+// logs.  OAuth 2.1 formally deprecates it; we follow suit.
 func isValidResponseType(responseType string) bool {
-	validTypes := map[string]bool{
-		"code":          true,
-		"token":         true,
-		"id_token":      true,
-		"code id_token": true,
-	}
-	return validTypes[responseType]
+	return responseType == "code"
 }
 
 func validateScope(scope string) error {

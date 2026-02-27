@@ -142,7 +142,7 @@ func (h *MonitoringHandler) GetSecurityEvents(w http.ResponseWriter, r *http.Req
 		response[i] = dto.FromSecurityAuditLog(&event)
 	}
 
-	json.NewEncoder(w).Encode(dto.SecurityEventsListResponse{
+	writeJSON(w, dto.SecurityEventsListResponse{
 		Events:   response,
 		Total:    total,
 		Page:     page,
@@ -301,7 +301,7 @@ func (h *MonitoringHandler) GetThreatMetrics(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	json.NewEncoder(w).Encode(dto.ThreatMetricsResponse{
+	writeJSON(w, dto.ThreatMetricsResponse{
 		TimeRange:      timeRange,
 		Summary:        summary,
 		TopThreats:     topThreats,
@@ -330,7 +330,7 @@ func (h *MonitoringHandler) ListAlertRules(w http.ResponseWriter, r *http.Reques
 		response[i] = dto.FromAlertRule(&rule)
 	}
 
-	json.NewEncoder(w).Encode(dto.AlertRulesListResponse{
+	writeJSON(w, dto.AlertRulesListResponse{
 		Rules: response,
 		Total: int64(len(rules)),
 	})
@@ -383,7 +383,7 @@ func (h *MonitoringHandler) CreateAlertRule(w http.ResponseWriter, r *http.Reque
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(dto.FromAlertRule(rule))
+	writeJSON(w, dto.FromAlertRule(rule))
 }
 
 // PUT /api/admin/alerts/rules/:id
@@ -442,7 +442,7 @@ func (h *MonitoringHandler) UpdateAlertRule(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	json.NewEncoder(w).Encode(dto.FromAlertRule(rule))
+	writeJSON(w, dto.FromAlertRule(rule))
 }
 
 // DELETE /api/admin/alerts/rules/:id
@@ -499,7 +499,7 @@ func (h *MonitoringHandler) GetAlertHistory(w http.ResponseWriter, r *http.Reque
 		response[i] = dto.FromTriggeredAlert(&alert)
 	}
 
-	json.NewEncoder(w).Encode(dto.AlertsHistoryResponse{
+	writeJSON(w, dto.AlertsHistoryResponse{
 		Alerts:         response,
 		Total:          total,
 		Unacknowledged: unackCount,
@@ -535,7 +535,7 @@ func (h *MonitoringHandler) AcknowledgeAlert(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]string{
+	writeJSON(w, map[string]string{
 		"message": "alert acknowledged",
 	})
 }
@@ -559,7 +559,7 @@ func (h *MonitoringHandler) ListBlockedIPs(w http.ResponseWriter, r *http.Reques
 		response[i] = dto.FromBlockedIP(&ip)
 	}
 
-	json.NewEncoder(w).Encode(dto.BlockedIPsListResponse{
+	writeJSON(w, dto.BlockedIPsListResponse{
 		BlockedIPs: response,
 		Total:      int64(len(ips)),
 	})
@@ -612,7 +612,7 @@ func (h *MonitoringHandler) BlockIP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(dto.FromBlockedIP(blockedIP))
+	writeJSON(w, dto.FromBlockedIP(blockedIP))
 }
 
 // DELETE /api/admin/security/blocked-ips/:id
@@ -718,7 +718,7 @@ func (h *MonitoringHandler) GetIPReputation(w http.ResponseWriter, r *http.Reque
 		recentEventDTOs[i] = dto.FromSecurityAuditLog(&event)
 	}
 
-	json.NewEncoder(w).Encode(dto.IPReputationResponse{
+	writeJSON(w, dto.IPReputationResponse{
 		IPAddress:           ipAddress,
 		IsBlocked:           isBlocked,
 		RiskScore:           riskScore,
@@ -825,7 +825,7 @@ func (h *MonitoringHandler) GetTokenStats(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	json.NewEncoder(w).Encode(dto.TokenStatsResponse{
+	writeJSON(w, dto.TokenStatsResponse{
 		Period: period,
 		Issued: dto.TokenCounts{
 			AccessTokens:  accessTokens,
@@ -1044,7 +1044,7 @@ func (h *MonitoringHandler) ListSessions(w http.ResponseWriter, r *http.Request)
 		sessions = append(sessions, session)
 	}
 
-	json.NewEncoder(w).Encode(dto.SessionsListResponse{
+	writeJSON(w, dto.SessionsListResponse{
 		Sessions: sessions,
 		Total:    total,
 		Page:     page,
@@ -1110,7 +1110,7 @@ func (h *MonitoringHandler) GetUserSessions(w http.ResponseWriter, r *http.Reque
 		sessions = append(sessions, session)
 	}
 
-	json.NewEncoder(w).Encode(dto.SessionsListResponse{
+	writeJSON(w, dto.SessionsListResponse{
 		Sessions: sessions,
 		Total:    int64(len(sessions)),
 		Page:     1,
@@ -1300,7 +1300,7 @@ func (h *MonitoringHandler) GetGeoAnalytics(w http.ResponseWriter, r *http.Reque
 	// Add GeoIP status to response
 	geoConfigured := h.geoIPService.IsConfigured()
 
-	json.NewEncoder(w).Encode(dto.GeoAnalyticsResponse{
+	writeJSON(w, dto.GeoAnalyticsResponse{
 		Period:        period,
 		GeoConfigured: geoConfigured,
 		ByCountry:     byCountry,
@@ -1363,7 +1363,7 @@ func (h *MonitoringHandler) GenerateSecurityReport(w http.ResponseWriter, r *htt
 	reports[reportID] = report
 
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(report)
+	writeJSON(w, report)
 }
 
 // GET /api/admin/reports/:id
@@ -1376,7 +1376,7 @@ func (h *MonitoringHandler) GetReportStatus(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	json.NewEncoder(w).Encode(report)
+	writeJSON(w, report)
 }
 
 // GET /api/admin/reports/:id/download
@@ -1409,7 +1409,7 @@ func (h *MonitoringHandler) DownloadReport(w http.ResponseWriter, r *http.Reques
 	default:
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Content-Disposition", "attachment; filename=security_report_"+reportID+".json")
-		json.NewEncoder(w).Encode(data)
+		writeJSON(w, data)
 	}
 }
 

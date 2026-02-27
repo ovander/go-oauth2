@@ -225,7 +225,9 @@ func (s *AutoDefenseService) blockIPUnlocked(ctx context.Context, ip, reason str
 				"is_brute_force": isBruteForce,
 			},
 		}
-		s.securityAuditRepo.Create(bgCtx, auditLog)
+		if err := s.securityAuditRepo.Create(bgCtx, auditLog); err != nil {
+			logger.Warnf("autoDefense: failed to persist security audit log for IP block (%s): %v", ip, err)
+		}
 	}
 
 	// Notify callback

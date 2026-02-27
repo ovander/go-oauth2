@@ -10,6 +10,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/service"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
 //go:embed templates/*.html
@@ -106,6 +107,8 @@ func (h *WebHandler) ForgotPasswordPage(w http.ResponseWriter, r *http.Request) 
 
 // ForgotPasswordSubmit handles forgot password form submission
 func (h *WebHandler) ForgotPasswordSubmit(w http.ResponseWriter, r *http.Request) {
+	// G120: cap the form body to prevent memory exhaustion.
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	if err := r.ParseForm(); err != nil {
 		h.render(w, "forgot_password.html", map[string]interface{}{
 			"Title": "Forgot Password",
@@ -145,7 +148,9 @@ func (h *WebHandler) ForgotPasswordSubmit(w http.ResponseWriter, r *http.Request
 		if user != nil {
 			name = user.Name
 		}
-		h.emailService.SendPasswordResetEmail(email, name, appName, resetURL)
+		if err := h.emailService.SendPasswordResetEmail(email, name, appName, resetURL); err != nil {
+			logger.Warnf("ForgotPasswordSubmit: failed to send password reset email to %s: %v", email, err)
+		}
 	}
 
 	data := map[string]interface{}{
@@ -192,6 +197,7 @@ func (h *WebHandler) ResetPasswordPage(w http.ResponseWriter, r *http.Request) {
 
 // ResetPasswordSubmit handles reset password form submission
 func (h *WebHandler) ResetPasswordSubmit(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // G120
 	if err := r.ParseForm(); err != nil {
 		h.render(w, "reset_password.html", map[string]interface{}{
 			"Title": "Reset Password",
@@ -331,6 +337,7 @@ func (h *WebHandler) AcceptInvitePage(w http.ResponseWriter, r *http.Request) {
 
 // AcceptInviteSubmit handles accept invitation form submission
 func (h *WebHandler) AcceptInviteSubmit(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // G120
 	if err := r.ParseForm(); err != nil {
 		h.render(w, "accept_invite.html", map[string]interface{}{
 			"Title": "Accept Invitation",
@@ -435,6 +442,7 @@ func (h *WebHandler) LoginPage(w http.ResponseWriter, r *http.Request) {
 
 // LoginSubmit handles login form submission
 func (h *WebHandler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // G120
 	if err := r.ParseForm(); err != nil {
 		h.render(w, "login.html", map[string]interface{}{
 			"Title": "Sign In",
@@ -527,6 +535,7 @@ func (h *WebHandler) SignupPage(w http.ResponseWriter, r *http.Request) {
 
 // SignupSubmit handles signup form submission
 func (h *WebHandler) SignupSubmit(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // G120
 	if err := r.ParseForm(); err != nil {
 		h.render(w, "signup.html", map[string]interface{}{
 			"Title": "Sign Up",

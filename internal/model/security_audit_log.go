@@ -29,7 +29,7 @@ const (
 	SecurityEventTokenIssued        SecurityEventType = "token_issued"
 	SecurityEventTokenRefreshed     SecurityEventType = "token_refreshed"
 	SecurityEventTokenRevoked       SecurityEventType = "token_revoked"
-	SecurityEventTokenRevokedAll    SecurityEventType = "all_tokens_revoked"
+	SecurityEventTokenRevokedAll SecurityEventType = "all_tokens_revoked" //nolint:gosec // G101 false positive: event type enum constant, not a credential
 	SecurityEventInvalidTokenUsed   SecurityEventType = "invalid_token_used"
 	SecurityEventExpiredTokenUsed   SecurityEventType = "expired_token_used"
 	SecurityEventRevokedTokenUsed   SecurityEventType = "revoked_token_used"

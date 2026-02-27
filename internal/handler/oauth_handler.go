@@ -173,6 +173,8 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 // CRIT-04: on successful login the handler renders the consent page rather
 //          than immediately issuing an authorization code.
 func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
+	// G120: cap the form body to 1 MB to prevent memory-exhaustion via huge POST bodies.
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	if err := r.ParseForm(); err != nil {
 		h.renderOAuthError(w, "invalid_request", "Failed to parse form", "")
 		return
@@ -427,6 +429,9 @@ func (h *OAuthHandler) redirectWithError(w http.ResponseWriter, r *http.Request,
 
 // POST /oauth/token
 func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
+	// G120: cap the request body to 1 MB before any form or JSON decode.
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
 	// Set no-cache headers
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Pragma", "no-cache")
@@ -497,7 +502,7 @@ func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 // GET/POST /oauth/userinfo
@@ -525,11 +530,13 @@ func (h *OAuthHandler) UserInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 // POST /oauth/introspect
 func (h *OAuthHandler) Introspect(w http.ResponseWriter, r *http.Request) {
+	// G120: cap the request body to 1 MB before any form or JSON decode.
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req dto.IntrospectRequest
 	contentType := r.Header.Get("Content-Type")
 
@@ -580,15 +587,17 @@ func (h *OAuthHandler) Introspect(w http.ResponseWriter, r *http.Request) {
 
 	response, err := h.oauthService.Introspect(r.Context(), req.Token)
 	if err != nil {
-		json.NewEncoder(w).Encode(dto.IntrospectResponse{Active: false})
+		writeJSON(w, dto.IntrospectResponse{Active: false})
 		return
 	}
 
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 // POST /oauth/revoke
 func (h *OAuthHandler) Revoke(w http.ResponseWriter, r *http.Request) {
+	// G120: cap the request body to 1 MB before any form or JSON decode.
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req dto.RevokeRequest
 	contentType := r.Header.Get("Content-Type")
 
@@ -670,6 +679,8 @@ func (h *OAuthHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 		state = r.URL.Query().Get("state")
 		clientID = r.URL.Query().Get("client_id")
 	} else {
+		// G120: cap POST body before parsing form fields.
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		_ = r.ParseForm()
 		postLogoutRedirectURI = r.FormValue("post_logout_redirect_uri")
 		idTokenHint = r.FormValue("id_token_hint")
@@ -739,7 +750,7 @@ func (h *OAuthHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 
 	// Return success response for API clients
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	writeJSON(w, map[string]string{
 		"message": "logout successful",
 	})
 }
@@ -789,14 +800,14 @@ func extractClientIDFromTokenHint(tokenHint string) string {
 func (h *OAuthHandler) OpenIDConfiguration(w http.ResponseWriter, r *http.Request) {
 	config := h.oauthService.GetOpenIDConfiguration(h.issuer)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(config)
+	writeJSON(w, config)
 }
 
 // GET /.well-known/jwks.json
 func (h *OAuthHandler) JWKS(w http.ResponseWriter, r *http.Request) {
 	jwks := h.oauthService.GetJWKS()
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(jwks)
+	writeJSON(w, jwks)
 }
 
 func extractClientCredentials(r *http.Request) (clientID, clientSecret string) {
@@ -824,7 +835,7 @@ func extractClientCredentials(r *http.Request) (clientID, clientSecret string) {
 func writeOAuthError(w http.ResponseWriter, errorCode, description string, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(dto.OAuthErrorResponse{
+	writeJSON(w, dto.OAuthErrorResponse{
 		Error:            errorCode,
 		ErrorDescription: description,
 	})

@@ -71,7 +71,7 @@ func (h *AdminHandler) ListApps(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	json.NewEncoder(w).Encode(dto.AppListResponse{
+	writeJSON(w, dto.AppListResponse{
 		Apps:       response,
 		TotalCount: int64(len(apps)),
 	})
@@ -106,7 +106,7 @@ func (h *AdminHandler) GetApp(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	json.NewEncoder(w).Encode(dto.AppResponse{
+	writeJSON(w, dto.AppResponse{
 		ID:           app.ID,
 		Name:         app.Name,
 		ClientID:     app.ClientID,
@@ -163,7 +163,8 @@ func (h *AdminHandler) CreateApp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(dto.AppWithSecretResponse{
+	//nolint:gosec // G117 intentional: one-time plaintext delivery of the newly-generated client_secret to the registering party
+	writeJSON(w, dto.AppWithSecretResponse{
 		AppResponse: dto.AppResponse{
 			ID:           app.ID,
 			Name:         app.Name,
@@ -219,7 +220,7 @@ func (h *AdminHandler) UpdateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(dto.AppResponse{
+	writeJSON(w, dto.AppResponse{
 		ID:           updatedApp.ID,
 		Name:         updatedApp.Name,
 		ClientID:     updatedApp.ClientID,
@@ -328,7 +329,8 @@ func (h *AdminHandler) RotateSecret(w http.ResponseWriter, r *http.Request) {
 		}).Debug("📧 Email service not configured, skipping rotated credentials email")
 	}
 
-	json.NewEncoder(w).Encode(dto.AppWithSecretResponse{
+	//nolint:gosec // G117 intentional: one-time delivery of the rotated client_secret to the admin caller
+	writeJSON(w, dto.AppWithSecretResponse{
 		AppResponse: dto.AppResponse{
 			ID:           updatedApp.ID,
 			Name:         updatedApp.Name,
@@ -361,7 +363,7 @@ func (h *AdminHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	users, totalUsers, _ := h.userService.List(r.Context(), 1, 1)
 	_ = users
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, map[string]interface{}{
 		"total_users": totalUsers,
 		"total_apps":  len(apps),
 	})
@@ -409,7 +411,7 @@ func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	json.NewEncoder(w).Encode(dto.UserListResponse{
+	writeJSON(w, dto.UserListResponse{
 		Users:      response,
 		TotalCount: totalCount,
 		Page:       page,
@@ -444,7 +446,7 @@ func (h *AdminHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(dto.UserResponse{
+	writeJSON(w, dto.UserResponse{
 		ID:         user.ID,
 		Email:      user.Email,
 		Name:       user.Name,
@@ -503,7 +505,7 @@ func (h *AdminHandler) GetUserApps(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	json.NewEncoder(w).Encode(dto.UserAppMembershipsResponse{
+	writeJSON(w, dto.UserAppMembershipsResponse{
 		UserID:      user.ID,
 		Email:       user.Email,
 		Name:        user.Name,
@@ -553,7 +555,7 @@ func (h *AdminHandler) RevokeUserTokens(w http.ResponseWriter, r *http.Request) 
 		})
 	}
 
-	json.NewEncoder(w).Encode(map[string]string{
+	writeJSON(w, map[string]string{
 		"message": "tokens revoked successfully",
 	})
 }
@@ -599,7 +601,7 @@ func (h *AdminHandler) UnlockUser(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	json.NewEncoder(w).Encode(map[string]string{
+	writeJSON(w, map[string]string{
 		"message": "user unlocked successfully",
 	})
 }
@@ -640,7 +642,7 @@ func (h *AdminHandler) GetActivity(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	json.NewEncoder(w).Encode(dto.AdminLogListResponse{
+	writeJSON(w, dto.AdminLogListResponse{
 		Logs:       response,
 		TotalCount: totalCount,
 		Page:       page,
@@ -681,7 +683,7 @@ func (h *AdminHandler) ListSuperadmins(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	json.NewEncoder(w).Encode(dto.SuperadminListResponse{
+	writeJSON(w, dto.SuperadminListResponse{
 		Superadmins: response,
 		TotalCount:  int64(len(superadmins)),
 	})
@@ -713,7 +715,7 @@ func (h *AdminHandler) GetSuperadmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(dto.SuperadminResponse{
+	writeJSON(w, dto.SuperadminResponse{
 		ID:           user.ID,
 		Email:        user.Email,
 		Name:         user.Name,
@@ -763,7 +765,7 @@ func (h *AdminHandler) CreateSuperadmin(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(dto.SuperadminResponse{
+	writeJSON(w, dto.SuperadminResponse{
 		ID:           user.ID,
 		Email:        user.Email,
 		Name:         user.Name,
@@ -821,7 +823,7 @@ func (h *AdminHandler) UpdateSuperadmin(w http.ResponseWriter, r *http.Request) 
 		})
 	}
 
-	json.NewEncoder(w).Encode(dto.SuperadminResponse{
+	writeJSON(w, dto.SuperadminResponse{
 		ID:           user.ID,
 		Email:        user.Email,
 		Name:         user.Name,

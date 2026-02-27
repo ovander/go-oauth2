@@ -39,7 +39,7 @@ func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(dto.UserResponse{
+	writeJSON(w, dto.UserResponse{
 		ID:         user.ID,
 		Email:      user.Email,
 		Name:       user.Name,
@@ -73,7 +73,7 @@ func (h *ProfileHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(dto.UserResponse{
+	writeJSON(w, dto.UserResponse{
 		ID:         user.ID,
 		Email:      user.Email,
 		Name:       user.Name,

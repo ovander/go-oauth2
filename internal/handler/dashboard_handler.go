@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -79,7 +78,7 @@ func (h *DashboardHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 		Where("deleted_at IS NULL AND locked_until > ?", time.Now()).
 		Count(&stats.LockedAccounts)
 
-	json.NewEncoder(w).Encode(stats)
+	writeJSON(w, stats)
 }
 
 // GET /api/admin/dashboard/activity
@@ -142,7 +141,7 @@ func (h *DashboardHandler) GetActivity(w http.ResponseWriter, r *http.Request) {
 	var total int64
 	h.db.WithContext(ctx).Table("security_audit_logs").Count(&total)
 
-	json.NewEncoder(w).Encode(dto.DashboardActivityResponse{
+	writeJSON(w, dto.DashboardActivityResponse{
 		Activities: activities,
 		Total:      total,
 	})
@@ -177,7 +176,7 @@ func (h *DashboardHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 		overallStatus = "unhealthy"
 	}
 
-	json.NewEncoder(w).Encode(dto.DashboardHealthResponse{
+	writeJSON(w, dto.DashboardHealthResponse{
 		Status:   overallStatus,
 		Database: dbStatus,
 		Uptime:   uptimeStr,
@@ -237,7 +236,7 @@ func (h *DashboardHandler) GetLoginTrends(w http.ResponseWriter, r *http.Request
 		})
 	}
 
-	json.NewEncoder(w).Encode(dto.DashboardLoginTrendsResponse{
+	writeJSON(w, dto.DashboardLoginTrendsResponse{
 		Trends: trends,
 		Period: strconv.Itoa(days) + " days",
 	})
@@ -309,7 +308,7 @@ func (h *DashboardHandler) GetAppUsage(w http.ResponseWriter, r *http.Request) {
 		usageItems = []dto.AppUsageItem{}
 	}
 
-	json.NewEncoder(w).Encode(dto.DashboardAppUsageResponse{
+	writeJSON(w, dto.DashboardAppUsageResponse{
 		Apps:  usageItems,
 		Total: int64(len(apps)),
 	})
@@ -318,15 +317,16 @@ func (h *DashboardHandler) GetAppUsage(w http.ResponseWriter, r *http.Request) {
 // Helper functions
 
 func formatEventDescription(eventType string, success bool) string {
+	//nolint:gosec // G101 false positive: this is a lookup table of human-readable event descriptions, not hardcoded credentials
 	descriptions := map[string]string{
-		"login_success":    "User logged in successfully",
-		"login_failed":     "Login attempt failed",
-		"logout":           "User logged out",
-		"account_locked":   "Account was locked",
-		"password_reset":   "Password was reset",
-		"email_verified":   "Email was verified",
-		"token_revoked":    "Tokens were revoked",
-		"signup":           "New user signed up",
+		"login_success":  "User logged in successfully",
+		"login_failed":   "Login attempt failed",
+		"logout":         "User logged out",
+		"account_locked": "Account was locked",
+		"password_reset": "Password was reset",
+		"email_verified": "Email was verified",
+		"token_revoked":  "Tokens were revoked",
+		"signup":         "New user signed up",
 	}
 
 	if desc, ok := descriptions[eventType]; ok {

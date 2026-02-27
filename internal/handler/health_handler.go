@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"gorm.io/gorm"
@@ -18,7 +17,7 @@ func NewHealthHandler(db *gorm.DB) *HealthHandler {
 // GET /health
 func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	writeJSON(w, map[string]string{
 		"status": "ok",
 	})
 }
@@ -26,7 +25,7 @@ func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
 // GET /health/liveness
 func (h *HealthHandler) Liveness(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	writeJSON(w, map[string]string{
 		"status": "ok",
 	})
 }
@@ -37,7 +36,7 @@ func (h *HealthHandler) Readiness(w http.ResponseWriter, r *http.Request) {
 	sqlDB, err := h.db.DB()
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{
+		writeJSON(w, map[string]string{
 			"status":   "error",
 			"database": "failed to get DB connection",
 		})
@@ -46,7 +45,7 @@ func (h *HealthHandler) Readiness(w http.ResponseWriter, r *http.Request) {
 
 	if err := sqlDB.Ping(); err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{
+		writeJSON(w, map[string]string{
 			"status":   "error",
 			"database": "failed to ping database",
 		})
@@ -54,7 +53,7 @@ func (h *HealthHandler) Readiness(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	writeJSON(w, map[string]string{
 		"status":   "ok",
 		"database": "connected",
 	})

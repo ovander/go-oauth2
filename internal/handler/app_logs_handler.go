@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -59,7 +58,7 @@ func (h *AppLogsHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	json.NewEncoder(w).Encode(dto.AppActivityLogListResponse{
+	writeJSON(w, dto.AppActivityLogListResponse{
 		Logs:       response,
 		TotalCount: totalCount,
 		Page:       page,

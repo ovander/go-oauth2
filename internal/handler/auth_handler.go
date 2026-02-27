@@ -57,8 +57,12 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		Message: "Please check your email to verify your account",
 	}
 
-	// Include verify URL in dev/test environments
-	if h.environment == "development" || h.environment == "test" {
+	// MED-03 fix: only expose the raw verification token in explicitly local
+	// development ("development" / "dev").  Test environments are NOT included
+	// because a staging server may be internet-accessible yet have ENV=test set
+	// by accident.  In CI tests inject the token via the audit log or a
+	// dedicated test helper rather than relying on this response field.
+	if h.environment == "development" || h.environment == "dev" {
 		response.VerifyURL = h.issuer + "/api/auth/verify-email?token=" + verifyToken
 	}
 

@@ -3,10 +3,13 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
 // Config holds all application configuration
@@ -23,7 +26,10 @@ type Config struct {
 	DBTimeout   time.Duration
 
 	// JWT
-	JWTSecret   string
+	// M-10 fix: JWTSecret was loaded from JWT_SECRET but never used — the
+	// server signs all tokens with RSA keys managed by KeyManager, not with
+	// a symmetric secret.  Removed to avoid misleading operators into thinking
+	// setting JWT_SECRET has any effect on token security.
 	OAuthIssuer string
 
 	// Token TTLs
@@ -36,13 +42,32 @@ type Config struct {
 	// Security
 	MaxFailedAttempts   int
 	LockoutDurationSecs int
-	SecretKeyBase       string
+	// SecretKeyBase is a cryptographic secret (≥32 bytes in production) used
+	// for two purposes:
+	//   1. CSRF cookie signing in the OAuth authorization handler (CRIT-03):
+	//      the value is passed as secretKey to handler.NewOAuthHandler, which
+	//      uses it to HMAC-sign consent tokens so they cannot be forged.
+	//   2. Consent token integrity (CRIT-04): the same key protects the
+	//      opaque consent token embedded in the authorization form.
+	// LOW-01 fix: this field is documented and wired — it is NOT unused.
+	// Operators must set SECRET_KEY_BASE to a random ≥32-byte value in
+	// production (enforced by Validate()).
+	SecretKeyBase string
 
 	// Rate Limiting
 	RateLimitLogin        int
 	RateLimitLoginWindow  time.Duration
 	RateLimitSignup       int
 	RateLimitSignupWindow time.Duration
+	// MED-05: RateLimitToken / RateLimitTokenWindow control the per-IP
+	// rate limiter applied to POST /oauth/token.  A value of 0 disables
+	// the limiter (not recommended for production).  Defaults to 10
+	// requests per 60 seconds, which allows normal token refresh cadences
+	// while blocking brute-force attacks on authorization codes and client
+	// credentials.  Configured via RATE_LIMIT_TOKEN and
+	// RATE_LIMIT_TOKEN_WINDOW_MS (or legacy RATE_LIMIT_TOKEN_WINDOW).
+	RateLimitToken        int
+	RateLimitTokenWindow  time.Duration
 	RateLimitMaxEntries   int
 
 	// Email/SMTP
@@ -57,9 +82,28 @@ type Config struct {
 	// Keys
 	KeysPath string
 
+	// Trusted Proxies
+	// Comma-separated IPs or CIDR ranges whose X-Forwarded-For / X-Real-IP
+	// headers are trusted for real-IP extraction (e.g. "10.0.0.0/8,172.16.0.0/12").
+	// Leave empty when the server is exposed directly to the internet.
+	TrustedProxies string
+
+	// CORS
+	// Comma-separated list of allowed origins (e.g. "https://app.example.com,https://admin.example.com").
+	// H-06 fix: when empty the server uses a wildcard without AllowCredentials.
+	// Setting explicit origins enables AllowCredentials for those origins only.
+	AllowedOrigins string
+
 	// GeoIP
 	GeoIPCityDBPath string // Path to GeoLite2-City.mmdb
 	GeoIPASNDBPath  string // Path to GeoLite2-ASN.mmdb (optional)
+
+	// Migrations
+	// M-01 fix: AutoMigrate runs GORM's schema diffing on every startup, which
+	// can silently add columns or indexes in production.  Set AUTO_MIGRATE=true
+	// only during initial deployment or when intentionally rolling out a schema
+	// change.  Default is false so production restarts never touch the schema.
+	AutoMigrate bool
 }
 
 // Load loads configuration from environment variables
@@ -69,10 +113,16 @@ func Load() *Config {
 
 	cfg := &Config{
 		// Server
-		Port:        getEnv("PORT", "8080"),
-		AdminPort:   getEnv("ADMIN_PORT", ""), // Empty = disabled (use single port mode)
-		Host:        getEnv("PHX_HOST", "localhost"),
-		Environment: getEnv("ENV", "development"),
+		Port:      getEnv("PORT", "8080"),
+		AdminPort: getEnv("ADMIN_PORT", ""), // Empty = disabled (use single port mode)
+		Host:      getEnv("PHX_HOST", "localhost"),
+		// MED-04 fix: default to "production" so that a server accidentally
+		// started without an ENV variable does not silently operate in an
+		// insecure mode (e.g. leaking email verification tokens in API
+		// responses per MED-03, or skipping SecretKeyBase validation).
+		// Operators must explicitly set ENV=development or ENV=test to opt
+		// into a less-restrictive mode.
+		Environment: getEnv("ENV", "production"),
 
 		// Database
 		DatabaseURL: getEnv("DATABASE_URL", "postgres://localhost/socrate_auth_dev"),
@@ -80,7 +130,6 @@ func Load() *Config {
 		DBTimeout:   time.Duration(getEnvInt("DB_TIMEOUT_SECONDS", 30)) * time.Second,
 
 		// JWT
-		JWTSecret:   getEnv("JWT_SECRET", ""),
 		OAuthIssuer: getEnv("OAUTH_ISSUER", "http://localhost:8080"),
 
 		// Token TTLs
@@ -96,11 +145,27 @@ func Load() *Config {
 		SecretKeyBase:       getEnv("SECRET_KEY_BASE", ""),
 
 		// Rate Limiting
-		RateLimitLogin:        getEnvInt("RATE_LIMIT_LOGIN", 5),
-		RateLimitLoginWindow:  time.Duration(getEnvInt("RATE_LIMIT_LOGIN_WINDOW", 60000)) * time.Millisecond,
-		RateLimitSignup:       getEnvInt("RATE_LIMIT_SIGNUP", 3),
-		RateLimitSignupWindow: time.Duration(getEnvInt("RATE_LIMIT_SIGNUP_WINDOW", 3600000)) * time.Millisecond,
-		RateLimitMaxEntries:   getEnvInt("RATE_LIMIT_MAX_ENTRIES", 10000),
+		// LOW-03 fix: window env vars now have an explicit _MS suffix so
+		// operators know the unit is milliseconds.  The old names without the
+		// suffix are still accepted as a backwards-compatible fallback.
+		// Default 60000 ms = 60 s for login; 3600000 ms = 60 min for signup.
+		RateLimitLogin: getEnvInt("RATE_LIMIT_LOGIN", 5),
+		RateLimitLoginWindow: time.Duration(
+			getEnvIntFallback("RATE_LIMIT_LOGIN_WINDOW_MS", "RATE_LIMIT_LOGIN_WINDOW", 60000),
+		) * time.Millisecond,
+		RateLimitSignup: getEnvInt("RATE_LIMIT_SIGNUP", 3),
+		RateLimitSignupWindow: time.Duration(
+			getEnvIntFallback("RATE_LIMIT_SIGNUP_WINDOW_MS", "RATE_LIMIT_SIGNUP_WINDOW", 3600000),
+		) * time.Millisecond,
+		// MED-05: token endpoint rate limiting.  10 requests per 60 s is
+		// sufficient for legitimate OAuth clients (a user refreshing every
+		// minute generates 1 req/min) while blocking fast brute-force probes.
+		// Set RATE_LIMIT_TOKEN=0 to explicitly disable (not recommended).
+		RateLimitToken: getEnvInt("RATE_LIMIT_TOKEN", 10),
+		RateLimitTokenWindow: time.Duration(
+			getEnvIntFallback("RATE_LIMIT_TOKEN_WINDOW_MS", "RATE_LIMIT_TOKEN_WINDOW", 60000),
+		) * time.Millisecond,
+		RateLimitMaxEntries: getEnvInt("RATE_LIMIT_MAX_ENTRIES", 10000),
 
 		// Email/SMTP
 		SMTPHost:     getEnv("SMTP_HOST", ""),
@@ -114,9 +179,18 @@ func Load() *Config {
 		// Keys
 		KeysPath: getEnv("KEYS_PATH", "keys"),
 
+		// Trusted Proxies
+		TrustedProxies: getEnv("TRUSTED_PROXIES", ""),
+
+		// CORS
+		AllowedOrigins: getEnv("ALLOWED_ORIGINS", ""),
+
 		// GeoIP
 		GeoIPCityDBPath: getEnv("GEOIP_CITY_DB", ""),
 		GeoIPASNDBPath:  getEnv("GEOIP_ASN_DB", ""),
+
+		// Migrations
+		AutoMigrate: getEnvBool("AUTO_MIGRATE", false),
 	}
 
 	return cfg
@@ -139,9 +213,37 @@ func (c *Config) Validate() error {
 		if c.OAuthIssuer == "" || c.OAuthIssuer == "http://localhost:8080" {
 			return fmt.Errorf("OAUTH_ISSUER must be set to a production URL")
 		}
-		// Warn about insecure defaults
+		// L-05 fix: a relative KEYS_PATH resolves against the working directory
+		// at startup time.  If the server is started from a different directory
+		// (e.g. via systemd with WorkingDirectory=/), the relative path silently
+		// generates a brand-new key pair, invalidating all outstanding tokens.
+		// Require an absolute path in production so the key location is
+		// unambiguous regardless of how the process is launched.
+		if !filepath.IsAbs(c.KeysPath) {
+			return fmt.Errorf("KEYS_PATH must be an absolute path in production (currently %q); set KEYS_PATH to an absolute directory", c.KeysPath)
+		}
+		// MED-07 fix: use the structured logger instead of fmt.Println so this
+		// warning appears in centralized log aggregation (Datadog, Splunk, etc.)
+		// and is not silently dropped in containerized environments where stdout
+		// is not captured.
 		if c.AccessTokenTTL > 30*time.Minute {
-			fmt.Println("WARNING: ACCESS_TOKEN_TTL is set to more than 30 minutes, consider reducing for better security")
+			logger.WithFields(logger.Fields{
+				"access_token_ttl_minutes": c.AccessTokenTTL.Minutes(),
+				"recommended_max_minutes":  30,
+			}).Warn("MED-07: ACCESS_TOKEN_TTL exceeds 30 minutes — consider reducing for better security")
+		}
+		// MED-05: warn loudly when the token endpoint rate limiter is disabled
+		// in production.  Without it the token endpoint is vulnerable to
+		// authorization-code brute-force, refresh-token scanning, and client
+		// credential password-spraying.  Operators must set RATE_LIMIT_TOKEN=0
+		// deliberately to reach this path.
+		if c.RateLimitToken == 0 {
+			logger.WithFields(logger.Fields{
+				"endpoint":           "POST /oauth/token",
+				"env_var":            "RATE_LIMIT_TOKEN",
+				"recommended_limit":  10,
+				"recommended_window": "60s",
+			}).Warn("MED-05: token endpoint rate limiting is DISABLED — set RATE_LIMIT_TOKEN to enable brute-force protection")
 		}
 	}
 	return nil
@@ -171,6 +273,38 @@ func getEnv(key, defaultValue string) string {
 
 func getEnvInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
+		if intVal, err := strconv.Atoi(value); err == nil {
+			return intVal
+		}
+	}
+	return defaultValue
+}
+
+func getEnvBool(key string, defaultValue bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return defaultValue
+	}
+}
+
+// getEnvIntFallback returns the integer value of the first env var that is
+// set and parses successfully.  If neither is set the defaultValue is used.
+// LOW-03: used to support both the new _MS-suffixed names and the old names.
+func getEnvIntFallback(primary, fallback string, defaultValue int) int {
+	if value := os.Getenv(primary); value != "" {
+		if intVal, err := strconv.Atoi(value); err == nil {
+			return intVal
+		}
+	}
+	if value := os.Getenv(fallback); value != "" {
 		if intVal, err := strconv.Atoi(value); err == nil {
 			return intVal
 		}

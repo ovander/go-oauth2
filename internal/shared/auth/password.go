@@ -32,6 +32,17 @@ var commonPasswords = map[string]bool{
 	"1234567890123":  true,
 }
 
+// L-01 fix: compile regexes once at package initialisation instead of on
+// every ValidatePassword call.  regexp.MustCompile is not cheap — it
+// tokenises, parses, and compiles the pattern each time it is called.
+// Hoisting to package-level vars means the cost is paid once at startup.
+var (
+	reHasLower   = regexp.MustCompile(`[a-z]`)
+	reHasUpper   = regexp.MustCompile(`[A-Z]`)
+	reHasDigit   = regexp.MustCompile(`[0-9]`)
+	reHasSpecial = regexp.MustCompile(`[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;'/~\x60]`)
+)
+
 // ValidatePassword checks if a password meets the security requirements
 func ValidatePassword(password string) error {
 	if len(password) < 12 {
@@ -41,23 +52,19 @@ func ValidatePassword(password string) error {
 		return ErrPasswordTooLong
 	}
 
-	hasLower := regexp.MustCompile(`[a-z]`).MatchString(password)
-	if !hasLower {
+	if !reHasLower.MatchString(password) {
 		return ErrPasswordNoLowercase
 	}
 
-	hasUpper := regexp.MustCompile(`[A-Z]`).MatchString(password)
-	if !hasUpper {
+	if !reHasUpper.MatchString(password) {
 		return ErrPasswordNoUppercase
 	}
 
-	hasDigit := regexp.MustCompile(`[0-9]`).MatchString(password)
-	if !hasDigit {
+	if !reHasDigit.MatchString(password) {
 		return ErrPasswordNoDigit
 	}
 
-	hasSpecial := regexp.MustCompile(`[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\;'/~\x60]`).MatchString(password)
-	if !hasSpecial {
+	if !reHasSpecial.MatchString(password) {
 		return ErrPasswordNoSpecial
 	}
 
@@ -85,14 +92,32 @@ func CheckPassword(password, hash string) bool {
 	return err == nil
 }
 
-// HashClientSecret hashes a client secret using SHA-256
-func HashClientSecret(secret string) string {
-	hash := sha256.Sum256([]byte(secret))
-	return hex.EncodeToString(hash[:])
+// HashClientSecret hashes a client secret using bcrypt.
+//
+// H-03 fix: SHA-256 is a fast hash — an attacker who obtains the hash table
+// can brute-force all 32-byte random secrets offline in hours on commodity
+// hardware.  bcrypt is slow by design (work factor 12 ≈ 250 ms/attempt),
+// making an offline attack infeasible.
+func HashClientSecret(secret string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(secret), 12)
+	if err != nil {
+		return "", err
+	}
+	return string(hash), nil
 }
 
-// CheckClientSecret compares a client secret with its hash
+// CheckClientSecret compares a client secret against its stored hash.
+//
+// Supports a transparent migration path: bcrypt hashes (starting with "$2")
+// are verified with bcrypt; legacy SHA-256 hashes (64-char hex strings) still
+// validate against the old algorithm so that existing apps continue to work
+// until their secrets are rotated.
 func CheckClientSecret(secret, hash string) bool {
-	computed := HashClientSecret(secret)
-	return computed == hash
+	if strings.HasPrefix(hash, "$2") {
+		// bcrypt hash
+		return bcrypt.CompareHashAndPassword([]byte(hash), []byte(secret)) == nil
+	}
+	// Legacy SHA-256 path — constant-time hex comparison to avoid timing leaks.
+	legacy := sha256.Sum256([]byte(secret))
+	return hex.EncodeToString(legacy[:]) == hash
 }

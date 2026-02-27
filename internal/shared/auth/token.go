@@ -361,13 +361,24 @@ func (ts *TokenService) signToken(claims jwt.Claims) (string, error) {
 	return token.SignedString(ts.keyManager.GetPrivateKey())
 }
 
-// verifyToken is a generic token verification function that consolidates common logic
+// verifyToken is a generic token verification function that consolidates common logic.
+//
+// M-03 fix: the Keyfunc now selects the public key by the token's "kid" header
+// so that tokens signed before a key rotation can still be verified using the
+// retired key ring, instead of failing with ErrTokenSignature.
 func (ts *TokenService) verifyToken(tokenString string, claims jwt.Claims) error {
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
-		return ts.keyManager.GetPublicKey(), nil
+		kid, _ := token.Header["kid"].(string)
+		pub, err := ts.keyManager.GetPublicKeyByID(kid)
+		if err != nil {
+			// Fall back to current key for tokens that predate KID support
+			// (e.g. tokens issued before migration to UUIDs with no kid header).
+			return ts.keyManager.GetPublicKey(), nil
+		}
+		return pub, nil
 	})
 
 	if err != nil {
@@ -432,6 +443,21 @@ func (ts *TokenService) VerifyEmailToken(tokenString string) (*EmailTokenClaims,
 	// Email tokens can be either email_verification or password_reset
 	if claims.Type != "email_verification" && claims.Type != "password_reset" {
 		return nil, fmt.Errorf("%w: expected email_verification or password_reset, got %s", ErrTokenInvalidType, claims.Type)
+	}
+
+	return claims, nil
+}
+
+// VerifyIDToken verifies an OpenID Connect ID token and returns its claims.
+// Used by EndSession to validate the id_token_hint (M-06).
+func (ts *TokenService) VerifyIDToken(tokenString string) (*IDTokenClaims, error) {
+	claims := &IDTokenClaims{}
+	if err := ts.verifyToken(tokenString, claims); err != nil {
+		return nil, err
+	}
+
+	if claims.Type != "id_token" {
+		return nil, fmt.Errorf("%w: expected id_token, got %s", ErrTokenInvalidType, claims.Type)
 	}
 
 	return claims, nil

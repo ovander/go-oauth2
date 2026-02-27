@@ -3,10 +3,13 @@ package middleware
 import (
 	"container/list"
 	"fmt"
-	"log"
+	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
 const (
@@ -217,7 +220,10 @@ func (rl *RateLimiter) cleanup() {
 	for {
 		select {
 		case <-rl.stopCh:
-			log.Println("Rate limiter cleanup goroutine stopped")
+			// L-02 fix: use the project's structured logrus logger instead of
+			// the stdlib log package so shutdown messages appear in the same
+			// format and destination as all other application log output.
+			logger.Info("Rate limiter cleanup goroutine stopped")
 			return
 		case <-ticker.C:
 			rl.cleanupExpired()
@@ -249,11 +255,14 @@ func (rl *RateLimiter) cleanupExpired() {
 	}
 }
 
-// RateLimitMiddleware creates a rate limiting middleware
-func RateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
+// RateLimitMiddleware creates a rate-limiting middleware.
+// trustedCIDRs controls which upstream proxies may supply X-Forwarded-For /
+// X-Real-IP headers.  Pass nil (or an empty slice) to always use RemoteAddr
+// directly and never trust proxy headers — the safe default.
+func RateLimitMiddleware(limiter *RateLimiter, trustedCIDRs []*net.IPNet) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			key := GetClientIP(r)
+			key := GetClientIPSafe(r, trustedCIDRs)
 
 			if !limiter.Allow(key) {
 				resetTime := limiter.ResetTime(key)
@@ -280,24 +289,87 @@ func RateLimitMiddleware(limiter *RateLimiter) func(http.Handler) http.Handler {
 	}
 }
 
-// GetClientIP extracts the client IP from the request
+// GetClientIPSafe extracts the real client IP in a spoofing-resistant way.
+//
+// Proxy headers (X-Forwarded-For, X-Real-IP) are trusted ONLY when the
+// immediate TCP connection (RemoteAddr) comes from one of the supplied
+// trustedCIDRs.  If trustedCIDRs is nil or empty the function always returns
+// the bare RemoteAddr, making it safe even when the server is exposed directly
+// to the internet.
+func GetClientIPSafe(r *http.Request, trustedCIDRs []*net.IPNet) string {
+	remoteIP := extractRemoteIP(r.RemoteAddr)
+
+	if len(trustedCIDRs) > 0 && isIPInCIDRs(remoteIP, trustedCIDRs) {
+		// Connection comes from a trusted proxy — honour its forwarding headers.
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			// XFF is a comma-separated list; the leftmost entry is the original client.
+			if idx := strings.Index(xff, ","); idx != -1 {
+				return strings.TrimSpace(xff[:idx])
+			}
+			return strings.TrimSpace(xff)
+		}
+		if xri := r.Header.Get("X-Real-IP"); xri != "" {
+			return strings.TrimSpace(xri)
+		}
+	}
+
+	return remoteIP
+}
+
+// GetClientIP is kept for backward-compatibility; it always trusts proxy
+// headers regardless of origin.  Prefer GetClientIPSafe with explicit
+// trusted CIDRs in security-sensitive contexts.
 func GetClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header first (for proxies)
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// Take the first IP in the list
-		for i, c := range xff {
-			if c == ',' {
-				return xff[:i]
+	return GetClientIPSafe(r, nil)
+}
+
+// extractRemoteIP strips the port from a "host:port" address.
+func extractRemoteIP(addr string) string {
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		return host
+	}
+	return addr
+}
+
+// isIPInCIDRs reports whether ipStr falls within any of the supplied CIDRs.
+func isIPInCIDRs(ipStr string, cidrs []*net.IPNet) bool {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+	for _, cidr := range cidrs {
+		if cidr.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// ParseTrustedProxyCIDRs parses a comma-separated list of IPs / CIDR blocks
+// into []*net.IPNet.  Plain IPs are treated as /32 (IPv4) or /128 (IPv6).
+func ParseTrustedProxyCIDRs(raw string) ([]*net.IPNet, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var cidrs []*net.IPNet
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		// Normalise bare IPs to CIDR notation.
+		if !strings.Contains(entry, "/") {
+			if strings.Contains(entry, ":") {
+				entry += "/128" // IPv6
+			} else {
+				entry += "/32" // IPv4
 			}
 		}
-		return xff
+		_, cidr, err := net.ParseCIDR(entry)
+		if err != nil {
+			return nil, fmt.Errorf("invalid trusted proxy CIDR %q: %w", entry, err)
+		}
+		cidrs = append(cidrs, cidr)
 	}
-
-	// Check X-Real-IP header
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
-
-	// Fall back to remote address
-	return r.RemoteAddr
+	return cidrs, nil
 }

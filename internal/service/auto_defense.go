@@ -1,6 +1,7 @@
 package service
 
 import (
+	"container/list"
 	"context"
 	"fmt"
 	"sync"
@@ -52,17 +53,23 @@ type ipRecord struct {
 	FailedAttempts []time.Time
 	BlockCount     int // Number of times this IP has been blocked
 	LastActivity   time.Time
+	// element is the record's position in the LRU list so evictOldest can
+	// remove it in O(1) instead of scanning all tracked IPs (L-03 fix).
+	element *list.Element
 }
 
 // AutoDefenseService provides automatic threat detection and blocking
 type AutoDefenseService struct {
-	config           AutoDefenseConfig
-	blockedIPRepo    repository.BlockedIPRepository
+	config            AutoDefenseConfig
+	blockedIPRepo     repository.BlockedIPRepository
 	securityAuditRepo repository.SecurityAuditLogRepository
 
 	// In-memory tracking for real-time detection
 	ipRecords map[string]*ipRecord
-	mu        sync.RWMutex
+	// lru keeps ipRecord pointers ordered by last activity so evictOldest
+	// is O(1) rather than O(n) — L-03 fix.
+	lru *list.List
+	mu  sync.RWMutex
 
 	// Background processing
 	stopCh chan struct{}
@@ -87,6 +94,7 @@ func NewAutoDefenseService(
 		blockedIPRepo:     blockedIPRepo,
 		securityAuditRepo: securityAuditRepo,
 		ipRecords:         make(map[string]*ipRecord),
+		lru:               list.New(),
 		stopCh:            make(chan struct{}),
 	}
 
@@ -120,7 +128,12 @@ func (s *AutoDefenseService) RecordFailedLogin(ctx context.Context, ip string, u
 			IP:             ip,
 			FailedAttempts: make([]time.Time, 0, s.config.FailedLoginThreshold),
 		}
+		// Push to LRU front so new IPs are considered most-recently-used.
+		record.element = s.lru.PushFront(record)
 		s.ipRecords[ip] = record
+	} else {
+		// Move to front on activity — keeps the LRU ordering accurate.
+		s.lru.MoveToFront(record.element)
 	}
 
 	record.FailedAttempts = append(record.FailedAttempts, now)
@@ -232,21 +245,19 @@ func (s *AutoDefenseService) RecordSuccessfulLogin(ip string) {
 	}
 }
 
-// evictOldest removes the oldest IP record (for LRU eviction)
+// evictOldest removes the least-recently-used IP record.
+//
+// L-03 fix: the previous implementation iterated all tracked IPs in O(n) to
+// find the one with the oldest LastActivity timestamp.  By maintaining a
+// doubly-linked LRU list we can find and remove the tail in O(1).
 func (s *AutoDefenseService) evictOldest() {
-	var oldestIP string
-	var oldestTime time.Time
-
-	for ip, record := range s.ipRecords {
-		if oldestIP == "" || record.LastActivity.Before(oldestTime) {
-			oldestIP = ip
-			oldestTime = record.LastActivity
-		}
+	oldest := s.lru.Back()
+	if oldest == nil {
+		return
 	}
-
-	if oldestIP != "" {
-		delete(s.ipRecords, oldestIP)
-	}
+	record := oldest.Value.(*ipRecord)
+	s.lru.Remove(oldest)
+	delete(s.ipRecords, record.IP)
 }
 
 // cleanup periodically cleans up old records
@@ -277,6 +288,7 @@ func (s *AutoDefenseService) cleanupExpired() {
 	for ip, record := range s.ipRecords {
 		// Remove records with no recent activity and no failed attempts
 		if record.LastActivity.Before(expireBefore) && len(record.FailedAttempts) == 0 {
+			s.lru.Remove(record.element)
 			delete(s.ipRecords, ip)
 			continue
 		}

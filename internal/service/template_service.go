@@ -15,6 +15,7 @@ import (
 // TemplateService handles rendering of HTML templates
 type TemplateService struct {
 	loginTemplate          *template.Template
+	consentTemplate        *template.Template
 	errorTemplate          *template.Template
 	acceptInviteTemplate   *template.Template
 	forgotPasswordTemplate *template.Template
@@ -26,6 +27,10 @@ func NewTemplateService() *TemplateService {
 	// Parse login template with base
 	loginTmpl := template.Must(template.New("login").Parse(mustReadTemplate("templates/base.html")))
 	template.Must(loginTmpl.Parse(mustReadTemplate("templates/login.html")))
+
+	// Parse consent template with base (CRIT-04)
+	consentTmpl := template.Must(template.New("consent").Parse(mustReadTemplate("templates/base.html")))
+	template.Must(consentTmpl.Parse(mustReadTemplate("templates/consent.html")))
 
 	// Parse error template with base
 	errorTmpl := template.Must(template.New("error").Parse(mustReadTemplate("templates/base.html")))
@@ -45,11 +50,12 @@ func NewTemplateService() *TemplateService {
 
 	logger.WithFields(logger.Fields{
 		"service":   "template",
-		"templates": []string{"login", "error", "accept_invite", "forgot_password", "reset_password"},
+		"templates": []string{"login", "consent", "error", "accept_invite", "forgot_password", "reset_password"},
 	}).Info("✅ Template service initialized")
 
 	return &TemplateService{
 		loginTemplate:          loginTmpl,
+		consentTemplate:        consentTmpl,
 		errorTemplate:          errorTmpl,
 		acceptInviteTemplate:   acceptInviteTmpl,
 		forgotPasswordTemplate: forgotPasswordTmpl,
@@ -79,6 +85,30 @@ type LoginPageData struct {
 	Email               string
 	Error               string
 	Scopes              []string
+	// CSRFToken is embedded in the form as a hidden field and must match the
+	// _csrf cookie on POST (CRIT-03 double-submit cookie pattern).
+	CSRFToken string
+}
+
+// ConsentPageData contains data for the OAuth consent page template.
+// The consent page is shown to an already-authenticated user so they can
+// explicitly approve or deny an application's access request (CRIT-04).
+type ConsentPageData struct {
+	AppName             string
+	ClientID            string
+	RedirectURI         string
+	ResponseType        string
+	Scope               string
+	State               string
+	CodeChallenge       string
+	CodeChallengeMethod string
+	Nonce               string
+	Scopes              []string
+	// CSRFToken is the double-submit CSRF token (CRIT-03).
+	CSRFToken string
+	// ConsentToken is the HMAC-signed token that carries the authenticated
+	// user's identity to the consent POST handler (CRIT-04).
+	ConsentToken string
 }
 
 // ErrorPageData contains data for the error page template
@@ -126,6 +156,14 @@ func (s *TemplateService) RenderLogin(w http.ResponseWriter, data LoginPageData)
 	}
 
 	return s.render(w, s.loginTemplate, data)
+}
+
+// RenderConsent renders the OAuth consent page (CRIT-04).
+func (s *TemplateService) RenderConsent(w http.ResponseWriter, data ConsentPageData) error {
+	if data.Scope != "" && len(data.Scopes) == 0 {
+		data.Scopes = scopeDescriptions(data.Scope)
+	}
+	return s.render(w, s.consentTemplate, data)
 }
 
 // RenderError renders the error page with a 400 Bad Request status

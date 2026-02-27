@@ -7,6 +7,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/dto"
 	"github.com/ovandermoten/go-oauth2/internal/middleware"
 	"github.com/ovandermoten/go-oauth2/internal/service"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
 type AuthHandler struct {
@@ -67,7 +68,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 // GET /api/auth/verify-email
@@ -83,7 +84,7 @@ func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(dto.MessageResponse{Message: "Email verified successfully"})
+	writeJSON(w, dto.MessageResponse{Message: "Email verified successfully"})
 }
 
 // POST /api/auth/login
@@ -127,7 +128,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		h.autoDefense.RecordSuccessfulLogin(clientIP)
 	}
 
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 // POST /api/auth/refresh
@@ -149,7 +150,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 // POST /api/auth/logout
@@ -165,7 +166,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(dto.MessageResponse{Message: "Logged out successfully"})
+	writeJSON(w, dto.MessageResponse{Message: "Logged out successfully"})
 }
 
 // POST /api/auth/request-password-reset
@@ -193,11 +194,13 @@ func (h *AuthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Reques
 		if user != nil {
 			name = user.Name
 		}
-		h.emailService.SendPasswordResetEmail(req.Email, name, "", resetURL)
+		if err := h.emailService.SendPasswordResetEmail(req.Email, name, "", resetURL); err != nil {
+			logger.Warnf("ForgotPassword: failed to send password reset email to %s: %v", req.Email, err)
+		}
 	}
 
 	// Always return success to prevent email enumeration
-	json.NewEncoder(w).Encode(dto.MessageResponse{
+	writeJSON(w, dto.MessageResponse{
 		Message: "If an account exists with this email, a password reset link has been sent",
 	})
 }
@@ -220,7 +223,7 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(dto.MessageResponse{Message: "Password reset successfully"})
+	writeJSON(w, dto.MessageResponse{Message: "Password reset successfully"})
 }
 
 // GET /api/auth/invite
@@ -237,7 +240,7 @@ func (h *AuthHandler) ValidateInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 // POST /api/auth/invite
@@ -259,7 +262,7 @@ func (h *AuthHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 // GET /api/userinfo
@@ -295,10 +298,10 @@ func (h *AuthHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:  user.CreatedAt,
 	}
 
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 func writeError(w http.ResponseWriter, message string, status int) {
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(dto.ErrorResponse{Error: message})
+	writeJSON(w, dto.ErrorResponse{Error: message})
 }

@@ -140,13 +140,16 @@ func (km *KeyManager) generateKeys(privatePath, publicPath, keyIDPath string) er
 		Type:  "PUBLIC KEY",
 		Bytes: publicKeyBytes,
 	})
-	if err := os.WriteFile(publicPath, publicKeyPEM, 0644); err != nil {
+	// G306: 0644 is intentional — the public key is not sensitive and is served
+	// over HTTP via the JWKS endpoint. World-readable filesystem access matches
+	// the documented security contract (see TestHIGH05_GenerateKeys_PublicKeyPermission).
+	if err := os.WriteFile(publicPath, publicKeyPEM, 0644); err != nil { //nolint:gosec // G306: public key is not sensitive; 0644 is intentional
 		return fmt.Errorf("failed to save public key: %w", err)
 	}
 
 	// M-04: random UUID, not a timestamp.
 	keyID := uuid.New().String()
-	if err := os.WriteFile(keyIDPath, []byte(keyID), 0644); err != nil {
+	if err := os.WriteFile(keyIDPath, []byte(keyID), 0600); err != nil { //nolint:gosec
 		return fmt.Errorf("failed to save key ID: %w", err)
 	}
 
@@ -173,7 +176,7 @@ func (km *KeyManager) loadKeys(privatePath, publicPath, keyIDPath string) error 
 		}
 	}
 
-	privateKeyPEM, err := os.ReadFile(privatePath)
+	privateKeyPEM, err := os.ReadFile(privatePath) //nolint:gosec // G304: path derived from KEYS_PATH, validated as absolute in config.Validate()
 	if err != nil {
 		return fmt.Errorf("failed to read private key: %w", err)
 	}
@@ -186,7 +189,7 @@ func (km *KeyManager) loadKeys(privatePath, publicPath, keyIDPath string) error 
 		return fmt.Errorf("failed to parse private key: %w", err)
 	}
 
-	publicKeyPEM, err := os.ReadFile(publicPath)
+	publicKeyPEM, err := os.ReadFile(publicPath) //nolint:gosec // G304: path derived from KEYS_PATH, validated as absolute in config.Validate()
 	if err != nil {
 		return fmt.Errorf("failed to read public key: %w", err)
 	}
@@ -205,17 +208,17 @@ func (km *KeyManager) loadKeys(privatePath, publicPath, keyIDPath string) error 
 
 	// Load (or migrate) the key ID.
 	var keyID string
-	keyIDBytes, err := os.ReadFile(keyIDPath)
+	keyIDBytes, err := os.ReadFile(keyIDPath) //nolint:gosec // G304: path derived from KEYS_PATH, validated as absolute in config.Validate()
 	if err != nil {
 		// M-04: no key_id file → generate a UUID and persist it.
 		keyID = uuid.New().String()
-		_ = os.WriteFile(keyIDPath, []byte(keyID), 0644)
+		_ = os.WriteFile(keyIDPath, []byte(keyID), 0600) //nolint:gosec
 	} else {
 		keyID = strings.TrimSpace(string(keyIDBytes))
 		// M-04: migrate legacy timestamp-based KIDs (old format: "key-<unix>").
 		if strings.HasPrefix(keyID, "key-") {
 			keyID = uuid.New().String()
-			_ = os.WriteFile(keyIDPath, []byte(keyID), 0644)
+			_ = os.WriteFile(keyIDPath, []byte(keyID), 0600) //nolint:gosec
 		}
 	}
 
@@ -281,7 +284,7 @@ func (km *KeyManager) RotateKey() error {
 	}
 	retiredPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubBytes})
 	retiredPath := filepath.Join(retiredDir, oldKID+".pub")
-	if err := os.WriteFile(retiredPath, retiredPEM, 0644); err != nil {
+	if err := os.WriteFile(retiredPath, retiredPEM, 0600); err != nil { //nolint:gosec
 		return fmt.Errorf("failed to write retired public key: %w", err)
 	}
 
@@ -419,7 +422,7 @@ func rsaPublicKeyToJWK(pub *rsa.PublicKey, kid string) dto.JWK {
 
 // loadPublicKeyFromFile reads a PEM-encoded RSA public key from disk.
 func loadPublicKeyFromFile(path string) (*rsa.PublicKey, error) {
-	pemBytes, err := os.ReadFile(path)
+	pemBytes, err := os.ReadFile(path) //nolint:gosec // G304: path constructed from KEYS_PATH/retired/<uuid>.pub; all components are internally generated
 	if err != nil {
 		return nil, err
 	}

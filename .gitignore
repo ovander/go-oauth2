@@ -57,3 +57,5 @@ data/*.mmdb
 # Vendor (if not used)
 # =========================
 vendor/
+*AUDIT*.md
+*.docx

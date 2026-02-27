@@ -73,7 +73,7 @@ func (h *AdminAuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		h.autoDefense.RecordSuccessfulLogin(clientIP)
 	}
 
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 // GET /api/admin/profile
@@ -91,7 +91,7 @@ func (h *AdminAuthHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(dto.UserResponse{
+	writeJSON(w, dto.UserResponse{
 		ID:         user.ID,
 		Email:      user.Email,
 		Name:       user.Name,

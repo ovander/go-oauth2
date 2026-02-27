@@ -86,7 +86,7 @@ func (h *AppUsersHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	json.NewEncoder(w).Encode(dto.AppUserListResponse{
+	writeJSON(w, dto.AppUserListResponse{
 		Users:      users,
 		TotalCount: totalCount,
 		Page:       page,
@@ -120,7 +120,7 @@ func (h *AppUsersHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(dto.AppUserResponse{
+	writeJSON(w, dto.AppUserResponse{
 		ID:         user.ID,
 		Email:      user.Email,
 		Name:       user.Name,
@@ -240,7 +240,7 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, map[string]interface{}{
 		"user_id":      user.ID,
 		"invite_token": inviteToken,
 		"role":         role.Role,
@@ -301,7 +301,7 @@ func (h *AppUsersHandler) UpdateUserRole(w http.ResponseWriter, r *http.Request)
 		})
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, map[string]interface{}{
 		"role": role.Role,
 	})
 }
@@ -407,7 +407,7 @@ func (h *AppUsersHandler) ResendVerification(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	json.NewEncoder(w).Encode(dto.MessageResponse{Message: "Verification email sent"})
+	writeJSON(w, dto.MessageResponse{Message: "Verification email sent"})
 }
 
 // POST /api/apps/:app_id/users/:user_id/reset-password
@@ -470,7 +470,7 @@ func (h *AppUsersHandler) ForcePasswordReset(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	json.NewEncoder(w).Encode(dto.MessageResponse{Message: "Password reset email sent"})
+	writeJSON(w, dto.MessageResponse{Message: "Password reset email sent"})
 }
 
 func getAppIDFromURL(r *http.Request) (uint, error) {

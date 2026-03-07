@@ -8,6 +8,10 @@ type CreateAppRequest struct {
 	Name         string   `json:"name"`
 	URL          *string  `json:"url,omitempty"`
 	RedirectURIs []string `json:"redirect_uris"`
+	// IsPublic marks this as a public client (SPA / mobile app).
+	// No client_secret is generated; PKCE is automatically enforced.
+	IsPublic    bool `json:"is_public"`
+	RequirePKCE bool `json:"require_pkce"`
 }
 
 type UpdateAppRequest struct {
@@ -34,6 +38,8 @@ type AppResponse struct {
 	Name         string    `json:"name"`
 	ClientID     string    `json:"client_id"`
 	Active       bool      `json:"active"`
+	IsPublic     bool      `json:"is_public"`
+	RequirePKCE  bool      `json:"require_pkce"`
 	URL          *string   `json:"url,omitempty"`
 	RedirectURIs []string  `json:"redirect_uris"`
 	OwnerID      *uint     `json:"owner_id,omitempty"`

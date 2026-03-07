@@ -13,6 +13,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 	internalweb "github.com/ovandermoten/go-oauth2/internal/web"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 	"github.com/ovandermoten/go-oauth2/web"
 )
 
@@ -80,6 +81,8 @@ func NewRouters(
 	healthHandler *handler.HealthHandler,
 	appLogsHandler *handler.AppLogsHandler,
 	monitoringHandler *handler.MonitoringHandler,
+	adminLogsHandler *handler.AdminLogsHandler,
+	settingsHandler *handler.SettingsHandler,
 	webHandler *internalweb.WebHandler,
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
@@ -88,7 +91,7 @@ func NewRouters(
 ) *Routers {
 	return &Routers{
 		OAuth: newOAuthRouter(authHandler, oauthHandler, webHandler, profileHandler, healthHandler, tokenService, userRepo, config),
-		Admin: newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config),
+		Admin: newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, adminLogsHandler, settingsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config),
 	}
 }
 
@@ -109,7 +112,7 @@ func newOAuthRouter(
 	// Global Middleware
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
-	r.Use(chimiddleware.Logger)
+	r.Use(logger.RequestLoggerMiddleware)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.Timeout(60 * time.Second))
 	r.Use(middleware.CorrelationID())
@@ -285,6 +288,8 @@ func newAdminRouter(
 	appUsersHandler *handler.AppUsersHandler,
 	appLogsHandler *handler.AppLogsHandler,
 	monitoringHandler *handler.MonitoringHandler,
+	adminLogsHandler *handler.AdminLogsHandler,
+	settingsHandler *handler.SettingsHandler,
 	healthHandler *handler.HealthHandler,
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
@@ -296,7 +301,7 @@ func newAdminRouter(
 	// Global Middleware
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
-	r.Use(chimiddleware.Logger)
+	r.Use(logger.RequestLoggerMiddleware)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.Timeout(60 * time.Second))
 	r.Use(middleware.CorrelationID())
@@ -357,10 +362,12 @@ func newAdminRouter(
 
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", adminHandler.GetUser)
+				r.Delete("/", adminHandler.DeleteUser)
 				r.Get("/apps", adminHandler.GetUserApps) // Get all apps user belongs to
 				r.Get("/sessions", monitoringHandler.GetUserSessions)
 				r.Post("/revoke-tokens", adminHandler.RevokeUserTokens)
 				r.Post("/unlock", adminHandler.UnlockUser)
+				r.Post("/block", adminHandler.BlockUser)
 			})
 		})
 
@@ -428,6 +435,26 @@ func newAdminRouter(
 
 		// Token analytics
 		r.Get("/tokens/stats", monitoringHandler.GetTokenStats)
+
+		// ==========================================
+		// Admin Audit Logs
+		// ==========================================
+		r.Route("/logs", func(r chi.Router) {
+			// /export must be registered before /{id} so chi does not
+			// treat the literal "export" as a numeric ID parameter.
+			r.Get("/export", adminLogsHandler.ExportLogs)
+			r.Get("/", adminLogsHandler.ListLogs)
+			r.Get("/{id}", adminLogsHandler.GetLog)
+		})
+
+		// ==========================================
+		// Server Settings / Config
+		// ==========================================
+		r.Route("/settings", func(r chi.Router) {
+			r.Get("/config", settingsHandler.GetConfig)
+			r.Get("/test-db", settingsHandler.TestDB)
+			r.Get("/test-cache", settingsHandler.TestCache)
+		})
 	})
 
 	// ==========================================
@@ -470,6 +497,8 @@ func NewRouter(
 	healthHandler *handler.HealthHandler,
 	appLogsHandler *handler.AppLogsHandler,
 	monitoringHandler *handler.MonitoringHandler,
+	adminLogsHandler *handler.AdminLogsHandler,
+	settingsHandler *handler.SettingsHandler,
 	webHandler *internalweb.WebHandler,
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
@@ -481,7 +510,7 @@ func NewRouter(
 	// Global Middleware
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
-	r.Use(chimiddleware.Logger)
+	r.Use(logger.RequestLoggerMiddleware)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.Timeout(60 * time.Second))
 	r.Use(middleware.CorrelationID())
@@ -497,7 +526,7 @@ func NewRouter(
 	r.Mount("/", oauthRouter)
 
 	// Mount Admin router under /admin prefix (for single-port mode)
-	adminRouter := newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config)
+	adminRouter := newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, adminLogsHandler, settingsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config)
 	r.Mount("/manage", adminRouter)
 
 	return r

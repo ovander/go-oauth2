@@ -438,9 +438,36 @@ func TestCRIT04_GET_UnauthenticatedUser_ShowsLoginPage(t *testing.T) {
 	}
 }
 
+// metaRefreshURL extracts the target URL from a meta-refresh HTML page
+// rendered by renderRedirectPage.  Returns "" if no meta-refresh is found.
+func metaRefreshURL(body string) string {
+	// Look for content="0;url=..." in the body.
+	const needle = `content="0;url=`
+	idx := strings.Index(body, needle)
+	if idx < 0 {
+		return ""
+	}
+	rest := body[idx+len(needle):]
+	end := strings.Index(rest, `"`)
+	if end < 0 {
+		return ""
+	}
+	// Unescape HTML entities that HTMLEscapeString may have introduced
+	// (& → &, " → ").
+	raw := rest[:end]
+	raw = strings.ReplaceAll(raw, "&amp;", "&")
+	raw = strings.ReplaceAll(raw, "&#34;", `"`)
+	raw = strings.ReplaceAll(raw, "&lt;", "<")
+	raw = strings.ReplaceAll(raw, "&gt;", ">")
+	return raw
+}
+
 func TestCRIT04_POST_ConsentAllow_RedirectsWithCode(t *testing.T) {
 	// When the user explicitly clicks "Allow" (authorized=true) with a valid
-	// consent token, the handler must redirect back to the client with a code.
+	// consent token, the handler must return a 200 meta-refresh page that
+	// navigates to the client with an authorization code.
+	// (The handler uses renderRedirectPage instead of http.Redirect to avoid
+	// CSP form-action violations in browsers that follow the CSP Level-2 spec.)
 	app := &model.App{
 		ClientID:     "my-app",
 		Name:         "Test App",
@@ -480,16 +507,25 @@ func TestCRIT04_POST_ConsentAllow_RedirectsWithCode(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.AuthorizePost(w, r)
 
-	if w.Code != http.StatusFound {
-		t.Errorf("status = %d, want 302 (redirect with code)", w.Code)
+	// Handler now returns 200 OK with a meta-refresh page instead of 302.
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200 (meta-refresh redirect page with code)", w.Code)
 	}
-	loc := w.Header().Get("Location")
+	// Must NOT issue a bare 302 redirect (that would cause form-action CSP issues).
+	if w.Code == http.StatusFound {
+		t.Errorf("handler issued HTTP 302 redirect — renderRedirectPage should have been used instead")
+	}
+	// Extract the target URL from the meta-refresh page.
+	loc := metaRefreshURL(w.Body.String())
+	if loc == "" {
+		t.Fatalf("response body has no meta-refresh URL; body = %q", w.Body.String())
+	}
 	parsed, err := url.Parse(loc)
 	if err != nil {
-		t.Fatalf("Location %q is not a valid URL: %v", loc, err)
+		t.Fatalf("meta-refresh URL %q is not a valid URL: %v", loc, err)
 	}
 	if got := parsed.Query().Get("code"); got == "" {
-		t.Errorf("redirect location %q is missing the 'code' parameter", loc)
+		t.Errorf("redirect URL %q is missing the 'code' parameter", loc)
 	}
 	if got := parsed.Query().Get("code"); got != "test-authorization-code" {
 		t.Errorf("code = %q, want test-authorization-code", got)
@@ -497,8 +533,9 @@ func TestCRIT04_POST_ConsentAllow_RedirectsWithCode(t *testing.T) {
 }
 
 func TestCRIT04_POST_ConsentDeny_RedirectsWithAccessDenied(t *testing.T) {
-	// When the user clicks "Deny" (authorized=false) the handler must redirect
-	// back with error=access_denied and must NOT issue an authorization code.
+	// When the user clicks "Deny" (authorized=false) the handler must return a
+	// 200 meta-refresh page navigating to the client with error=access_denied,
+	// and must NOT issue an authorization code.
 	app := &model.App{
 		ClientID:     "my-app",
 		Name:         "Test App",
@@ -529,13 +566,21 @@ func TestCRIT04_POST_ConsentDeny_RedirectsWithAccessDenied(t *testing.T) {
 	w := httptest.NewRecorder()
 	h.AuthorizePost(w, r)
 
-	if w.Code != http.StatusFound {
-		t.Errorf("status = %d, want 302 (access_denied redirect)", w.Code)
+	// Handler now returns 200 OK with a meta-refresh page instead of 302.
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200 (meta-refresh redirect page)", w.Code)
 	}
-	loc := w.Header().Get("Location")
+	if w.Code == http.StatusFound {
+		t.Errorf("handler issued HTTP 302 redirect — renderRedirectPage should have been used instead")
+	}
+	// Extract the target URL from the meta-refresh page.
+	loc := metaRefreshURL(w.Body.String())
+	if loc == "" {
+		t.Fatalf("response body has no meta-refresh URL; body = %q", w.Body.String())
+	}
 	parsed, err := url.Parse(loc)
 	if err != nil {
-		t.Fatalf("Location %q is not a valid URL: %v", loc, err)
+		t.Fatalf("meta-refresh URL %q is not a valid URL: %v", loc, err)
 	}
 	if got := parsed.Query().Get("error"); got != "access_denied" {
 		t.Errorf("redirect error = %q, want access_denied", got)

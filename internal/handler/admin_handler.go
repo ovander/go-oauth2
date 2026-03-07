@@ -59,16 +59,7 @@ func (h *AdminHandler) ListApps(w http.ResponseWriter, r *http.Request) {
 
 	response := make([]dto.AppResponse, len(apps))
 	for i, app := range apps {
-		response[i] = dto.AppResponse{
-			ID:           app.ID,
-			Name:         app.Name,
-			ClientID:     app.ClientID,
-			Active:       app.Active,
-			URL:          app.URL,
-			RedirectURIs: app.RedirectURIs,
-			OwnerID:      app.OwnerID,
-			CreatedAt:    app.CreatedAt,
-		}
+		response[i] = appToResponse(app)
 	}
 
 	writeJSON(w, dto.AppListResponse{
@@ -106,16 +97,7 @@ func (h *AdminHandler) GetApp(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, dto.AppResponse{
-		ID:           app.ID,
-		Name:         app.Name,
-		ClientID:     app.ClientID,
-		Active:       app.Active,
-		URL:          app.URL,
-		RedirectURIs: app.RedirectURIs,
-		OwnerID:      app.OwnerID,
-		CreatedAt:    app.CreatedAt,
-	})
+	writeJSON(w, appToResponse(*app))
 }
 
 // POST /api/admin/apps
@@ -143,11 +125,11 @@ func (h *AdminHandler) CreateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Send credentials email to admin
-	if h.emailService != nil {
+	// Send credentials email to admin (only for confidential clients that
+	// actually have a secret — public clients have no secret to send).
+	if clientSecret != "" && h.emailService != nil {
 		admin, adminErr := h.userService.GetByID(r.Context(), userID)
 		if adminErr == nil && admin != nil {
-			// Email sending is best-effort, don't fail the request if it fails
 			if err := h.emailService.SendAppCredentialsEmail(admin.Email, admin.Name, app.Name, app.ClientID, clientSecret); err != nil {
 				logger.Logger.WithFields(logger.Fields{
 					"email": admin.Email,
@@ -156,26 +138,17 @@ func (h *AdminHandler) CreateApp(w http.ResponseWriter, r *http.Request) {
 				}).Warn("📧 Failed to send app credentials email")
 			}
 		}
-	} else {
+	} else if clientSecret == "" {
 		logger.Logger.WithFields(logger.Fields{
 			"app": app.Name,
-		}).Debug("📧 Email service not configured, skipping credentials email")
+		}).Info("📧 Public client — no credentials email sent")
 	}
 
 	w.WriteHeader(http.StatusCreated)
 	//nolint:gosec // G117 intentional: one-time plaintext delivery of the newly-generated client_secret to the registering party
 	writeJSON(w, dto.AppWithSecretResponse{
-		AppResponse: dto.AppResponse{
-			ID:           app.ID,
-			Name:         app.Name,
-			ClientID:     app.ClientID,
-			Active:       app.Active,
-			URL:          app.URL,
-			RedirectURIs: app.RedirectURIs,
-			OwnerID:      app.OwnerID,
-			CreatedAt:    app.CreatedAt,
-		},
-		ClientSecret: clientSecret,
+		AppResponse:  appToResponse(*app),
+		ClientSecret: clientSecret, // empty string for public clients
 	})
 }
 
@@ -220,16 +193,7 @@ func (h *AdminHandler) UpdateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, dto.AppResponse{
-		ID:           updatedApp.ID,
-		Name:         updatedApp.Name,
-		ClientID:     updatedApp.ClientID,
-		Active:       updatedApp.Active,
-		URL:          updatedApp.URL,
-		RedirectURIs: updatedApp.RedirectURIs,
-		OwnerID:      updatedApp.OwnerID,
-		CreatedAt:    updatedApp.CreatedAt,
-	})
+	writeJSON(w, appToResponse(*updatedApp))
 }
 
 // DELETE /api/admin/apps/:id
@@ -262,6 +226,10 @@ func (h *AdminHandler) DeleteApp(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.appService.Delete(r.Context(), uint(appID)); err != nil {
+		logger.Logger.WithFields(logger.Fields{
+			"app_id": appID,
+			"error":  err.Error(),
+		}).Error("❌ DeleteApp: failed to delete app")
 		writeError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -331,16 +299,7 @@ func (h *AdminHandler) RotateSecret(w http.ResponseWriter, r *http.Request) {
 
 	//nolint:gosec // G117 intentional: one-time delivery of the rotated client_secret to the admin caller
 	writeJSON(w, dto.AppWithSecretResponse{
-		AppResponse: dto.AppResponse{
-			ID:           updatedApp.ID,
-			Name:         updatedApp.Name,
-			ClientID:     updatedApp.ClientID,
-			Active:       updatedApp.Active,
-			URL:          updatedApp.URL,
-			RedirectURIs: updatedApp.RedirectURIs,
-			OwnerID:      updatedApp.OwnerID,
-			CreatedAt:    updatedApp.CreatedAt,
-		},
+		AppResponse:  appToResponse(*updatedApp),
 		ClientSecret: newSecret,
 	})
 }
@@ -603,6 +562,106 @@ func (h *AdminHandler) UnlockUser(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, map[string]string{
 		"message": "user unlocked successfully",
+	})
+}
+
+// DELETE /api/admin/users/:id
+func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	adminID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	currentUser, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
+	if currentUser == nil || !currentUser.IsGlobalAdmin() {
+		writeError(w, "forbidden: global admin required", http.StatusForbidden)
+		return
+	}
+
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, "invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	if uint(userID) == adminID {
+		writeError(w, "cannot delete your own account", http.StatusBadRequest)
+		return
+	}
+
+	user, err := h.userService.GetByID(r.Context(), uint(userID))
+	if err != nil {
+		writeError(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	// Superadmins must be removed via the superadmin management endpoint
+	// (/api/admin/superadmins/:id) which enforces the last-superadmin guard.
+	if user.Role == model.UserRoleSuperadmin {
+		writeError(w, "cannot delete a superadmin via this endpoint; use DELETE /api/admin/superadmins/:id", http.StatusForbidden)
+		return
+	}
+
+	if err := h.userService.Delete(r.Context(), uint(userID)); err != nil {
+		writeError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if h.adminLogService != nil {
+		h.adminLogService.LogAction(r.Context(), adminID, nil, &user.ID, model.AdminActionDeleteUser, map[string]interface{}{
+			"target_email": user.Email,
+			"role":         string(user.Role),
+		})
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// POST /api/admin/users/:id/block
+func (h *AdminHandler) BlockUser(w http.ResponseWriter, r *http.Request) {
+	adminID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	currentUser, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
+	if currentUser == nil || !currentUser.IsGlobalAdmin() {
+		writeError(w, "forbidden: global admin required", http.StatusForbidden)
+		return
+	}
+
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, "invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	if uint(userID) == adminID {
+		writeError(w, "cannot block your own account", http.StatusBadRequest)
+		return
+	}
+
+	user, err := h.userService.GetByID(r.Context(), uint(userID))
+	if err != nil {
+		writeError(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	if err := h.userService.Block(r.Context(), uint(userID)); err != nil {
+		writeError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if h.adminLogService != nil {
+		h.adminLogService.LogAction(r.Context(), adminID, nil, &user.ID, model.AdminActionBlockUser, map[string]interface{}{
+			"target_email": user.Email,
+		})
+	}
+
+	writeJSON(w, map[string]string{
+		"message": "user blocked successfully",
 	})
 }
 
@@ -879,4 +938,23 @@ func (h *AdminHandler) DeleteSuperadmin(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// appToResponse converts a model.App to a dto.AppResponse, including all
+// fields added since the initial release (is_public, require_pkce, …).
+// Centralising this conversion prevents fields being silently omitted when
+// new columns are added to the model.
+func appToResponse(app model.App) dto.AppResponse {
+	return dto.AppResponse{
+		ID:           app.ID,
+		Name:         app.Name,
+		ClientID:     app.ClientID,
+		Active:       app.Active,
+		IsPublic:     app.IsPublic,
+		RequirePKCE:  app.RequirePKCE,
+		URL:          app.URL,
+		RedirectURIs: app.RedirectURIs,
+		OwnerID:      app.OwnerID,
+		CreatedAt:    app.CreatedAt,
+	}
 }

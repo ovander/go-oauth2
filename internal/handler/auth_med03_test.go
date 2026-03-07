@@ -99,6 +99,7 @@ func (s *med03UserService) UpdateSuperadmin(_ context.Context, _ uint, _ dto.Upd
 	return nil, nil
 }
 func (s *med03UserService) DeleteSuperadmin(_ context.Context, _ uint, _ uint) error { return nil }
+func (s *med03UserService) Block(_ context.Context, _ uint) error                    { return nil }
 
 // ---------------------------------------------------------------------------
 // Minimal EmailService stub

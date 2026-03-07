@@ -102,7 +102,7 @@ func (h *DashboardHandler) GetActivity(w http.ResponseWriter, r *http.Request) {
 		AppID     *uint
 		IPAddress string
 		Success   bool
-		Metadata  map[string]interface{}
+		Details   map[string]interface{}
 		CreatedAt time.Time
 		UserEmail string
 		AppName   string
@@ -111,7 +111,7 @@ func (h *DashboardHandler) GetActivity(w http.ResponseWriter, r *http.Request) {
 	var rows []auditLogRow
 	h.db.WithContext(ctx).
 		Table("security_audit_logs").
-		Select("security_audit_logs.id, security_audit_logs.event_type, security_audit_logs.user_id, security_audit_logs.app_id, security_audit_logs.ip_address, security_audit_logs.success, security_audit_logs.metadata, security_audit_logs.created_at, users.email as user_email, apps.name as app_name").
+		Select("security_audit_logs.id, security_audit_logs.event_type, security_audit_logs.user_id, security_audit_logs.app_id, security_audit_logs.ip_address, security_audit_logs.success, security_audit_logs.details, security_audit_logs.created_at, users.email as user_email, apps.name as app_name").
 		Joins("LEFT JOIN users ON users.id = security_audit_logs.user_id").
 		Joins("LEFT JOIN apps ON apps.id = security_audit_logs.app_id").
 		Order("security_audit_logs.created_at DESC").
@@ -129,7 +129,7 @@ func (h *DashboardHandler) GetActivity(w http.ResponseWriter, r *http.Request) {
 			AppName:     row.AppName,
 			IPAddress:   row.IPAddress,
 			Success:     row.Success,
-			Metadata:    row.Metadata,
+			Metadata:    row.Details,
 			CreatedAt:   row.CreatedAt,
 		})
 	}

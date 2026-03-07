@@ -17,7 +17,7 @@ const (
 type User struct {
 	ID                  uint           `gorm:"primaryKey" json:"id"`
 	Name                string         `gorm:"not null" json:"name"`
-	Email               string         `gorm:"uniqueIndex:idx_users_email_active;not null" json:"email"`
+	Email               string         `gorm:"uniqueIndex:idx_users_email_active,where:deleted_at IS NULL;not null" json:"email"`
 	HashedPassword      string         `gorm:"column:hashed_password" json:"-"`
 	IsVerified          bool           `gorm:"default:false" json:"is_verified"`
 	Role                UserRole       `gorm:"type:varchar(20);default:user" json:"role"`

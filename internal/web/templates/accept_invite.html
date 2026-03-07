@@ -12,10 +12,19 @@
             </svg>
         </div>
         <h2 class="text-center" style="margin-bottom: 12px;">Welcome to {{.AppName}}!</h2>
+        {{if .AppURL}}
+        <p class="text-center text-muted" style="margin-bottom: 20px;">
+            Your account has been set up successfully.<br>
+            Redirecting you to <strong>{{.AppName}}</strong> in a few seconds…
+        </p>
+        <a href="{{.AppURL}}" class="btn">Go to {{.AppName}}</a>
+        <script>setTimeout(function(){ window.location.href = "{{.AppURL}}"; }, 3000);</script>
+        {{else}}
         <p class="text-center text-muted" style="margin-bottom: 20px;">
             Your account has been set up successfully. You can now sign in.
         </p>
         <a href="/auth/login" class="btn">Sign in</a>
+        {{end}}
         {{else if .TokenError}}
         <div class="icon-error">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">

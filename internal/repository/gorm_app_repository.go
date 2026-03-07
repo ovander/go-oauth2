@@ -67,7 +67,34 @@ func (r *appRepository) Update(ctx context.Context, app *model.App) error {
 }
 
 func (r *appRepository) Delete(ctx context.Context, id uint) error {
-	return r.db.WithContext(ctx).Delete(&model.App{}, id).Error
+	// Wrap everything in a single transaction so cleanup and the final DELETE
+	// are atomic.  Several child tables reference apps.id with FK constraints
+	// that PostgreSQL enforces — we must satisfy them before deleting the row.
+	//
+	// Tables and their strategy:
+	//   user_app_roles        NOT NULL FK, no CASCADE  → hard delete rows
+	//   authorization_codes   NOT NULL, no FK          → hard delete (safety)
+	//   admin_logs            nullable FK, no CASCADE  → SET NULL (keep audit trail)
+	//   security_audit_logs   nullable FK, no CASCADE  → SET NULL (keep audit trail)
+	//   app_activity_logs     NOT NULL FK, CASCADE     → auto-cascades, no action needed
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 1. Null out audit log references (preserve history)
+		if err := tx.Exec("UPDATE admin_logs SET app_id = NULL WHERE app_id = ?", id).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("UPDATE security_audit_logs SET app_id = NULL WHERE app_id = ?", id).Error; err != nil {
+			return err
+		}
+		// 2. Hard-delete rows that cannot be nulled
+		if err := tx.Where("app_id = ?", id).Delete(&model.UserAppRole{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("app_id = ?", id).Delete(&model.AuthorizationCode{}).Error; err != nil {
+			return err
+		}
+		// 3. Delete the app itself (app_activity_logs cascades automatically)
+		return tx.Delete(&model.App{}, id).Error
+	})
 }
 
 func (r *appRepository) GetAllRedirectURIs(ctx context.Context) ([]string, error) {

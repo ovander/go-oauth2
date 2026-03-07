@@ -42,6 +42,10 @@
         {{if .Nonce}}
         <input type="hidden" name="nonce" value="{{.Nonce}}">
         {{end}}
+        {{/* Preserve max_age (LOW-02): only emit the field when the client specified it (MaxAge >= 0) */}}
+        {{if ge .MaxAge 0}}
+        <input type="hidden" name="max_age" value="{{.MaxAge}}">
+        {{end}}
 
         <div class="form-group">
             <label for="email">Email</label>

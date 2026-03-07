@@ -45,6 +45,10 @@
         {{if .Nonce}}
         <input type="hidden" name="nonce" value="{{.Nonce}}">
         {{end}}
+        {{/* Preserve max_age (LOW-02): only emit the field when the client specified it (MaxAge >= 0) */}}
+        {{if ge .MaxAge 0}}
+        <input type="hidden" name="max_age" value="{{.MaxAge}}">
+        {{end}}
         <!-- CRIT-03: CSRF double-submit token -->
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <!-- CRIT-04: Signed user identity carrier (stateless consent) -->

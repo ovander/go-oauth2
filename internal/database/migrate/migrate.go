@@ -55,6 +55,65 @@ var migrations = []Migration{
 			return db.Migrator().RenameColumn(&model.BlockedIP{}, "inserted_at", "blocked_at")
 		},
 	},
+	{
+		// Soft-delete unique constraint fix: the idx_users_email_active index
+		// was created as a plain unique index on email, which prevents reusing
+		// an email address after a user is soft-deleted (deleted_at IS NOT NULL).
+		// The index must be replaced with a partial unique index that only
+		// enforces uniqueness among active (non-deleted) rows.
+		ID:   "0002",
+		Name: "fix_users_email_unique_index_partial",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("users") {
+				return nil
+			}
+			// Drop the plain unique index (ignore error if it doesn't exist).
+			db.Exec("DROP INDEX IF EXISTS idx_users_email_active")
+			// Create a partial unique index — only active rows must be unique.
+			return db.Exec(
+				"CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_active ON users(email) WHERE deleted_at IS NULL",
+			).Error
+		},
+	},
+	{
+		// MED-02 fix: the require_pkce column was added to the App model to
+		// enforce PKCE (RFC 7636) on public clients.  Databases created before
+		// this change do not have the column, which causes every query touching
+		// the apps table to fail with "column require_pkce does not exist".
+		// We add the column here with the same default (false) as the model tag
+		// so that all existing apps continue to work without PKCE enforcement
+		// until an admin explicitly enables it per-app.
+		ID:   "0003",
+		Name: "add_apps.require_pkce",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("apps") {
+				return nil // table does not exist yet — AutoMigrate will create it correctly
+			}
+			if db.Migrator().HasColumn(&model.App{}, "require_pkce") {
+				return nil // column already present — nothing to do
+			}
+			return db.Exec("ALTER TABLE apps ADD COLUMN require_pkce BOOLEAN NOT NULL DEFAULT FALSE").Error
+		},
+	},
+	{
+		// Public client support: add is_public flag to the apps table so that
+		// SPA / mobile clients can be registered without a client_secret.
+		// Existing apps default to false (confidential), preserving current
+		// behaviour.  When is_public = true, no secret is generated at creation
+		// time and the token endpoint never requires one; PKCE is always
+		// enforced instead (RFC 6749 §2.1, RFC 7636).
+		ID:   "0004",
+		Name: "add_apps.is_public",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("apps") {
+				return nil // table does not exist yet — AutoMigrate will create it correctly
+			}
+			if db.Migrator().HasColumn(&model.App{}, "is_public") {
+				return nil // column already present — nothing to do
+			}
+			return db.Exec("ALTER TABLE apps ADD COLUMN is_public BOOLEAN NOT NULL DEFAULT FALSE").Error
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

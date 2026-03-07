@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	htmltemplate "html/template"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -147,6 +149,7 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 			CodeChallengeMethod: req.CodeChallengeMethod,
 			Nonce:               req.Nonce,
 			CSRFToken:           csrfToken,
+			MaxAge:              req.MaxAge,
 		})
 		return
 	}
@@ -186,7 +189,18 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract OAuth parameters from form
+	// Extract OAuth parameters from form.
+	// MaxAge uses -1 as a sentinel meaning "not specified by the client".
+	// The zero value of int (0) would mean "re-authenticate within 0 seconds",
+	// which is always impossible and would cause ErrReauthRequired for every
+	// consent submission.  We preserve max_age from the hidden form field when
+	// the login page included it, otherwise default to -1 (skip the check).
+	maxAge := -1
+	if raw := r.FormValue("max_age"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v >= 0 {
+			maxAge = v
+		}
+	}
 	req := dto.AuthorizeRequest{
 		ResponseType:        r.FormValue("response_type"),
 		ClientID:            r.FormValue("client_id"),
@@ -196,6 +210,7 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 		Nonce:               r.FormValue("nonce"),
 		CodeChallenge:       r.FormValue("code_challenge"),
 		CodeChallengeMethod: r.FormValue("code_challenge_method"),
+		MaxAge:              maxAge,
 	}
 
 	// Get app details — required for both login and consent paths.
@@ -251,6 +266,7 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 			Email:               email,
 			Error:               errorMsg,
 			CSRFToken:           csrfToken,
+			MaxAge:              req.MaxAge,
 		})
 	}
 
@@ -312,13 +328,18 @@ func (h *OAuthHandler) handleConsentPost(w http.ResponseWriter, r *http.Request,
 	}
 
 	// Honour the user's explicit choice.
+	// NOTE: all outgoing redirects from this handler use renderRedirectPage /
+	// redirectWithErrorPage (meta-refresh) instead of http.Redirect (HTTP 302).
+	// Firefox applies form-action CSP to the entire redirect chain that follows
+	// a form submission; a meta-refresh breaks that chain so the browser treats
+	// the navigation to the client's redirect_uri as a normal page load.
 	if r.FormValue("authorized") != "true" {
-		h.redirectWithError(w, r, req.RedirectURI, req.State, "access_denied", "user denied access")
+		h.redirectWithErrorPage(w, req.RedirectURI, req.State, "access_denied", "user denied access")
 		return
 	}
 
 	if req.ResponseType == "" {
-		h.redirectWithError(w, r, req.RedirectURI, req.State, "invalid_request", "response_type is required")
+		h.redirectWithErrorPage(w, req.RedirectURI, req.State, "invalid_request", "response_type is required")
 		return
 	}
 
@@ -326,16 +347,16 @@ func (h *OAuthHandler) handleConsentPost(w http.ResponseWriter, r *http.Request,
 	if err != nil {
 		switch err {
 		case service.ErrRoleNotFound:
-			h.redirectWithError(w, r, req.RedirectURI, req.State, "access_denied", "user does not have access to this application")
+			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "access_denied", "user does not have access to this application")
 		default:
-			h.redirectWithError(w, r, req.RedirectURI, req.State, "server_error", "authorization failed")
+			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "server_error", "authorization failed")
 		}
 		return
 	}
 
 	redirectURL, err := url.Parse(req.RedirectURI)
 	if err != nil {
-		h.redirectWithError(w, r, req.RedirectURI, req.State, "server_error", "failed to parse redirect URI")
+		h.redirectWithErrorPage(w, req.RedirectURI, req.State, "server_error", "failed to parse redirect URI")
 		return
 	}
 
@@ -346,7 +367,7 @@ func (h *OAuthHandler) handleConsentPost(w http.ResponseWriter, r *http.Request,
 	}
 	redirectURL.RawQuery = query.Encode()
 
-	http.Redirect(w, r, redirectURL.String(), http.StatusFound)
+	renderRedirectPage(w, redirectURL.String())
 }
 
 // renderConsentPage issues a consent token for userID/clientID, then renders
@@ -371,6 +392,7 @@ func (h *OAuthHandler) renderConsentPage(w http.ResponseWriter, req dto.Authoriz
 		Nonce:               req.Nonce,
 		CSRFToken:           csrfToken,
 		ConsentToken:        consentToken,
+		MaxAge:              req.MaxAge,
 	})
 }
 
@@ -406,6 +428,50 @@ func redirectURIErrorDescription(err error) string {
 	default:
 		return "invalid redirect_uri"
 	}
+}
+
+// renderRedirectPage writes a minimal HTML page that navigates the browser to
+// targetURL via a <meta http-equiv="refresh"> directive.
+//
+// This is used instead of http.Redirect when responding to HTML form POSTs so
+// that browsers enforcing the CSP Level-2 interpretation of form-action (e.g.
+// Firefox) cannot block the redirect to the OAuth client's redirect_uri.
+// Under CSP Level 2, form-action is applied to the entire navigation chain
+// that follows a form submission — including server-issued 302 redirects.
+// A meta-refresh is a page-level navigation and is therefore not subject to
+// the form-action restriction, allowing registered cross-origin redirect URIs
+// to work correctly without weakening the CSP policy.
+func renderRedirectPage(w http.ResponseWriter, targetURL string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	escaped := htmltemplate.HTMLEscapeString(targetURL)
+	//nolint:errcheck // G104: write errors on a closing response are not actionable
+	fmt.Fprintf(w,
+		`<!DOCTYPE html><html><head>`+
+			`<meta http-equiv="refresh" content="0;url=%s">`+
+			`<title>Redirecting&#8230;</title>`+
+			`</head><body></body></html>`,
+		escaped,
+	)
+}
+
+// redirectWithErrorPage builds an OAuth error redirect URL and delivers it via
+// renderRedirectPage.  Use this (instead of redirectWithError) when responding
+// to form POSTs to avoid the CSP form-action redirect-chain issue.
+func (h *OAuthHandler) redirectWithErrorPage(w http.ResponseWriter, redirectURI, state, errorCode, description string) {
+	redirectURL, err := url.Parse(redirectURI)
+	if err != nil {
+		h.renderOAuthError(w, errorCode, description, "")
+		return
+	}
+	query := redirectURL.Query()
+	query.Set("error", errorCode)
+	query.Set("error_description", description)
+	if state != "" {
+		query.Set("state", state)
+	}
+	redirectURL.RawQuery = query.Encode()
+	renderRedirectPage(w, redirectURL.String())
 }
 
 // redirectWithError redirects to the client with an error

@@ -166,6 +166,12 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	// Check if user exists
 	user, err := h.userService.GetByEmail(r.Context(), req.Email)
 	isNewUser := err != nil
+	if !isNewUser && user.Role == model.UserRoleSuperadmin {
+		// Superadmins have global access to all apps by definition — they must
+		// never appear in per-app user lists or be granted explicit app roles.
+		writeError(w, "superadmins cannot be assigned to a specific app", http.StatusForbidden)
+		return
+	}
 	if isNewUser {
 		// Create new user
 		name := req.Name
@@ -210,41 +216,55 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send invitation email
+	emailSent := false
+	var emailError string
 	if h.emailService != nil {
 		inviteURL := h.tokenService.GetIssuer() + "/auth/invite?token=" + inviteToken
 		if err := h.emailService.SendInviteEmail(user.Email, appName, inviteURL); err != nil {
-			// Log error but don't fail the request - the invite token is still valid and can be resent
+			// Log error but don't fail the request — the invite token is still valid and can be resent
 			logger.Logger.WithFields(logger.Fields{
 				"email": user.Email,
 				"app":   appName,
 				"error": err.Error(),
 			}).Warn("📧 Failed to send invite email, but invite token is valid")
+			emailError = err.Error()
+		} else {
+			emailSent = true
 		}
 	} else {
 		logger.Logger.WithFields(logger.Fields{
 			"email": user.Email,
 			"app":   appName,
 		}).Debug("📧 Email service not configured, skipping invite email")
+		emailError = "email service not configured"
 	}
 
-	// Mark invite as sent
-	h.userAppRoleService.SetInviteSent(r.Context(), user.ID, appID)
+	// Mark invite as sent only when the email was actually delivered
+	if emailSent {
+		h.userAppRoleService.SetInviteSent(r.Context(), user.ID, appID)
+	}
 
 	// Log admin action
 	if h.adminLogService != nil {
 		h.adminLogService.LogAction(r.Context(), adminID, &appID, &user.ID, model.AdminActionAddUser, map[string]interface{}{
-			"email":        req.Email,
-			"role":         req.Role,
-			"is_new_user":  isNewUser,
+			"email":       req.Email,
+			"role":        req.Role,
+			"is_new_user": isNewUser,
+			"email_sent":  emailSent,
 		})
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	writeJSON(w, map[string]interface{}{
+	resp := map[string]interface{}{
 		"user_id":      user.ID,
 		"invite_token": inviteToken,
 		"role":         role.Role,
-	})
+		"email_sent":   emailSent,
+	}
+	if emailError != "" {
+		resp["email_error"] = emailError
+	}
+	w.WriteHeader(http.StatusCreated)
+	writeJSON(w, resp)
 }
 
 // PUT /api/apps/:app_id/users/:user_id

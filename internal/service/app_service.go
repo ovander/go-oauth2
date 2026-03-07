@@ -88,28 +88,36 @@ func (s *appService) Create(ctx context.Context, req dto.CreateAppRequest, owner
 		}
 	}
 
-	// Generate client secret
-	clientSecret, err := generateSecureToken(32)
-	if err != nil {
-		return nil, "", err
-	}
-
-	// Hash the client secret (bcrypt — see H-03 fix)
-	clientSecretHash, err := auth.HashClientSecret(clientSecret)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to hash client secret: %w", err)
+	// Public clients (SPAs, mobile apps) never have a client secret —
+	// PKCE is their proof of authenticity (RFC 6749 §2.1, RFC 7636).
+	// Confidential clients get a generated secret returned once on creation.
+	var clientSecret, clientSecretHash string
+	if !req.IsPublic {
+		clientSecret, err = generateSecureToken(32)
+		if err != nil {
+			return nil, "", err
+		}
+		// Hash the client secret (bcrypt — see H-03 fix)
+		clientSecretHash, err = auth.HashClientSecret(clientSecret)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to hash client secret: %w", err)
+		}
 	}
 
 	app := &model.App{
 		Name:             req.Name,
 		ClientID:         clientID,
 		ClientSecretHash: clientSecretHash,
-		Active:           true,
-		URL:              req.URL,
-		RedirectURIs:     model.StringArray(req.RedirectURIs),
-		OwnerID:          &ownerID,
-		CreatedAt:        time.Now(),
-		UpdatedAt:        time.Now(),
+		IsPublic:         req.IsPublic,
+		// Public clients always require PKCE — enforce it even if the caller
+		// did not explicitly set require_pkce in the request.
+		RequirePKCE: req.IsPublic || req.RequirePKCE,
+		Active:      true,
+		URL:         req.URL,
+		RedirectURIs: model.StringArray(req.RedirectURIs),
+		OwnerID:     &ownerID,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 
 	if err := s.repo.Create(ctx, app); err != nil {

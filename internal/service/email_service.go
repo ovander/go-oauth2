@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"html/template"
+	"mime/quotedprintable"
 	"net/smtp"
 	"strings"
 
@@ -177,6 +178,21 @@ func (s *smtpEmailService) sendEmail(to, subject, htmlBody string) error {
 	headers["Subject"] = subject
 	headers["MIME-Version"] = "1.0"
 	headers["Content-Type"] = "text/html; charset=UTF-8"
+	// quoted-printable encodes the body so that SMTP transport never needs to
+	// fold long lines itself.  Without this, a JWT token inside an href
+	// attribute can be broken by a space injected at the 76-char boundary,
+	// producing a %20 in the URL and an "invalid token" error on click.
+	headers["Content-Transfer-Encoding"] = "quoted-printable"
+
+	// Encode body as quoted-printable before building the message.
+	var qpBuf bytes.Buffer
+	qpw := quotedprintable.NewWriter(&qpBuf)
+	if _, err := qpw.Write([]byte(htmlBody)); err != nil {
+		return fmt.Errorf("failed to encode email body: %w", err)
+	}
+	if err := qpw.Close(); err != nil {
+		return fmt.Errorf("failed to flush quoted-printable encoder: %w", err)
+	}
 
 	// Build message
 	var message strings.Builder
@@ -184,7 +200,7 @@ func (s *smtpEmailService) sendEmail(to, subject, htmlBody string) error {
 		message.WriteString(fmt.Sprintf("%s: %s\r\n", k, v))
 	}
 	message.WriteString("\r\n")
-	message.WriteString(htmlBody)
+	message.WriteString(qpBuf.String())
 
 	// Connect to SMTP server
 	addr := fmt.Sprintf("%s:%d", s.config.SMTPHost, s.config.SMTPPort)

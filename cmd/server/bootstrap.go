@@ -299,6 +299,8 @@ func Bootstrap(cfg *config.Config) *App {
 	healthHandler := handler.NewHealthHandler(db)
 	appLogsHandler := handler.NewAppLogsHandler(appActivityLogService)
 	monitoringHandler := handler.NewMonitoringHandler(db, alertRuleRepo, triggeredAlertRepo, blockedIPRepo, securityAuditRepo, geoIPService)
+	adminLogsHandler := handler.NewAdminLogsHandler(db)
+	settingsHandler := handler.NewSettingsHandler(cfg, db)
 
 	// Web handler for HTML auth pages
 	webHandler, err := web.NewWebHandler(
@@ -408,6 +410,8 @@ func Bootstrap(cfg *config.Config) *App {
 			healthHandler,
 			appLogsHandler,
 			monitoringHandler,
+			adminLogsHandler,
+			settingsHandler,
 			webHandler,
 			tokenService,
 			userRepo,
@@ -439,6 +443,8 @@ func Bootstrap(cfg *config.Config) *App {
 		healthHandler,
 		appLogsHandler,
 		monitoringHandler,
+		adminLogsHandler,
+		settingsHandler,
 		webHandler,
 		tokenService,
 		userRepo,

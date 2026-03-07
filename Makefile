@@ -1,4 +1,4 @@
-.PHONY: build run dev test clean deps fmt lint
+.PHONY: build run dev test clean deps fmt lint deploy
 
 # Go parameters
 GOCMD=go
@@ -69,6 +69,26 @@ migrate-down:
 
 migrate-status:
 	goose -dir migrations postgres "$(DATABASE_URL)" status
+
+# Deploy to VPS
+# Usage: make deploy VPS=olivier@golfperformance.fr REMOTE_DIR=/home/olivier/socrate
+VPS        ?= olivier@golfperformance.fr
+REMOTE_DIR ?= /opt/socrate
+
+deploy: build-linux
+	@echo "→ Uploading binary…"
+	scp bin/socrate             $(VPS):/home/olivier/socrate-new
+	ssh $(VPS) "sudo mv /home/olivier/socrate-new $(REMOTE_DIR)/bin/oauth-server && sudo chown socrate:socrate $(REMOTE_DIR)/bin/oauth-server"
+	@echo "→ Uploading GeoIP databases (skipped if unchanged)…"
+	rsync -az --progress data/  $(VPS):/home/olivier/socrate-data/
+	ssh $(VPS) "sudo rsync -az /home/olivier/socrate-data/ $(REMOTE_DIR)/data/ && sudo chown -R socrate:socrate $(REMOTE_DIR)/data/"
+	@echo "→ Restarting service…"
+	ssh $(VPS) "sudo systemctl restart socrate"
+	@echo "→ Tailing logs (Ctrl-C to stop)…"
+	ssh -t $(VPS) "journalctl -u socrate -n 40 -f"
+
+build-linux:
+	GOOS=linux GOARCH=amd64 $(GOBUILD) -o bin/socrate ./cmd/server
 
 # Docker
 docker-build:

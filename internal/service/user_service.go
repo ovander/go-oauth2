@@ -26,6 +26,10 @@ type UserService interface {
 	IncrementTokenVersion(ctx context.Context, userID uint) error
 	RevokeTokens(ctx context.Context, userID uint) error
 	Unlock(ctx context.Context, userID uint) error
+	// Block sets locked_until to a far-future date, permanently barring login
+	// until an admin explicitly unlocks the account.  Superadmins cannot be
+	// blocked via this method (use DeleteSuperadmin for that).
+	Block(ctx context.Context, userID uint) error
 
 	// Superadmin management
 	ListSuperadmins(ctx context.Context) ([]model.User, error)
@@ -291,6 +295,22 @@ func (s *userService) Unlock(ctx context.Context, userID uint) error {
 	user.UpdatedAt = time.Now()
 
 	return s.repo.Update(ctx, user)
+}
+
+func (s *userService) Block(ctx context.Context, userID uint) error {
+	user, err := s.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	if user.Role == model.UserRoleSuperadmin {
+		return errors.New("cannot block a superadmin; remove the account instead")
+	}
+
+	// Lock until far future — effectively permanent until an admin calls Unlock.
+	farFuture := time.Now().Add(100 * 365 * 24 * time.Hour)
+	until := &farFuture
+	return s.repo.LockAccount(ctx, userID, until)
 }
 
 // Superadmin management

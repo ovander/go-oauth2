@@ -1,6 +1,7 @@
 package model
 
 import (
+	"strings"
 	"time"
 )
 
@@ -22,6 +23,19 @@ type App struct {
 	// apps) that cannot keep a client secret.  Per OAuth 2.1, PKCE MUST be
 	// required for all public clients.
 	RequirePKCE bool `gorm:"column:require_pkce;default:false" json:"require_pkce"`
+
+	// IsPublic marks this client as a public client (SPA, mobile app) that
+	// cannot keep a client secret (RFC 6749 §2.1).  When true, no client
+	// secret is generated or stored at creation time (ClientSecretHash is
+	// empty) and the token endpoint never requires one.  PKCE is always
+	// enforced for public clients regardless of the RequirePKCE flag.
+	IsPublic bool `gorm:"column:is_public;default:false" json:"is_public"`
+}
+
+// IsConfidential returns true when the client has a stored secret hash,
+// i.e. it is a confidential client that must authenticate at the token endpoint.
+func (a *App) IsConfidential() bool {
+	return !a.IsPublic && a.ClientSecretHash != ""
 }
 
 func (App) TableName() string {
@@ -29,8 +43,9 @@ func (App) TableName() string {
 }
 
 func (a *App) HasRedirectURI(uri string) bool {
+	needle := strings.TrimSpace(uri)
 	for _, u := range a.RedirectURIs {
-		if u == uri {
+		if strings.TrimSpace(u) == needle {
 			return true
 		}
 	}

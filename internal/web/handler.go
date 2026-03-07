@@ -406,10 +406,20 @@ func (h *WebHandler) AcceptInviteSubmit(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Determine redirect URL from the specific app in the invite token.
+	// This is safe even when a user belongs to multiple apps — the invite token
+	// is scoped to exactly one app (claims.AppID), so we always redirect to the
+	// right one.
+	var appURL string
+	if app, appErr := h.appRepo.FindByID(r.Context(), claims.AppID); appErr == nil && app.URL != nil && *app.URL != "" {
+		appURL = *app.URL
+	}
+
 	data := map[string]interface{}{
 		"Title":   "Accept Invitation",
 		"Success": true,
 		"AppName": appName,
+		"AppURL":  appURL,
 	}
 	h.render(w, "accept_invite.html", data)
 }

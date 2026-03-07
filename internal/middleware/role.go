@@ -55,7 +55,9 @@ func RequireGlobalAdmin() func(http.Handler) http.Handler {
 	}
 }
 
-// RequireAppAdmin checks if the user has admin role for the specified app
+// RequireAppAdmin checks if the user has admin role for the specified app.
+// Global admins (role=admin or role=superadmin) bypass the per-app role check
+// entirely, because they have implicit admin access to every application.
 func RequireAppAdmin(userAppRoleRepo repository.UserAppRoleRepository) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -74,12 +76,21 @@ func RequireAppAdmin(userAppRoleRepo repository.UserAppRoleRepository) func(http
 
 			userAppRole, err := userAppRoleRepo.FindByUserAndApp(r.Context(), userID, uint(appID))
 			if err != nil {
-				http.Error(w, `{"error": "forbidden"}`, http.StatusForbidden)
+				// No per-app role row found. Superadmins and global admins never
+				// have explicit app-role rows (they are excluded from per-app
+				// assignment), so we must check for global admin status here
+				// rather than immediately returning 403.
+				user, ok := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
+				if !ok || !user.IsGlobalAdmin() {
+					http.Error(w, `{"error": "forbidden"}`, http.StatusForbidden)
+					return
+				}
+				next.ServeHTTP(w, r)
 				return
 			}
 
 			if userAppRole.Role != model.AppRoleAdmin {
-				// Check if user is global admin
+				// Row exists but role is insufficient — still allow global admins.
 				user, ok := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
 				if !ok || !user.IsGlobalAdmin() {
 					http.Error(w, `{"error": "forbidden"}`, http.StatusForbidden)

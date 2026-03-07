@@ -54,7 +54,8 @@ func (r *userAppRoleRepository) FindByApp(ctx context.Context, appID uint, page,
 	query := r.db.WithContext(ctx).Model(&model.UserAppRole{}).
 		Joins("JOIN users ON users.id = user_app_roles.user_id").
 		Where("user_app_roles.app_id = ?", appID).
-		Where("users.deleted_at IS NULL")
+		Where("users.deleted_at IS NULL").
+		Where("users.role != ?", "superadmin") // superadmins have global access; never list them per-app
 
 	if search != "" {
 		searchPattern := "%" + search + "%"
@@ -71,6 +72,7 @@ func (r *userAppRoleRepository) FindByApp(ctx context.Context, appID uint, page,
 		Joins("JOIN users ON users.id = user_app_roles.user_id").
 		Where("user_app_roles.app_id = ?", appID).
 		Where("users.deleted_at IS NULL").
+		Where("users.role != ?", "superadmin").
 		Offset(offset).
 		Limit(pageSize).
 		Order("user_app_roles.id DESC").

@@ -17,6 +17,8 @@ const (
 	AdminActionCreateSuperadmin   AdminAction = "create_superadmin"
 	AdminActionUpdateSuperadmin   AdminAction = "update_superadmin"
 	AdminActionDeleteSuperadmin   AdminAction = "delete_superadmin"
+	AdminActionDeleteUser         AdminAction = "delete_user"
+	AdminActionBlockUser          AdminAction = "block_user"
 )
 
 type AdminLog struct {

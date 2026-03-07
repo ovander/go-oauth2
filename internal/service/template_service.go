@@ -88,6 +88,10 @@ type LoginPageData struct {
 	// CSRFToken is embedded in the form as a hidden field and must match the
 	// _csrf cookie on POST (CRIT-03 double-submit cookie pattern).
 	CSRFToken string
+	// MaxAge is the OIDC max_age parameter (LOW-02).  -1 means "not specified".
+	// Preserved as a hidden field so POST /oauth/authorize can pass it to the
+	// service's Authorize method for re-authentication enforcement.
+	MaxAge int
 }
 
 // ConsentPageData contains data for the OAuth consent page template.
@@ -109,6 +113,9 @@ type ConsentPageData struct {
 	// ConsentToken is the HMAC-signed token that carries the authenticated
 	// user's identity to the consent POST handler (CRIT-04).
 	ConsentToken string
+	// MaxAge is the OIDC max_age parameter (LOW-02).  -1 means "not specified".
+	// Preserved as a hidden field so the consent POST can pass it to the service.
+	MaxAge int
 }
 
 // ErrorPageData contains data for the error page template

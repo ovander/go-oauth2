@@ -117,6 +117,7 @@ func newOAuthRouter(
 	r.Use(chimiddleware.Timeout(60 * time.Second))
 	r.Use(middleware.CorrelationID())
 	r.Use(middleware.SecurityHeaders())
+	r.Use(middleware.AppVersion)
 
 	// IP Blocking middleware (automatic defense)
 	if config.IPBlockChecker != nil {
@@ -137,6 +138,7 @@ func newOAuthRouter(
 	r.With(middleware.JSONContentType()).Get("/health", healthHandler.Health)
 	r.With(middleware.JSONContentType()).Get("/health/liveness", healthHandler.Liveness)
 	r.With(middleware.JSONContentType()).Get("/health/readiness", healthHandler.Readiness)
+	r.With(middleware.JSONContentType()).Get("/version", healthHandler.Version)
 
 	// ==========================================
 	// OpenID Connect Discovery (JSON)
@@ -306,6 +308,7 @@ func newAdminRouter(
 	r.Use(chimiddleware.Timeout(60 * time.Second))
 	r.Use(middleware.CorrelationID())
 	r.Use(middleware.SecurityHeaders())
+	r.Use(middleware.AppVersion)
 
 	// IP Blocking middleware (automatic defense)
 	if config.IPBlockChecker != nil {
@@ -323,6 +326,7 @@ func newAdminRouter(
 	r.Get("/health", healthHandler.Health)
 	r.Get("/health/liveness", healthHandler.Liveness)
 	r.Get("/health/readiness", healthHandler.Readiness)
+	r.Get("/version", healthHandler.Version)
 
 	// ==========================================
 	// Admin Authentication (public - no auth required)

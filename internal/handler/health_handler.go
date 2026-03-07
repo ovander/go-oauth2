@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 
+	"github.com/ovandermoten/go-oauth2/internal/version"
 	"gorm.io/gorm"
 )
 
@@ -27,6 +28,17 @@ func (h *HealthHandler) Liveness(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	writeJSON(w, map[string]string{
 		"status": "ok",
+	})
+}
+
+// GET /version
+func (h *HealthHandler) Version(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	writeJSON(w, map[string]string{
+		"version":    version.Version,
+		"commit":     version.Commit,
+		"branch":     version.Branch,
+		"build_time": version.BuildTime,
 	})
 }
 

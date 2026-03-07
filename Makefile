@@ -13,9 +13,22 @@ GOFMT=gofmt
 BINARY_NAME=oauth-server
 BINARY_PATH=bin/$(BINARY_NAME)
 
+# Version info (baked into binary at build time via -ldflags)
+VERSION    := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT     := $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
+BUILD_TIME := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+BRANCH     := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+MODULE     := github.com/ovandermoten/go-oauth2
+
+LDFLAGS := -ldflags "\
+  -X '$(MODULE)/internal/version.Version=$(VERSION)' \
+  -X '$(MODULE)/internal/version.Commit=$(COMMIT)' \
+  -X '$(MODULE)/internal/version.BuildTime=$(BUILD_TIME)' \
+  -X '$(MODULE)/internal/version.Branch=$(BRANCH)'"
+
 # Build the application
 build:
-	$(GOBUILD) -o $(BINARY_PATH) ./cmd/server
+	$(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH) ./cmd/server
 
 # Run the application
 run: build
@@ -88,7 +101,7 @@ deploy: build-linux
 	ssh -t $(VPS) "journalctl -u socrate -n 40 -f"
 
 build-linux:
-	GOOS=linux GOARCH=amd64 $(GOBUILD) -o bin/socrate ./cmd/server
+	GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o bin/socrate ./cmd/server
 
 # Docker
 docker-build:

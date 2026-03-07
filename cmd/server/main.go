@@ -9,10 +9,19 @@ import (
 	"time"
 
 	"github.com/ovandermoten/go-oauth2/config"
+	"github.com/ovandermoten/go-oauth2/internal/version"
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
 func main() {
+	// Log version info — immediately visible in journalctl on every deploy
+	logger.WithFields(logger.Fields{
+		"version":    version.Version,
+		"commit":     version.Commit,
+		"branch":     version.Branch,
+		"build_time": version.BuildTime,
+	}).Info("🔖 Socrate starting")
+
 	// Load configuration
 	cfg := config.Load()
 

@@ -87,11 +87,12 @@ func NewRouters(
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
 	userAppRoleRepo repository.UserAppRoleRepository,
+	appRepo repository.AppRepository,
 	config RouterConfig,
 ) *Routers {
 	return &Routers{
 		OAuth: newOAuthRouter(authHandler, oauthHandler, webHandler, profileHandler, healthHandler, tokenService, userRepo, config),
-		Admin: newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, adminLogsHandler, settingsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config),
+		Admin: newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, adminLogsHandler, settingsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, appRepo, config),
 	}
 }
 
@@ -296,6 +297,7 @@ func newAdminRouter(
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
 	userAppRoleRepo repository.UserAppRoleRepository,
+	appRepo repository.AppRepository,
 	config RouterConfig,
 ) http.Handler {
 	r := chi.NewRouter()
@@ -485,6 +487,16 @@ func newAdminRouter(
 			Get("/logs", appLogsHandler.GetLogs)
 	})
 
+	// ==========================================
+	// Service Account Routes (M2M client_credentials)
+	// Protected by ServiceAccountMiddleware — no human user JWT required.
+	// Token must carry sub="app:{id}" matching the {app_id} URL parameter.
+	// ==========================================
+	r.Route("/api/apps/{app_id}/service", func(r chi.Router) {
+		r.Use(middleware.ServiceAccountMiddleware(appRepo, tokenService))
+		r.Post("/users", appUsersHandler.CreateUser)
+	})
+
 	return r
 }
 
@@ -507,6 +519,7 @@ func NewRouter(
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
 	userAppRoleRepo repository.UserAppRoleRepository,
+	appRepo repository.AppRepository,
 	config RouterConfig,
 ) http.Handler {
 	r := chi.NewRouter()
@@ -530,7 +543,7 @@ func NewRouter(
 	r.Mount("/", oauthRouter)
 
 	// Mount Admin router under /admin prefix (for single-port mode)
-	adminRouter := newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, adminLogsHandler, settingsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, config)
+	adminRouter := newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, adminLogsHandler, settingsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, appRepo, config)
 	r.Mount("/manage", adminRouter)
 
 	return r

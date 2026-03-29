@@ -6,7 +6,6 @@
 *.exe
 *.test
 *.out
-server
 
 # =========================
 # Environment variables

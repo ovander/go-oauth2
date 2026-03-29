@@ -140,10 +140,15 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Resolve caller identity: human admin (user JWT) or service account (client_credentials).
+	// Service accounts have no user ID — adminID=0 is the sentinel used in audit logs.
 	adminID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
-		writeError(w, "unauthorized", http.StatusUnauthorized)
-		return
+		if _, isServiceAccount := middleware.GetServiceAccountAppFromContext(r.Context()); !isServiceAccount {
+			writeError(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		adminID = 0 // service account — logged as system actor
 	}
 
 	var req dto.AddAppUserRequest

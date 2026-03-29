@@ -416,6 +416,7 @@ func Bootstrap(cfg *config.Config) *App {
 			tokenService,
 			userRepo,
 			userAppRoleRepo,
+			appRepo,
 			routerConfig,
 		)
 		return &App{
@@ -449,6 +450,7 @@ func Bootstrap(cfg *config.Config) *App {
 		tokenService,
 		userRepo,
 		userAppRoleRepo,
+		appRepo,
 		routerConfig,
 	)
 	return &App{

@@ -100,3 +100,28 @@ type ErrorResponse struct {
 	Error            string `json:"error"`
 	ErrorDescription string `json:"error_description,omitempty"`
 }
+
+// MagicLinkRequest is the body for POST /api/apps/{app_id}/service/magic-link.
+// The endpoint is service-account protected — the app is already identified by
+// the URL parameter and the client_credentials token, so no client_id is needed
+// in the body.  The response is always the same opaque message regardless of
+// whether the email exists, to prevent user-enumeration.
+type MagicLinkRequest struct {
+	Email string `json:"email"`
+}
+
+// MagicLinkResponse is the body returned after a magic-link is requested.
+type MagicLinkResponse struct {
+	Message string `json:"message"`
+	// MagicURL is only populated in development mode so that tests can
+	// exercise the full flow without a real mail server.
+	MagicURL string `json:"magic_url,omitempty"`
+}
+
+// MagicLinkVerifyRequest is the body for POST /api/auth/magic-link/verify.
+// client_id is required here because the verify endpoint is public — the app
+// context is not available from a service account token at this point.
+type MagicLinkVerifyRequest struct {
+	Token    string `json:"token"`
+	ClientID string `json:"client_id"`
+}

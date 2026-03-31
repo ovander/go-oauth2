@@ -114,6 +114,54 @@ var migrations = []Migration{
 			return db.Exec("ALTER TABLE apps ADD COLUMN is_public BOOLEAN NOT NULL DEFAULT FALSE").Error
 		},
 	},
+	{
+		// Magic-link (passwordless) authentication: create the magic_link_tokens
+		// table used to store single-use login tokens.
+		// Columns:
+		//   token_hash  — SHA-256 hex of the raw token (never stored in plaintext)
+		//   user_id     — FK to users; the recipient of the magic link
+		//   app_id      — FK to apps; scopes the token to one OAuth client
+		//   email       — denormalised copy for per-address rate-limit queries
+		//   used        — boolean flag set to TRUE once the token is redeemed
+		//   used_at     — timestamp of first (only) use
+		//   expires_at  — hard expiry; tokens are ignored after this point
+		//   inserted_at — creation timestamp (matches the GORM model tag)
+		ID:   "0005",
+		Name: "create_magic_link_tokens",
+		Run: func(db *gorm.DB) error {
+			if db.Migrator().HasTable("magic_link_tokens") {
+				return nil // table already exists — nothing to do
+			}
+			// GORM's db.Exec uses a prepared statement; PostgreSQL forbids
+			// multiple commands in a single prepared statement (SQLSTATE 42601).
+			// Each DDL statement must be executed separately.
+			stmts := []string{
+				`CREATE TABLE magic_link_tokens (
+					id          BIGSERIAL    PRIMARY KEY,
+					token_hash  VARCHAR(64)  NOT NULL,
+					user_id     BIGINT       NOT NULL,
+					app_id      BIGINT       NOT NULL,
+					email       VARCHAR(255) NOT NULL,
+					used        BOOLEAN      NOT NULL DEFAULT FALSE,
+					used_at     TIMESTAMPTZ,
+					expires_at  TIMESTAMPTZ  NOT NULL,
+					inserted_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+					CONSTRAINT uq_magic_link_token_hash UNIQUE (token_hash)
+				)`,
+				`CREATE INDEX idx_magic_link_tokens_user_id    ON magic_link_tokens(user_id)`,
+				`CREATE INDEX idx_magic_link_tokens_app_id     ON magic_link_tokens(app_id)`,
+				`CREATE INDEX idx_magic_link_tokens_email      ON magic_link_tokens(email)`,
+				`CREATE INDEX idx_magic_link_tokens_used       ON magic_link_tokens(used)`,
+				`CREATE INDEX idx_magic_link_tokens_expires_at ON magic_link_tokens(expires_at)`,
+			}
+			for _, s := range stmts {
+				if err := db.Exec(s).Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

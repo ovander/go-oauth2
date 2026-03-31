@@ -155,6 +155,7 @@ func Bootstrap(cfg *config.Config) *App {
 			&model.AlertRule{},
 			&model.TriggeredAlert{},
 			&model.BlockedIP{},
+			&model.MagicLinkToken{},
 		); err != nil {
 			logger.Fatalf("Failed to auto-migrate database: %v", err)
 		}
@@ -194,6 +195,8 @@ func Bootstrap(cfg *config.Config) *App {
 	authCodeRepo := repository.NewAuthorizationCodeRepository(db)
 	usedTokenRepo := repository.NewUsedTokenRepository(db)
 	securityAuditRepo := repository.NewSecurityAuditLogRepository(db)
+
+	magicLinkRepo := repository.NewMagicLinkRepository(db)
 
 	// Monitoring repositories
 	alertRuleRepo := repository.NewAlertRuleRepository(db)
@@ -301,6 +304,19 @@ func Bootstrap(cfg *config.Config) *App {
 	monitoringHandler := handler.NewMonitoringHandler(db, alertRuleRepo, triggeredAlertRepo, blockedIPRepo, securityAuditRepo, geoIPService)
 	adminLogsHandler := handler.NewAdminLogsHandler(db)
 	settingsHandler := handler.NewSettingsHandler(cfg, db)
+
+	// Magic link service (must be created before magicLinkHandler below)
+	magicLinkService := service.NewMagicLinkService(
+		magicLinkRepo,
+		userRepo,
+		appRepo,
+		userAppRoleRepo,
+		tokenService,
+		emailService,
+		cfg.OAuthIssuer,
+		cfg.Environment,
+	)
+	magicLinkHandler := handler.NewMagicLinkHandler(magicLinkService, cfg.Environment)
 
 	// Web handler for HTML auth pages
 	webHandler, err := web.NewWebHandler(
@@ -413,6 +429,7 @@ func Bootstrap(cfg *config.Config) *App {
 			adminLogsHandler,
 			settingsHandler,
 			webHandler,
+			magicLinkHandler,
 			tokenService,
 			userRepo,
 			userAppRoleRepo,
@@ -447,6 +464,7 @@ func Bootstrap(cfg *config.Config) *App {
 		adminLogsHandler,
 		settingsHandler,
 		webHandler,
+		magicLinkHandler,
 		tokenService,
 		userRepo,
 		userAppRoleRepo,

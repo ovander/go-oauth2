@@ -84,6 +84,7 @@ func NewRouters(
 	adminLogsHandler *handler.AdminLogsHandler,
 	settingsHandler *handler.SettingsHandler,
 	webHandler *internalweb.WebHandler,
+	magicLinkHandler *handler.MagicLinkHandler,
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
 	userAppRoleRepo repository.UserAppRoleRepository,
@@ -91,8 +92,8 @@ func NewRouters(
 	config RouterConfig,
 ) *Routers {
 	return &Routers{
-		OAuth: newOAuthRouter(authHandler, oauthHandler, webHandler, profileHandler, healthHandler, tokenService, userRepo, config),
-		Admin: newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, adminLogsHandler, settingsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, appRepo, config),
+		OAuth: newOAuthRouter(authHandler, oauthHandler, webHandler, profileHandler, healthHandler, magicLinkHandler, tokenService, userRepo, config),
+		Admin: newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, adminLogsHandler, settingsHandler, healthHandler, magicLinkHandler, tokenService, userRepo, userAppRoleRepo, appRepo, config),
 	}
 }
 
@@ -104,6 +105,7 @@ func newOAuthRouter(
 	webHandler *internalweb.WebHandler,
 	profileHandler *handler.ProfileHandler,
 	healthHandler *handler.HealthHandler,
+	magicLinkHandler *handler.MagicLinkHandler, // nil-safe; only Verify is registered here
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
 	config RouterConfig,
@@ -268,6 +270,19 @@ func newOAuthRouter(
 
 			r.Get("/invite", authHandler.ValidateInvite)
 			r.Post("/invite", authHandler.AcceptInvite)
+
+			// Magic-link verify (passwordless) — public endpoint.
+			// POST /api/auth/magic-link/verify — exchange a single-use token for
+			// a full token set (access + refresh + ID).
+			//
+			// The REQUEST side lives on the admin router under
+			// /api/apps/{app_id}/service/magic-link (M2M / service-account only).
+			// Verify is POST-only: email-scanners follow GET links and would silently
+			// consume the single-use token before the user clicks.
+			if magicLinkHandler != nil {
+				r.With(middleware.RateLimitMiddleware(config.LoginRateLimiter, config.TrustedProxyCIDRs)).
+					Post("/magic-link/verify", magicLinkHandler.Verify)
+			}
 		})
 
 		// Profile Routes (Protected - user self-service)
@@ -294,6 +309,7 @@ func newAdminRouter(
 	adminLogsHandler *handler.AdminLogsHandler,
 	settingsHandler *handler.SettingsHandler,
 	healthHandler *handler.HealthHandler,
+	magicLinkHandler *handler.MagicLinkHandler, // nil-safe; Request endpoint registered here
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
 	userAppRoleRepo repository.UserAppRoleRepository,
@@ -495,6 +511,13 @@ func newAdminRouter(
 	r.Route("/api/apps/{app_id}/service", func(r chi.Router) {
 		r.Use(middleware.ServiceAccountMiddleware(appRepo, tokenService))
 		r.Post("/users", appUsersHandler.CreateUser)
+
+		// Magic-link request — only the authenticated app backend may trigger
+		// magic-link emails.  The app identity is already proven by
+		// ServiceAccountMiddleware (sub=app:{id} + URL cross-check).
+		if magicLinkHandler != nil {
+			r.Post("/magic-link", magicLinkHandler.Request)
+		}
 	})
 
 	return r
@@ -516,6 +539,7 @@ func NewRouter(
 	adminLogsHandler *handler.AdminLogsHandler,
 	settingsHandler *handler.SettingsHandler,
 	webHandler *internalweb.WebHandler,
+	magicLinkHandler *handler.MagicLinkHandler,
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
 	userAppRoleRepo repository.UserAppRoleRepository,
@@ -539,11 +563,11 @@ func NewRouter(
 	r.Use(middleware.JSONContentType())
 
 	// Mount OAuth router
-	oauthRouter := newOAuthRouter(authHandler, oauthHandler, webHandler, profileHandler, healthHandler, tokenService, userRepo, config)
+	oauthRouter := newOAuthRouter(authHandler, oauthHandler, webHandler, profileHandler, healthHandler, magicLinkHandler, tokenService, userRepo, config)
 	r.Mount("/", oauthRouter)
 
 	// Mount Admin router under /admin prefix (for single-port mode)
-	adminRouter := newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, adminLogsHandler, settingsHandler, healthHandler, tokenService, userRepo, userAppRoleRepo, appRepo, config)
+	adminRouter := newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, adminLogsHandler, settingsHandler, healthHandler, magicLinkHandler, tokenService, userRepo, userAppRoleRepo, appRepo, config)
 	r.Mount("/manage", adminRouter)
 
 	return r

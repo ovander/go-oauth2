@@ -58,3 +58,5 @@ data/*.mmdb
 vendor/
 *AUDIT*.md
 *.docx
+
+/oauth-server

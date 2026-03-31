@@ -167,6 +167,7 @@ func (p *panicEmailService) SendInvitationEmail(_, _, _, _, _ string) error     
 func (p *panicEmailService) SendInviteEmail(_, _, _ string) error               { panic("not implemented") }
 func (p *panicEmailService) SendWelcomeEmail(_, _, _ string) error              { panic("not implemented") }
 func (p *panicEmailService) SendAppCredentialsEmail(_, _, _, _, _ string) error { panic("not implemented") }
+func (p *panicEmailService) SendMagicLinkEmail(_, _, _, _ string) error         { panic("not implemented") }
 
 // Compile-time interface checks.
 var _ service.UserService        = (*adminTestUserService)(nil)

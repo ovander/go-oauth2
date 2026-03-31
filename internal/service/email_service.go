@@ -20,6 +20,8 @@ type EmailService interface {
 	SendInviteEmail(to, appName, inviteURL string) error
 	SendWelcomeEmail(to, name, appName string) error
 	SendAppCredentialsEmail(to, name, appName, clientID, clientSecret string) error
+	// SendMagicLinkEmail sends a passwordless single-use login link to the user.
+	SendMagicLinkEmail(to, name, appName, magicURL string) error
 }
 
 // EmailConfig holds SMTP email service configuration
@@ -137,6 +139,28 @@ func (s *smtpEmailService) SendAppCredentialsEmail(to, name, appName, clientID, 
 
 	subject := fmt.Sprintf("Credentials for %s", appName)
 	return s.sendTemplatedEmail(to, subject, "app_credentials", data)
+}
+
+// SendMagicLinkEmail sends a passwordless single-use login link to the user.
+func (s *smtpEmailService) SendMagicLinkEmail(to, name, appName, magicURL string) error {
+	displayName := name
+	if displayName == "" {
+		displayName = to
+	}
+	displayAppName := appName
+	if displayAppName == "" {
+		displayAppName = "Socrate"
+	}
+
+	data := map[string]string{
+		"Name":     displayName,
+		"AppName":  displayAppName,
+		"MagicURL": magicURL,
+		"Year":     "2024 - 2026",
+	}
+
+	subject := fmt.Sprintf("Your login link for %s", displayAppName)
+	return s.sendTemplatedEmail(to, subject, "magic_link", data)
 }
 
 func (s *smtpEmailService) sendTemplatedEmail(to, subject, templateName string, data map[string]string) error {
@@ -603,6 +627,66 @@ const emailTemplates = `
 </body>
 </html>
 {{end}}
+
+{{define "magic_link"}}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your login link for {{.AppName}}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f5f5f5; padding: 40px 0;">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="padding: 40px 40px 20px; text-align: center; background-color: #4F46E5; border-radius: 8px 8px 0 0;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 600;">{{.AppName}}</h1>
+                        </td>
+                    </tr>
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px;">
+                            <h2 style="margin: 0 0 20px; color: #1a1a1a; font-size: 20px;">Your login link</h2>
+                            <p style="margin: 0 0 20px; color: #4a4a4a; font-size: 16px; line-height: 1.5;">
+                                Hi {{.Name}},
+                            </p>
+                            <p style="margin: 0 0 30px; color: #4a4a4a; font-size: 16px; line-height: 1.5;">
+                                Click the button below to log in to <strong>{{.AppName}}</strong>. This link is single-use and expires in 15 minutes.
+                            </p>
+                            <table role="presentation" cellspacing="0" cellpadding="0" style="margin: 0 auto;">
+                                <tr>
+                                    <td style="border-radius: 6px; background-color: #4F46E5;">
+                                        <a href="{{.MagicURL}}" target="_blank" style="display: inline-block; padding: 14px 32px; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600;">Log in to {{.AppName}}</a>
+                                    </td>
+                                </tr>
+                            </table>
+                            <p style="margin: 30px 0 0; color: #6a6a6a; font-size: 14px; line-height: 1.5;">
+                                If you did not request this link, you can safely ignore this email. Someone may have typed your email address by mistake.
+                            </p>
+                            <p style="margin: 20px 0 0; color: #6a6a6a; font-size: 14px; line-height: 1.5;">
+                                <strong>Do not forward this email.</strong> The link can only be used once.
+                            </p>
+                        </td>
+                    </tr>
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 20px 40px; background-color: #f9f9f9; border-radius: 0 0 8px 8px; text-align: center;">
+                            <p style="margin: 0; color: #9a9a9a; font-size: 12px;">
+                                &copy; {{.Year}} {{.AppName}}. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+{{end}}
 `
 
 // NoOpEmailService is a no-op implementation for development/testing
@@ -654,5 +738,11 @@ func (s *NoOpEmailService) SendInviteEmail(to, appName, inviteURL string) error 
 func (s *NoOpEmailService) SendAppCredentialsEmail(to, name, appName, clientID, clientSecret string) error {
 	s.LastEmail = &SentEmail{To: to, Subject: "App Credentials", URL: ""}
 	fmt.Printf("[EMAIL] App credentials email to %s (%s) for %s: client_id=%s\n", to, name, appName, clientID)
+	return nil
+}
+
+func (s *NoOpEmailService) SendMagicLinkEmail(to, name, appName, magicURL string) error {
+	s.LastEmail = &SentEmail{To: to, Subject: "Magic Link", URL: magicURL}
+	fmt.Printf("[EMAIL] Magic link email to %s for %s: %s\n", to, appName, magicURL)
 	return nil
 }

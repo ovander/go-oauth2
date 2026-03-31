@@ -113,6 +113,7 @@ func (s *med03EmailService) SendInvitationEmail(_, _, _, _, _ string) error     
 func (s *med03EmailService) SendInviteEmail(_, _, _ string) error               { return nil }
 func (s *med03EmailService) SendWelcomeEmail(_, _, _ string) error              { return nil }
 func (s *med03EmailService) SendAppCredentialsEmail(_, _, _, _, _ string) error { return nil }
+func (s *med03EmailService) SendMagicLinkEmail(_, _, _, _ string) error         { return nil }
 
 // Compile-time interface checks.
 var _ service.AuthService = (*med03AuthService)(nil)

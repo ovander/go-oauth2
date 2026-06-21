@@ -26,6 +26,7 @@ var (
 // TokenService handles JWT token generation and verification
 type TokenService struct {
 	keyManager      *KeyManager
+	signer          Signer
 	issuer          string
 	accessTokenTTL  time.Duration
 	refreshTokenTTL time.Duration
@@ -44,10 +45,25 @@ type TokenConfig struct {
 	InviteTokenTTL  time.Duration
 }
 
-// NewTokenService creates a new token service
+// NewTokenService creates a new token service backed by the default local
+// signer (in-process RSA key from the KeyManager). Behaviour is identical to
+// signing directly with the KeyManager.
 func NewTokenService(keyManager *KeyManager, config TokenConfig) *TokenService {
+	return NewTokenServiceWithSigner(keyManager, NewLocalSigner(keyManager), config)
+}
+
+// NewTokenServiceWithSigner creates a token service that signs tokens with the
+// supplied Signer. This is the injection point for RFC-002 (KMS Signing): a
+// future KMS/HSM-backed Signer can be provided here without changing any
+// call site. The keyManager is still used for public-key verification and the
+// JWKS endpoint. If signer is nil, the default local signer is used.
+func NewTokenServiceWithSigner(keyManager *KeyManager, signer Signer, config TokenConfig) *TokenService {
+	if signer == nil {
+		signer = NewLocalSigner(keyManager)
+	}
 	return &TokenService{
 		keyManager:      keyManager,
+		signer:          signer,
 		issuer:          config.Issuer,
 		accessTokenTTL:  config.AccessTokenTTL,
 		refreshTokenTTL: config.RefreshTokenTTL,
@@ -93,8 +109,8 @@ type IDTokenClaims struct {
 	Name              string            `json:"name,omitempty"`
 	PreferredUsername string            `json:"preferred_username,omitempty"`
 	AuthTime          int64             `json:"auth_time,omitempty"`
-	Role              string            `json:"role,omitempty"`               // App-scoped role (user, admin, etc.)
-	AppRoles          map[string]string `json:"app_roles,omitempty"`          // All app roles for this user
+	Role              string            `json:"role,omitempty"`      // App-scoped role (user, admin, etc.)
+	AppRoles          map[string]string `json:"app_roles,omitempty"` // All app roles for this user
 	Type              string            `json:"type"`
 	Nonce             string            `json:"nonce,omitempty"`
 	AtHash            string            `json:"at_hash,omitempty"`
@@ -353,12 +369,12 @@ func (ts *TokenService) GenerateClientCredentialsToken(app *model.App, scope str
 	return ts.signToken(claims)
 }
 
-// signToken signs a token with the private key
+// signToken signs a token via the configured Signer. The signing backend
+// (local RSA key today, KMS/HSM in future per RFC-002) is abstracted behind
+// the Signer interface; the default signer reproduces the prior RS256 + kid
+// behaviour exactly.
 func (ts *TokenService) signToken(claims jwt.Claims) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-	token.Header["kid"] = ts.keyManager.GetKeyID()
-
-	return token.SignedString(ts.keyManager.GetPrivateKey())
+	return ts.signer.SignToken(claims)
 }
 
 // verifyToken is a generic token verification function that consolidates common logic.

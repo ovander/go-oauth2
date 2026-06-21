@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
@@ -44,6 +45,9 @@ type SecurityEvent struct {
 	UserAgent string
 	Success   bool
 	Details   map[string]interface{}
+	// CorrelationID optionally overrides the correlation ID. When empty, Log
+	// derives it from the request context (RFC-007/RFC-008).
+	CorrelationID string
 }
 
 type securityAuditService struct {
@@ -62,19 +66,40 @@ func NewSecurityAuditService(repo repository.SecurityAuditLogRepository) Securit
 func (s *securityAuditService) Log(ctx context.Context, event SecurityEvent) error {
 	severity := model.GetSeverityForEvent(event.EventType, event.Success)
 
+	// RFC-007/RFC-008: stamp the correlation ID so each audit row identifies the
+	// request that produced it. An explicit event.CorrelationID wins; otherwise
+	// derive it from the request context.
+	correlationID := event.CorrelationID
+	if correlationID == "" {
+		correlationID = correlationIDFromContext(ctx)
+	}
+
 	log := &model.SecurityAuditLog{
-		UserID:    event.UserID,
-		AppID:     event.AppID,
-		EventType: event.EventType,
-		Severity:  severity,
-		IPAddress: event.IPAddress,
-		UserAgent: event.UserAgent,
-		Success:   event.Success,
-		Details:   event.Details,
-		CreatedAt: time.Now(),
+		UserID:        event.UserID,
+		AppID:         event.AppID,
+		EventType:     event.EventType,
+		Severity:      severity,
+		IPAddress:     event.IPAddress,
+		UserAgent:     event.UserAgent,
+		CorrelationID: correlationID,
+		Success:       event.Success,
+		Details:       event.Details,
+		CreatedAt:     time.Now(),
 	}
 
 	return s.repo.Create(ctx, log)
+}
+
+// correlationIDFromContext extracts the request correlation ID set by
+// middleware.CorrelationID (contextkeys.RequestIDKey), or "" if absent.
+func correlationIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if id, ok := ctx.Value(contextkeys.RequestIDKey).(string); ok {
+		return id
+	}
+	return ""
 }
 
 func (s *securityAuditService) LogFromRequest(ctx context.Context, r *http.Request, event SecurityEvent) error {

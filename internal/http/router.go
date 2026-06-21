@@ -115,10 +115,12 @@ func newOAuthRouter(
 	// Global Middleware
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
+	// CorrelationID must run before the request logger so the correlation ID
+	// is present in the context the logger reads (RFC-008).
+	r.Use(middleware.CorrelationID())
 	r.Use(logger.RequestLoggerMiddleware)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.Timeout(60 * time.Second))
-	r.Use(middleware.CorrelationID())
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.AppVersion)
 
@@ -321,10 +323,12 @@ func newAdminRouter(
 	// Global Middleware
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
+	// CorrelationID must run before the request logger so the correlation ID
+	// is present in the context the logger reads (RFC-008).
+	r.Use(middleware.CorrelationID())
 	r.Use(logger.RequestLoggerMiddleware)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.Timeout(60 * time.Second))
-	r.Use(middleware.CorrelationID())
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.AppVersion)
 
@@ -551,10 +555,12 @@ func NewRouter(
 	// Global Middleware
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
+	// CorrelationID must run before the request logger so the correlation ID
+	// is present in the context the logger reads (RFC-008).
+	r.Use(middleware.CorrelationID())
 	r.Use(logger.RequestLoggerMiddleware)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.Timeout(60 * time.Second))
-	r.Use(middleware.CorrelationID())
 	r.Use(middleware.SecurityHeaders())
 
 	// CORS for combined router (H-06: wildcard + credentials disallowed)

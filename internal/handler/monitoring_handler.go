@@ -97,12 +97,11 @@ func (h *MonitoringHandler) GetSecurityEvents(w http.ResponseWriter, r *http.Req
 		query = query.Where("ip_address = ?", ipAddress)
 	}
 
-	if success := r.URL.Query().Get("success"); success != "" {
-		if success == "true" {
-			query = query.Where("success = ?", true)
-		} else if success == "false" {
-			query = query.Where("success = ?", false)
-		}
+	switch r.URL.Query().Get("success") {
+	case "true":
+		query = query.Where("success = ?", true)
+	case "false":
+		query = query.Where("success = ?", false)
 	}
 
 	if from := r.URL.Query().Get("from"); from != "" {

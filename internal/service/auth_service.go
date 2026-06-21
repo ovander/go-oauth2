@@ -287,13 +287,13 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 
 	if !auth.CheckPassword(req.Password, user.HashedPassword) {
 		if err := s.userRepo.IncrementFailedLoginAttempts(ctx, user.ID); err != nil {
-			// Log error but continue
+			logger.Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 		}
 		user, _ = s.userRepo.FindByID(ctx, user.ID)
 		if user.FailedLoginAttempts >= s.maxFailedAttempts {
 			lockUntil := time.Now().Add(s.lockoutDuration)
 			if err := s.userRepo.LockAccount(ctx, user.ID, &lockUntil); err != nil {
-				// Log error but continue
+				logger.Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 			}
 			// Log account lockout
 			s.logSecurityEvent(ctx, model.SecurityEventAccountLocked, &user.ID, nil, false, map[string]interface{}{
@@ -332,14 +332,14 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 
 	// Reset failed attempts and update last login
 	if err := s.userRepo.ResetFailedLoginAttempts(ctx, user.ID); err != nil {
-		// Log error but continue
+		logger.Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 	now := time.Now()
 	user.LastLogin = &now
 	user.LastLoginAttempt = &now
 	user.UpdatedAt = now
 	if err := s.userRepo.Update(ctx, user); err != nil {
-		// Log error but continue
+		logger.Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 
 	tokenSet, err := s.tokenService.GenerateTokenSet(
@@ -383,13 +383,13 @@ func (s *authService) AdminLogin(ctx context.Context, req dto.AdminLoginRequest)
 
 	if !auth.CheckPassword(req.Password, user.HashedPassword) {
 		if err := s.userRepo.IncrementFailedLoginAttempts(ctx, user.ID); err != nil {
-			// Log error but continue
+			logger.Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 		}
 		user, _ = s.userRepo.FindByID(ctx, user.ID)
 		if user.FailedLoginAttempts >= s.maxFailedAttempts {
 			lockUntil := time.Now().Add(s.lockoutDuration)
 			if err := s.userRepo.LockAccount(ctx, user.ID, &lockUntil); err != nil {
-				// Log error but continue
+				logger.Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 			}
 			s.logSecurityEvent(ctx, model.SecurityEventAccountLocked, &user.ID, nil, false, map[string]interface{}{
 				"email":           user.Email,
@@ -423,14 +423,14 @@ func (s *authService) AdminLogin(ctx context.Context, req dto.AdminLoginRequest)
 
 	// Reset failed attempts and update last login
 	if err := s.userRepo.ResetFailedLoginAttempts(ctx, user.ID); err != nil {
-		// Log error but continue
+		logger.Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 	now := time.Now()
 	user.LastLogin = &now
 	user.LastLoginAttempt = &now
 	user.UpdatedAt = now
 	if err := s.userRepo.Update(ctx, user); err != nil {
-		// Log error but continue
+		logger.Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 
 	// Create a virtual "admin-portal" app for token generation
@@ -804,7 +804,7 @@ func (s *authService) AcceptInvite(ctx context.Context, token, name, password st
 
 	user.LastLogin = &now
 	if err := s.userRepo.Update(ctx, user); err != nil {
-		// Log error but continue
+		logger.Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 
 	tokenSet, err := s.tokenService.GenerateTokenSet(

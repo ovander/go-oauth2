@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -66,60 +67,60 @@ func doPost(h http.Handler, dpopHeader string) *httptest.ResponseRecorder {
 	return rr
 }
 
-func TestDPoPObserve_OffIsPassthrough(t *testing.T) {
+func TestDPoP_OffIsPassthrough(t *testing.T) {
 	cache := dpop.NewMemoryReplayCache(time.Minute)
 	defer cache.Stop()
 	ran := false
-	h := DPoPObserve(cache, "off", htuBase)(dpopOKHandler(&ran))
+	h := DPoP(cache, "off", htuBase)(dpopOKHandler(&ran))
 	rr := doPost(h, makeProof(t))
 	if !ran || rr.Code != http.StatusOK {
 		t.Fatalf("off mode must pass through; ran=%v code=%d", ran, rr.Code)
 	}
 }
 
-func TestDPoPObserve_NilCacheIsPassthrough(t *testing.T) {
+func TestDPoP_NilCacheIsPassthrough(t *testing.T) {
 	ran := false
-	h := DPoPObserve(nil, "observe", htuBase)(dpopOKHandler(&ran))
+	h := DPoP(nil, "observe", htuBase)(dpopOKHandler(&ran))
 	rr := doPost(h, makeProof(t))
 	if !ran || rr.Code != http.StatusOK {
 		t.Fatalf("nil cache must pass through; ran=%v code=%d", ran, rr.Code)
 	}
 }
 
-func TestDPoPObserve_ValidProofNeverBlocks(t *testing.T) {
+func TestDPoP_ValidProofNeverBlocks(t *testing.T) {
 	cache := dpop.NewMemoryReplayCache(time.Minute)
 	defer cache.Stop()
 	ran := false
-	h := DPoPObserve(cache, "observe", htuBase)(dpopOKHandler(&ran))
+	h := DPoP(cache, "observe", htuBase)(dpopOKHandler(&ran))
 	rr := doPost(h, makeProof(t))
 	if !ran || rr.Code != http.StatusOK {
 		t.Fatalf("observe must not block a valid proof; ran=%v code=%d", ran, rr.Code)
 	}
 }
 
-func TestDPoPObserve_InvalidProofNeverBlocks(t *testing.T) {
+func TestDPoP_InvalidProofNeverBlocks(t *testing.T) {
 	cache := dpop.NewMemoryReplayCache(time.Minute)
 	defer cache.Stop()
 	ran := false
-	h := DPoPObserve(cache, "observe", htuBase)(dpopOKHandler(&ran))
+	h := DPoP(cache, "observe", htuBase)(dpopOKHandler(&ran))
 	rr := doPost(h, "garbage-not-a-jwt")
 	if !ran || rr.Code != http.StatusOK {
 		t.Fatalf("observe must not block an invalid proof; ran=%v code=%d", ran, rr.Code)
 	}
 }
 
-func TestDPoPObserve_NoHeaderNeverBlocks(t *testing.T) {
+func TestDPoP_NoHeaderNeverBlocks(t *testing.T) {
 	cache := dpop.NewMemoryReplayCache(time.Minute)
 	defer cache.Stop()
 	ran := false
-	h := DPoPObserve(cache, "observe", htuBase)(dpopOKHandler(&ran))
+	h := DPoP(cache, "observe", htuBase)(dpopOKHandler(&ran))
 	rr := doPost(h, "")
 	if !ran || rr.Code != http.StatusOK {
 		t.Fatalf("observe must pass through when no DPoP header is present; ran=%v code=%d", ran, rr.Code)
 	}
 }
 
-func TestDPoPObserve_StashesThumbprintForValidProof(t *testing.T) {
+func TestDPoP_StashesThumbprintForValidProof(t *testing.T) {
 	cache := dpop.NewMemoryReplayCache(time.Minute)
 	defer cache.Stop()
 
@@ -129,7 +130,7 @@ func TestDPoPObserve_StashesThumbprintForValidProof(t *testing.T) {
 		gotJKT, present = r.Context().Value(contextkeys.DPoPJKTKey).(string)
 		w.WriteHeader(http.StatusOK)
 	})
-	h := DPoPObserve(cache, "observe", htuBase)(terminal)
+	h := DPoP(cache, "observe", htuBase)(terminal)
 
 	doPost(h, makeProof(t))
 	if !present || gotJKT == "" {
@@ -137,7 +138,7 @@ func TestDPoPObserve_StashesThumbprintForValidProof(t *testing.T) {
 	}
 }
 
-func TestDPoPObserve_NoThumbprintForInvalidProof(t *testing.T) {
+func TestDPoP_NoThumbprintForInvalidProof(t *testing.T) {
 	cache := dpop.NewMemoryReplayCache(time.Minute)
 	defer cache.Stop()
 
@@ -146,11 +147,62 @@ func TestDPoPObserve_NoThumbprintForInvalidProof(t *testing.T) {
 		_, present = r.Context().Value(contextkeys.DPoPJKTKey).(string)
 		w.WriteHeader(http.StatusOK)
 	})
-	h := DPoPObserve(cache, "observe", htuBase)(terminal)
+	h := DPoP(cache, "observe", htuBase)(terminal)
 
 	doPost(h, "garbage-not-a-jwt")
 	if present {
 		t.Fatal("an invalid proof must not place a jkt on the context")
+	}
+}
+
+func TestDPoP_EnforceRejectsInvalidProof(t *testing.T) {
+	cache := dpop.NewMemoryReplayCache(time.Minute)
+	defer cache.Stop()
+	ran := false
+	h := DPoP(cache, "enforce", htuBase)(dpopOKHandler(&ran))
+
+	rr := doPost(h, "garbage-not-a-jwt")
+	if ran {
+		t.Fatal("enforce must not call the handler for an invalid proof")
+	}
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "invalid_dpop_proof") {
+		t.Fatalf("expected invalid_dpop_proof body, got %q", rr.Body.String())
+	}
+}
+
+func TestDPoP_EnforceAllowsValidProof(t *testing.T) {
+	cache := dpop.NewMemoryReplayCache(time.Minute)
+	defer cache.Stop()
+	var gotJKT string
+	terminal := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotJKT, _ = r.Context().Value(contextkeys.DPoPJKTKey).(string)
+		w.WriteHeader(http.StatusOK)
+	})
+	h := DPoP(cache, "enforce", htuBase)(terminal)
+
+	rr := doPost(h, makeProof(t))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("enforce must allow a valid proof; got %d", rr.Code)
+	}
+	if gotJKT == "" {
+		t.Fatal("enforce must bind a valid proof's thumbprint")
+	}
+}
+
+func TestDPoP_EnforceAllowsMissingProof(t *testing.T) {
+	// This slice rejects only present-but-invalid proofs; a request with no DPoP
+	// header still proceeds (requiring DPoP per client is a later slice).
+	cache := dpop.NewMemoryReplayCache(time.Minute)
+	defer cache.Stop()
+	ran := false
+	h := DPoP(cache, "enforce", htuBase)(dpopOKHandler(&ran))
+
+	rr := doPost(h, "")
+	if !ran || rr.Code != http.StatusOK {
+		t.Fatalf("enforce must allow a request with no proof; ran=%v code=%d", ran, rr.Code)
 	}
 }
 

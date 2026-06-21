@@ -176,13 +176,13 @@ func newOAuthRouter(
 		// Token endpoint - JSON
 		// MED-05: apply per-IP rate limiting to prevent brute-force attacks
 		// against authorization codes, refresh tokens, and client credentials.
-		dpopObserve := middleware.DPoPObserve(config.DPoPReplayCache, config.DPoPMode, config.DPoPHTUBase)
+		dpopMW := middleware.DPoP(config.DPoPReplayCache, config.DPoPMode, config.DPoPHTUBase)
 		if config.TokenRateLimiter != nil {
 			r.With(middleware.JSONContentType(), middleware.NoCacheHeaders(),
-				middleware.RateLimitMiddleware(config.TokenRateLimiter, config.TrustedProxyCIDRs), dpopObserve).
+				middleware.RateLimitMiddleware(config.TokenRateLimiter, config.TrustedProxyCIDRs), dpopMW).
 				Post("/token", oauthHandler.Token)
 		} else {
-			r.With(middleware.JSONContentType(), middleware.NoCacheHeaders(), dpopObserve).
+			r.With(middleware.JSONContentType(), middleware.NoCacheHeaders(), dpopMW).
 				Post("/token", oauthHandler.Token)
 		}
 

@@ -10,6 +10,13 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Fixed
+- **Tests:** Made `TestLOW02_MaxAge_ExactlyAtBoundary_Accepted` deterministic by
+  re-anchoring `LastLogin` immediately before the call, eliminating a timing
+  flake that surfaced under the slow `-race` CI runner (elapsed setup time could
+  push the measured session age one second past the `max_age` boundary).
+  _Traceability: C6 → EPIC-6 → RFC-014 → #28._
+
 ### Infrastructure
 - **CI:** Added a GitHub Actions workflow (`.github/workflows/ci.yml`) that runs
   `go build`, `go vet`, `go test -race`, and `govulncheck` on every push to

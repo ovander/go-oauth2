@@ -214,6 +214,14 @@ func TestLOW02_MaxAge_ExactlyAtBoundary_Accepted(t *testing.T) {
 		State:        "s6",
 		MaxAge:       60,
 	}
+	// Re-anchor LastLogin immediately before the call so the measured session
+	// age is deterministically exactly 60s (== max_age). Anchoring at setup time
+	// let elapsed test/setup time (δ) accumulate; under the slow -race CI runner
+	// δ ≥ 1s pushed int(time.Since)=61, spuriously tripping ErrReauthRequired.
+	// Bounding δ to the few fast in-memory ops before the check keeps it at 60,
+	// which still exercises the boundary (sessionAge == max_age is accepted).
+	boundary := time.Now().Add(-60 * time.Second)
+	user.LastLogin = &boundary
 	_, err := svc.Authorize(context.Background(), req, user.ID)
 	// At exactly the boundary (age == maxAge), the session is still valid.
 	if errors.Is(err, ErrReauthRequired) {

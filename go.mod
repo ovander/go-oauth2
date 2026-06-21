@@ -1,6 +1,6 @@
 module github.com/ovandermoten/go-oauth2
 
-go 1.25.7
+go 1.25.11
 
 require (
 	github.com/go-chi/chi/v5 v5.1.0

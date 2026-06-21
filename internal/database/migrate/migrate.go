@@ -182,6 +182,25 @@ var migrations = []Migration{
 			return db.Exec("CREATE INDEX idx_security_audit_logs_correlation_id ON security_audit_logs(correlation_id)").Error
 		},
 	},
+	{
+		// RFC-007/RFC-008: correlation_id links an admin_logs row to the request
+		// that produced it for end-to-end tracing.  Nullable and additive
+		// (expand–contract): existing rows and older writers are unaffected.
+		ID:   "0007",
+		Name: "add_admin_logs.correlation_id",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("admin_logs") {
+				return nil // table does not exist yet — AutoMigrate will create it correctly
+			}
+			if db.Migrator().HasColumn(&model.AdminLog{}, "correlation_id") {
+				return nil // column already present — nothing to do
+			}
+			if err := db.Exec("ALTER TABLE admin_logs ADD COLUMN correlation_id VARCHAR(64)").Error; err != nil {
+				return err
+			}
+			return db.Exec("CREATE INDEX idx_admin_logs_correlation_id ON admin_logs(correlation_id)").Error
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

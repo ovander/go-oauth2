@@ -11,6 +11,10 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Audit / Observability:** Admin-action logs now record a `correlation_id`,
+  completing correlation coverage across both audit stores. Adds the
+  `admin_logs.correlation_id` column via migration `0007` (additive, nullable,
+  indexed). _Traceability: C4 → EPIC-4 → RFC-008 → #18._
 - **Audit / Observability:** Security audit events now record a `correlation_id`,
   linking each audit row to the request that produced it (derived from the
   request context, or an explicit `SecurityEvent.CorrelationID`). Adds the

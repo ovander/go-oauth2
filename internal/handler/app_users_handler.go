@@ -246,12 +246,12 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 
 	// Mark invite as sent only when the email was actually delivered
 	if emailSent {
-		h.userAppRoleService.SetInviteSent(r.Context(), user.ID, appID)
+		_ = h.userAppRoleService.SetInviteSent(r.Context(), user.ID, appID)
 	}
 
 	// Log admin action
 	if h.adminLogService != nil {
-		h.adminLogService.LogAction(r.Context(), adminID, &appID, &user.ID, model.AdminActionAddUser, map[string]interface{}{
+		_ = h.adminLogService.LogAction(r.Context(), adminID, &appID, &user.ID, model.AdminActionAddUser, map[string]interface{}{
 			"email":       req.Email,
 			"role":        req.Role,
 			"is_new_user": isNewUser,
@@ -320,7 +320,7 @@ func (h *AppUsersHandler) UpdateUserRole(w http.ResponseWriter, r *http.Request)
 		if oldRole != nil {
 			oldRoleStr = string(oldRole.Role)
 		}
-		h.adminLogService.LogAction(r.Context(), adminID, &appID, &userID, model.AdminActionUpdateRole, map[string]interface{}{
+		_ = h.adminLogService.LogAction(r.Context(), adminID, &appID, &userID, model.AdminActionUpdateRole, map[string]interface{}{
 			"old_role": oldRoleStr,
 			"new_role": req.Role,
 		})
@@ -366,7 +366,7 @@ func (h *AppUsersHandler) RemoveUser(w http.ResponseWriter, r *http.Request) {
 		if user != nil {
 			details["email"] = user.Email
 		}
-		h.adminLogService.LogAction(r.Context(), currentUserID, &appID, &userID, model.AdminActionRemoveUser, details)
+		_ = h.adminLogService.LogAction(r.Context(), currentUserID, &appID, &userID, model.AdminActionRemoveUser, details)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -418,7 +418,7 @@ func (h *AppUsersHandler) ResendVerification(w http.ResponseWriter, r *http.Requ
 
 	// Log admin action
 	if h.adminLogService != nil {
-		h.adminLogService.LogAction(r.Context(), adminID, &appID, &userID, model.AdminActionResendVerification, map[string]interface{}{
+		_ = h.adminLogService.LogAction(r.Context(), adminID, &appID, &userID, model.AdminActionResendVerification, map[string]interface{}{
 			"email": user.Email,
 		})
 	}
@@ -481,7 +481,7 @@ func (h *AppUsersHandler) ForcePasswordReset(w http.ResponseWriter, r *http.Requ
 
 	// Log admin action
 	if h.adminLogService != nil {
-		h.adminLogService.LogAction(r.Context(), adminID, &appID, &userID, model.AdminActionResetPassword, map[string]interface{}{
+		_ = h.adminLogService.LogAction(r.Context(), adminID, &appID, &userID, model.AdminActionResetPassword, map[string]interface{}{
 			"email": user.Email,
 		})
 	}

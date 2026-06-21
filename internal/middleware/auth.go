@@ -166,7 +166,7 @@ func writeAuthError(w http.ResponseWriter, message string, statusCode int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("WWW-Authenticate", `Bearer realm="oauth2", error="invalid_token"`)
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(struct {
+	_ = json.NewEncoder(w).Encode(struct {
 		Error string `json:"error"`
 	}{Error: message})
 }

@@ -274,7 +274,7 @@ func (h *AdminHandler) RotateSecret(w http.ResponseWriter, r *http.Request) {
 
 	// Log the secret rotation
 	if h.appActivityService != nil {
-		h.appActivityService.LogEvent(r.Context(), uint(appID), &userID, model.EventTypeSecretRotated, model.EventCategoryAdmin, map[string]interface{}{
+		_ = h.appActivityService.LogEvent(r.Context(), uint(appID), &userID, model.EventTypeSecretRotated, model.EventCategoryAdmin, map[string]interface{}{
 			"rotated_by": userID,
 		}, middleware.GetClientIP(r), r.UserAgent(), true)
 	}
@@ -509,7 +509,7 @@ func (h *AdminHandler) RevokeUserTokens(w http.ResponseWriter, r *http.Request) 
 
 	// Log the action
 	if h.adminLogService != nil {
-		h.adminLogService.LogAction(r.Context(), adminID, nil, &user.ID, model.AdminActionRevokeTokens, map[string]interface{}{
+		_ = h.adminLogService.LogAction(r.Context(), adminID, nil, &user.ID, model.AdminActionRevokeTokens, map[string]interface{}{
 			"target_email": user.Email,
 		})
 	}
@@ -555,7 +555,7 @@ func (h *AdminHandler) UnlockUser(w http.ResponseWriter, r *http.Request) {
 
 	// Log the action
 	if h.adminLogService != nil {
-		h.adminLogService.LogAction(r.Context(), adminID, nil, &user.ID, model.AdminActionUnlockUser, map[string]interface{}{
+		_ = h.adminLogService.LogAction(r.Context(), adminID, nil, &user.ID, model.AdminActionUnlockUser, map[string]interface{}{
 			"target_email": user.Email,
 		})
 	}
@@ -609,7 +609,7 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.adminLogService != nil {
-		h.adminLogService.LogAction(r.Context(), adminID, nil, &user.ID, model.AdminActionDeleteUser, map[string]interface{}{
+		_ = h.adminLogService.LogAction(r.Context(), adminID, nil, &user.ID, model.AdminActionDeleteUser, map[string]interface{}{
 			"target_email": user.Email,
 			"role":         string(user.Role),
 		})
@@ -655,7 +655,7 @@ func (h *AdminHandler) BlockUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.adminLogService != nil {
-		h.adminLogService.LogAction(r.Context(), adminID, nil, &user.ID, model.AdminActionBlockUser, map[string]interface{}{
+		_ = h.adminLogService.LogAction(r.Context(), adminID, nil, &user.ID, model.AdminActionBlockUser, map[string]interface{}{
 			"target_email": user.Email,
 		})
 	}
@@ -818,7 +818,7 @@ func (h *AdminHandler) CreateSuperadmin(w http.ResponseWriter, r *http.Request) 
 
 	// Log the action
 	if h.adminLogService != nil {
-		h.adminLogService.LogAction(r.Context(), adminID, nil, &user.ID, model.AdminActionCreateSuperadmin, map[string]interface{}{
+		_ = h.adminLogService.LogAction(r.Context(), adminID, nil, &user.ID, model.AdminActionCreateSuperadmin, map[string]interface{}{
 			"email": req.Email,
 		})
 	}
@@ -877,7 +877,7 @@ func (h *AdminHandler) UpdateSuperadmin(w http.ResponseWriter, r *http.Request) 
 
 	// Log the action
 	if h.adminLogService != nil {
-		h.adminLogService.LogAction(r.Context(), adminID, nil, &user.ID, model.AdminActionUpdateSuperadmin, map[string]interface{}{
+		_ = h.adminLogService.LogAction(r.Context(), adminID, nil, &user.ID, model.AdminActionUpdateSuperadmin, map[string]interface{}{
 			"email": user.Email,
 		})
 	}
@@ -932,7 +932,7 @@ func (h *AdminHandler) DeleteSuperadmin(w http.ResponseWriter, r *http.Request) 
 	// Log the action
 	if h.adminLogService != nil && user != nil {
 		targetID := uint(userID)
-		h.adminLogService.LogAction(r.Context(), adminID, nil, &targetID, model.AdminActionDeleteSuperadmin, map[string]interface{}{
+		_ = h.adminLogService.LogAction(r.Context(), adminID, nil, &targetID, model.AdminActionDeleteSuperadmin, map[string]interface{}{
 			"email": user.Email,
 		})
 	}

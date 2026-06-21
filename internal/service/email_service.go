@@ -253,13 +253,13 @@ func (s *smtpEmailService) sendEmailSSL(addr string, auth smtp.Auth, to, message
 	if err != nil {
 		return fmt.Errorf("failed to connect via SSL: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	client, err := smtp.NewClient(conn, s.config.SMTPHost)
 	if err != nil {
 		return fmt.Errorf("failed to create SMTP client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	if auth != nil {
 		if err := client.Auth(auth); err != nil {
@@ -298,7 +298,7 @@ func (s *smtpEmailService) sendEmailStartTLS(addr string, auth smtp.Auth, to, me
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	tlsConfig := &tls.Config{
 		ServerName: s.config.SMTPHost,

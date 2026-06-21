@@ -188,7 +188,7 @@ func IPBlockMiddleware(checker *IPBlockChecker, trustedCIDRs []*net.IPNet) func(
 				logger.Errorf("IP block check unavailable for %s; denying request (fail-closed): %v", ip, err)
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusServiceUnavailable)
-				w.Write([]byte(`{"error": "service_unavailable", "error_description": "service temporarily unavailable"}`))
+				_, _ = w.Write([]byte(`{"error": "service_unavailable", "error_description": "service temporarily unavailable"}`))
 				return
 			}
 
@@ -196,7 +196,7 @@ func IPBlockMiddleware(checker *IPBlockChecker, trustedCIDRs []*net.IPNet) func(
 				logger.Warnf("Blocked request from banned IP: %s", ip)
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusForbidden)
-				w.Write([]byte(`{"error": "access_denied", "error_description": "your IP address has been blocked"}`))
+				_, _ = w.Write([]byte(`{"error": "access_denied", "error_description": "your IP address has been blocked"}`))
 				return
 			}
 

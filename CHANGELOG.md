@@ -18,6 +18,12 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
   _Traceability: C6 → EPIC-6 → RFC-014 → #28._
 
 ### Infrastructure
+- **CI / lint:** Added a `golangci-lint` gate (`.golangci.yml`) enforcing
+  `errcheck`, `govet`, `ineffassign`, and `unused`, and resolved all 26
+  findings (acknowledged fire-and-forget calls with `_ =`, wrapped deferred
+  `Close`, removed dead `web.writeJSON`). Test-file `errcheck` is excluded as
+  noise; `staticcheck` (incl. SA9003 empty-branch fixes in the auth path) is a
+  tracked follow-up. _Traceability: C6 → EPIC-6 → RFC-014 → #30._
 - **CI / formatting:** Normalized the entire repository with `gofmt` and added a
   `gofmt` gate to CI so unformatted code fails the build. Formatting-only change
   (no semantics). `golangci-lint` enforcement remains a follow-up.

@@ -382,6 +382,12 @@ func (ts *TokenService) signToken(claims jwt.Claims) (string, error) {
 // M-03 fix: the Keyfunc now selects the public key by the token's "kid" header
 // so that tokens signed before a key rotation can still be verified using the
 // retired key ring, instead of failing with ErrTokenSignature.
+//
+// RFC-002 hardening: verification is pinned to an explicit algorithm allow-list
+// (exactly "RS256") via jwt.WithValidMethods. This is enforced by the parser
+// before the Keyfunc runs, so any other alg — RS384/RS512, "none", or an HMAC
+// algorithm (alg-confusion) — is rejected regardless of the key returned. The
+// Keyfunc's *jwt.SigningMethodRSA assertion is retained as defense in depth.
 func (ts *TokenService) verifyToken(tokenString string, claims jwt.Claims) error {
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
@@ -395,7 +401,7 @@ func (ts *TokenService) verifyToken(tokenString string, claims jwt.Claims) error
 			return ts.keyManager.GetPublicKey(), nil
 		}
 		return pub, nil
-	})
+	}, jwt.WithValidMethods([]string{"RS256"}))
 
 	if err != nil {
 		// Provide more specific error messages

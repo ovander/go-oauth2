@@ -11,6 +11,17 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Tokens / DPoP:** DPoP proof **replay protection** (RFC 9449 §11.1).
+  `dpop.MemoryReplayCache` records proof `jti`s for the brief window a proof is
+  acceptable (with a background janitor + graceful `Stop`), and the new
+  `dpop.VerifyOnce` verifies a proof *and* enforces single use — a replayed
+  `jti` is rejected with `ErrReplayed`, while a proof that fails verification
+  never consumes its `jti`. Single-instance in-memory store; a shared
+  (e.g. Redis) `ReplayCache` for multi-instance deployments is a later slice.
+  Still not wired into the token endpoint — that is the next slice.
+  _Traceability: C8 → EPIC-8 → RFC-003 → #62._
+
+### Added
 - **Tokens / DPoP:** New `internal/shared/auth/dpop` package — standalone
   verification of DPoP proof JWTs (RFC 9449), the foundation for
   sender-constrained access tokens (EPIC-8 / RFC-003). `dpop.Verify` validates a

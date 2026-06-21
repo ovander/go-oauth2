@@ -178,6 +178,7 @@ func Bootstrap(cfg *config.Config) *App {
 			&model.TriggeredAlert{},
 			&model.BlockedIP{},
 			&model.MagicLinkToken{},
+			&model.MFARecoveryCode{},
 		); err != nil {
 			logger.Fatalf("Failed to auto-migrate database: %v", err)
 		}
@@ -252,6 +253,7 @@ func Bootstrap(cfg *config.Config) *App {
 	}
 
 	magicLinkRepo := repository.NewMagicLinkRepository(db)
+	mfaRecoveryRepo := repository.NewMFARecoveryCodeRepository(db)
 
 	// Monitoring repositories
 	alertRuleRepo := repository.NewAlertRuleRepository(db)
@@ -294,7 +296,7 @@ func Bootstrap(cfg *config.Config) *App {
 	}
 
 	// MFA (TOTP) service — shared by the enrollment handler and login step-up.
-	mfaService := service.NewMFAService(userRepo, []byte(cfg.SecretKeyBase), cfg.OAuthIssuer)
+	mfaService := service.NewMFAService(userRepo, mfaRecoveryRepo, []byte(cfg.SecretKeyBase), cfg.OAuthIssuer)
 
 	// Use auth service with full features (single-use tokens + audit logging).
 	// WithMFA enables login step-up for MFA-enrolled users.

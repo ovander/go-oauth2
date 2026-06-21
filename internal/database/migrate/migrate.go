@@ -244,6 +244,35 @@ var migrations = []Migration{
 			return nil
 		},
 	},
+	{
+		// RFC-011 / EPIC-9: one-time MFA recovery (backup) codes. Only a keyed
+		// HMAC-SHA256 digest of each code is stored; codes are single-use
+		// (used_at stamped on redemption).
+		ID:   "0010",
+		Name: "create_mfa_recovery_codes",
+		Run: func(db *gorm.DB) error {
+			if db.Migrator().HasTable("mfa_recovery_codes") {
+				return nil // table already exists — nothing to do
+			}
+			stmts := []string{
+				`CREATE TABLE mfa_recovery_codes (
+					id          BIGSERIAL    PRIMARY KEY,
+					user_id     BIGINT       NOT NULL,
+					code_hash   VARCHAR(64)  NOT NULL,
+					used_at     TIMESTAMPTZ,
+					inserted_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+				)`,
+				`CREATE INDEX idx_mfa_recovery_codes_user_id   ON mfa_recovery_codes(user_id)`,
+				`CREATE INDEX idx_mfa_recovery_codes_code_hash ON mfa_recovery_codes(code_hash)`,
+			}
+			for _, s := range stmts {
+				if err := db.Exec(s).Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

@@ -97,6 +97,29 @@ func (h *MFAHandler) Confirm(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// RecoveryCodes handles POST /api/profile/mfa/recovery-codes — it (re)generates
+// the user's one-time backup codes and returns them once. Requires MFA enabled.
+func (h *MFAHandler) RecoveryCodes(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	codes, err := h.mfaService.GenerateRecoveryCodes(r.Context(), userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrMFANotEnrolled):
+			writeError(w, "MFA is not enabled", http.StatusConflict)
+		default:
+			logger.Warnf("mfa: generate recovery codes for user %d: %v", userID, err)
+			writeError(w, "could not generate recovery codes", http.StatusInternalServerError)
+		}
+		return
+	}
+	writeJSON(w, dto.MFARecoveryCodesResponse{RecoveryCodes: codes})
+}
+
 // Disable handles POST /api/profile/mfa/disable.
 func (h *MFAHandler) Disable(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserIDFromContext(r.Context())

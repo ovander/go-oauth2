@@ -25,6 +25,12 @@ func (s *stubMFAVerifier) Verify(_ context.Context, _ uint, _ string) error {
 }
 func (s *stubMFAVerifier) Disable(context.Context, uint) error           { panic("not used") }
 func (s *stubMFAVerifier) IsEnabled(context.Context, uint) (bool, error) { panic("not used") }
+func (s *stubMFAVerifier) GenerateRecoveryCodes(context.Context, uint) ([]string, error) {
+	panic("not used")
+}
+func (s *stubMFAVerifier) RedeemRecoveryCode(context.Context, uint, string) (bool, error) {
+	panic("not used")
+}
 
 func TestStepUpMFA_Disabled_NoVerifier(t *testing.T) {
 	s := &authService{} // mfa == nil

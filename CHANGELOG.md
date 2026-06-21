@@ -10,6 +10,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Added
+- **MFA / Recovery codes:** One-time backup codes for MFA. `MFAService` can now
+  `GenerateRecoveryCodes` (10 per set, replacing any prior set; returned once)
+  and `RedeemRecoveryCode` (single-use). Codes are stored only as keyed
+  HMAC-SHA256 digests (keyed by `SECRET_KEY_BASE`) in a new `mfa_recovery_codes`
+  table (migration `0010`) — a database dump alone cannot reveal or verify them.
+  Exposed via `POST /api/profile/mfa/recovery-codes` (requires MFA enabled);
+  disabling MFA clears any codes. Redemption is not yet wired into the login
+  path — that is the next slice. _Traceability: C9 → EPIC-9 → RFC-011 → #52._
+
 ### Security
 - **MFA / Admin policy:** Admin-portal login (`/api/admin/login`) can now require
   MFA enrollment, governed by `ADMIN_MFA_POLICY` (observe→enforce rollout):

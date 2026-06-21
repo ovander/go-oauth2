@@ -11,6 +11,11 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Observability:** Request logs now include a `correlation_id` field when a
+  correlation ID is present in the request context, so a request can be traced
+  end-to-end across log lines. `middleware.CorrelationID()` now runs before the
+  request logger in all router stacks so the ID is available when logging.
+  _Traceability: C4 → EPIC-4 → RFC-008 → #14._
 - **Identity / KMS / Ops:** Scheduled key rotation + retired-key pruning can now
   be enabled at startup via `KEY_ROTATION_INTERVAL_SECONDS` and
   `KEY_RETENTION_SECONDS` (both default `0` = disabled / derive retention from

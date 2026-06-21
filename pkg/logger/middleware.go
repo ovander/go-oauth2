@@ -16,16 +16,26 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
 )
 
-// RequestLoggerMiddleware logs incoming HTTP requests in structured Logrus format
+// RequestLoggerMiddleware logs incoming HTTP requests in structured Logrus format.
+//
+// RFC-008: when a correlation ID is present in the request context (set by
+// middleware.CorrelationID, which must run before this middleware), it is
+// emitted as the "correlation_id" field so a single request can be traced
+// end-to-end across log lines.
 func RequestLoggerMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		entry := Logger.WithFields(Fields{
+		fields := Fields{
 			"method": r.Method,
 			"path":   r.URL.Path,
 			"remote": r.RemoteAddr,
-		})
+		}
+		if cid, ok := r.Context().Value(contextkeys.RequestIDKey).(string); ok && cid != "" {
+			fields["correlation_id"] = cid
+		}
+		entry := Logger.WithFields(fields)
 
 		t0 := time.Now()
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)

@@ -47,6 +47,26 @@ func VerifyAuditRowHash(secret []byte, log *model.SecurityAuditLog) bool {
 	return hmac.Equal([]byte(expected), []byte(log.RowHash))
 }
 
+// VerifyAuditRows returns the IDs of the rows that carry a RowHash but fail
+// verification (i.e. were tampered with). Rows with an empty RowHash are skipped
+// — they predate integrity stamping and cannot be verified. Returns nil for an
+// empty secret.
+func VerifyAuditRows(secret []byte, logs []model.SecurityAuditLog) []uint {
+	if len(secret) == 0 {
+		return nil
+	}
+	var tampered []uint
+	for i := range logs {
+		if logs[i].RowHash == "" {
+			continue // unverifiable (pre-integrity row)
+		}
+		if !VerifyAuditRowHash(secret, &logs[i]) {
+			tampered = append(tampered, logs[i].ID)
+		}
+	}
+	return tampered
+}
+
 // canonicalAuditPayload builds a deterministic, DB-round-trip-stable byte
 // representation of the immutable audit fields. CreatedAt is reduced to
 // microseconds (PostgreSQL timestamptz precision) and Details is normalized

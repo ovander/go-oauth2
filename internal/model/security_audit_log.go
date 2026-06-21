@@ -44,6 +44,9 @@ const (
 	SecurityEventSuspiciousActivity SecurityEventType = "suspicious_activity"
 	SecurityEventRateLimitExceeded  SecurityEventType = "rate_limit_exceeded"
 	SecurityEventBruteForceDetected SecurityEventType = "brute_force_detected"
+
+	// Integrity (RFC-007): a stored audit row failed HMAC verification.
+	SecurityEventAuditIntegrityViolation SecurityEventType = "audit_integrity_violation"
 )
 
 // SecuritySeverity indicates the severity level of the event
@@ -91,7 +94,8 @@ func GetSeverityForEvent(eventType SecurityEventType, success bool) SecuritySeve
 		return SecuritySeverityWarning
 	case SecurityEventAccountLocked, SecurityEventRateLimitExceeded:
 		return SecuritySeverityError
-	case SecurityEventBruteForceDetected, SecurityEventSuspiciousActivity, SecurityEventRevokedTokenUsed:
+	case SecurityEventBruteForceDetected, SecurityEventSuspiciousActivity, SecurityEventRevokedTokenUsed,
+		SecurityEventAuditIntegrityViolation:
 		return SecuritySeverityCritical
 	default:
 		if !success {

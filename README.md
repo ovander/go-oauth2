@@ -1,6 +1,15 @@
 # OAuth 2.0 Server (Go)
 
+[![CI](https://github.com/ovander/go-oauth2/actions/workflows/ci.yml/badge.svg)](https://github.com/ovander/go-oauth2/actions/workflows/ci.yml)
+
 A complete OAuth 2.0 and OpenID Connect server implementation in Go, following the DTMA architecture pattern.
+
+## CI
+
+Every push to `main` and every pull request runs `go build`, `go vet`,
+`go test -race`, and `govulncheck` via GitHub Actions
+(`.github/workflows/ci.yml`). `gofmt`/`golangci-lint` enforcement is planned as
+a follow-up.
 
 ## Features
 

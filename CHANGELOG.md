@@ -10,6 +10,18 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Infrastructure
+- **CI:** Added a GitHub Actions workflow (`.github/workflows/ci.yml`) that runs
+  `go build`, `go vet`, `go test -race`, and `govulncheck` on every push to
+  `main` and every pull request. `gofmt`/`golangci-lint` gates are a planned
+  follow-up. _Traceability: C6 → EPIC-6 → RFC-014 → #24._
+
+### Security
+- **Toolchain:** Bumped the Go directive to `1.25.11`, clearing 12 standard-
+  library vulnerabilities (net/textproto, crypto/x509, crypto/tls,
+  html/template, net, net/url, os) flagged by the new `govulncheck` CI gate.
+  Patch-level bump; no source changes. _Traceability: C6 → EPIC-6 → RFC-014 → #24._
+
 ### Added
 - **Audit / Security:** Security audit rows are now **tamper-evident** — each
   row carries a keyed HMAC (`row_hash`) over its immutable content, stamped at

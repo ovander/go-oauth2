@@ -42,6 +42,19 @@ type App struct {
 	tokenRateLimiter *middleware.RateLimiter
 	autoDefense      *service.AutoDefenseService
 	ipBlockChecker   *middleware.IPBlockChecker
+	// keyRotationStop stops the scheduled key-rotation goroutine on shutdown.
+	// Nil when scheduled rotation is disabled (KeyRotationInterval == 0).
+	keyRotationStop func()
+}
+
+// keyRetentionFor resolves the retired-key retention window: the configured
+// value when positive, otherwise the refresh-token TTL so retired keys always
+// outlive the longest-lived token that could still need them for verification.
+func keyRetentionFor(retention, refreshTTL time.Duration) time.Duration {
+	if retention > 0 {
+		return retention
+	}
+	return refreshTTL
 }
 
 // mustParseTrustedProxies parses the comma-separated TRUSTED_PROXIES config value
@@ -102,6 +115,9 @@ func (a *App) Stop() {
 	}
 	if a.ipBlockChecker != nil {
 		a.ipBlockChecker.Stop()
+	}
+	if a.keyRotationStop != nil {
+		a.keyRotationStop()
 	}
 }
 
@@ -170,6 +186,25 @@ func Bootstrap(cfg *config.Config) *App {
 	keyManager, err := auth.NewKeyManager(cfg.KeysPath)
 	if err != nil {
 		panic("failed to initialize key manager: " + err.Error())
+	}
+
+	// Scheduled key rotation + retired-key pruning (RFC-002 / EPIC-3).
+	// Disabled by default (KeyRotationInterval == 0): keys then rotate only on
+	// explicit operator action, preserving prior behaviour.
+	var keyRotationStop func()
+	if cfg.KeyRotationInterval > 0 {
+		retention := keyRetentionFor(cfg.KeyRetention, cfg.RefreshTokenTTL)
+		if cfg.KeyRotationInterval > cfg.RefreshTokenTTL {
+			logger.WithFields(logger.Fields{
+				"rotation_interval": cfg.KeyRotationInterval.String(),
+				"refresh_token_ttl": cfg.RefreshTokenTTL.String(),
+			}).Warn("RFC-002: KEY_ROTATION_INTERVAL exceeds REFRESH_TOKEN_TTL — a compromised key could outlive the next rotation; consider a shorter interval")
+		}
+		keyRotationStop = keyManager.StartRotationScheduleWithRetention(cfg.KeyRotationInterval, retention)
+		logger.WithFields(logger.Fields{
+			"rotation_interval": cfg.KeyRotationInterval.String(),
+			"retention":         retention.String(),
+		}).Info("RFC-002: scheduled key rotation enabled")
 	}
 
 	// ==========================================
@@ -446,6 +481,7 @@ func Bootstrap(cfg *config.Config) *App {
 			tokenRateLimiter:  tokenRateLimiter, // MED-05
 			autoDefense:       autoDefense,
 			ipBlockChecker:    ipBlockChecker,
+			keyRotationStop:   keyRotationStop,
 		}
 	}
 
@@ -480,5 +516,6 @@ func Bootstrap(cfg *config.Config) *App {
 		tokenRateLimiter:  tokenRateLimiter, // MED-05
 		autoDefense:       autoDefense,
 		ipBlockChecker:    ipBlockChecker,
+		keyRotationStop:   keyRotationStop,
 	}
 }

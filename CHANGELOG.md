@@ -11,6 +11,13 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / KMS / Ops:** Scheduled key rotation + retired-key pruning can now
+  be enabled at startup via `KEY_ROTATION_INTERVAL_SECONDS` and
+  `KEY_RETENTION_SECONDS` (both default `0` = disabled / derive retention from
+  `REFRESH_TOKEN_TTL`). `Bootstrap` starts the schedule when an interval is set,
+  warns if the interval exceeds `REFRESH_TOKEN_TTL`, and stops the rotation
+  goroutine during graceful shutdown. Default behaviour is unchanged.
+  _Traceability: C3 → EPIC-3 → RFC-002 → #12._
 - **Identity / KMS:** `KeyManager.PruneRetiredKeys(maxAge)` removes retired
   signing keys older than a retention window (mod-time based) from both the
   in-memory ring and the `retired/` directory, bounding ring and JWKS growth

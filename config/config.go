@@ -66,9 +66,9 @@ type Config struct {
 	// while blocking brute-force attacks on authorization codes and client
 	// credentials.  Configured via RATE_LIMIT_TOKEN and
 	// RATE_LIMIT_TOKEN_WINDOW_MS (or legacy RATE_LIMIT_TOKEN_WINDOW).
-	RateLimitToken        int
-	RateLimitTokenWindow  time.Duration
-	RateLimitMaxEntries   int
+	RateLimitToken       int
+	RateLimitTokenWindow time.Duration
+	RateLimitMaxEntries  int
 
 	// Email/SMTP
 	SMTPHost     string
@@ -81,6 +81,16 @@ type Config struct {
 
 	// Keys
 	KeysPath string
+
+	// KeyRotationInterval is how often the signing key is automatically rotated.
+	// Zero (the default) disables scheduled rotation — keys then rotate only on
+	// explicit operator action (KEY_ROTATION_INTERVAL_SECONDS).
+	KeyRotationInterval time.Duration
+	// KeyRetention is how long a retired signing key is kept (for verifying
+	// outstanding tokens) before it is pruned from the ring and JWKS. Zero (the
+	// default) means "derive from RefreshTokenTTL" so retired keys always
+	// outlive the longest token (KEY_RETENTION_SECONDS).
+	KeyRetention time.Duration
 
 	// Trusted Proxies
 	// Comma-separated IPs or CIDR ranges whose X-Forwarded-For / X-Real-IP
@@ -178,6 +188,10 @@ func Load() *Config {
 
 		// Keys
 		KeysPath: getEnv("KEYS_PATH", "keys"),
+		// 0 = disabled (manual rotation only).
+		KeyRotationInterval: time.Duration(getEnvInt("KEY_ROTATION_INTERVAL_SECONDS", 0)) * time.Second,
+		// 0 = derive from RefreshTokenTTL at bootstrap.
+		KeyRetention: time.Duration(getEnvInt("KEY_RETENTION_SECONDS", 0)) * time.Second,
 
 		// Trusted Proxies
 		TrustedProxies: getEnv("TRUSTED_PROXIES", ""),

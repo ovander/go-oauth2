@@ -11,6 +11,18 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Tokens / DPoP:** Access tokens can now be **sender-constrained** via the
+  `cnf.jkt` confirmation claim (RFC 9449 / RFC 7800). New
+  `TokenService.GenerateBoundAccessToken(..., jkt)` issues a token bound to a
+  DPoP key thumbprint (an empty `jkt` yields an ordinary unbound token, so it is
+  safe to call unconditionally), and token **introspection** now surfaces the
+  binding (`cnf.jkt`, RFC 7662 §2.2 / RFC 9449 §7) so resource servers can
+  require a matching proof. Ordinary tokens carry no `cnf` (backward
+  compatible). The token endpoint does not yet read a `DPoP` request header —
+  that wiring (observe→enforce) is the next slice.
+  _Traceability: C8 → EPIC-8 → RFC-003 → #64._
+
+### Added
 - **Tokens / DPoP:** DPoP proof **replay protection** (RFC 9449 §11.1).
   `dpop.MemoryReplayCache` records proof `jti`s for the brief window a proof is
   acceptable (with a background janitor + graceful `Stop`), and the new

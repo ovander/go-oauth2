@@ -64,6 +64,15 @@ type IntrospectResponse struct {
 	Exp       int64  `json:"exp,omitempty"`
 	Iat       int64  `json:"iat,omitempty"`
 	Sub       string `json:"sub,omitempty"`
+	// Cnf is the RFC 7662 §2.2 / RFC 9449 §7 confirmation claim, present when the
+	// token is sender-constrained (DPoP). It lets a resource server learn the
+	// `jkt` it must match against the request's DPoP proof.
+	Cnf *CnfClaim `json:"cnf,omitempty"`
+}
+
+// CnfClaim is the introspection confirmation claim (carries the DPoP `jkt`).
+type CnfClaim struct {
+	JKT string `json:"jkt,omitempty"`
 }
 
 type OAuthErrorResponse struct {

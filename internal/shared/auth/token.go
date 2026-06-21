@@ -78,6 +78,13 @@ func (s *TokenService) GetIssuer() string {
 	return s.issuer
 }
 
+// Confirmation is the RFC 7800 `cnf` (confirmation) claim. For DPoP (RFC 9449)
+// it carries `jkt` — the base64url SHA-256 thumbprint of the JWK the access
+// token is bound to, so a resource server can require a matching DPoP proof.
+type Confirmation struct {
+	JKT string `json:"jkt,omitempty"`
+}
+
 // AccessTokenClaims represents access token claims
 type AccessTokenClaims struct {
 	jwt.RegisteredClaims
@@ -87,6 +94,9 @@ type AccessTokenClaims struct {
 	TokenVersion int               `json:"token_version,omitempty"`
 	AppRoles     map[string]string `json:"app_roles,omitempty"`
 	Roles        []string          `json:"roles,omitempty"`
+	// Cnf is the optional DPoP/RFC 7800 confirmation claim (sender-constraint).
+	// Absent (nil) for ordinary bearer tokens.
+	Cnf *Confirmation `json:"cnf,omitempty"`
 }
 
 // RefreshTokenClaims represents refresh token claims
@@ -178,14 +188,15 @@ func (ts *TokenService) GenerateTokenSet(user *model.User, app *model.App, role 
 	}, nil
 }
 
-// generateAccessToken generates an access token with token version for revocation support
-func (ts *TokenService) generateAccessToken(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, now time.Time) (string, error) {
+// newAccessClaims builds the access-token claims (shared by the ordinary and
+// DPoP-bound token generators).
+func (ts *TokenService) newAccessClaims(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, now time.Time) AccessTokenClaims {
 	roles := []string{}
 	if role != "" {
 		roles = append(roles, role)
 	}
 
-	claims := AccessTokenClaims{
+	return AccessTokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    ts.issuer,
 			Subject:   strconv.FormatUint(uint64(user.ID), 10),
@@ -202,7 +213,22 @@ func (ts *TokenService) generateAccessToken(user *model.User, app *model.App, ro
 		AppRoles:     appRoles,
 		Roles:        roles,
 	}
+}
 
+// generateAccessToken generates an access token with token version for revocation support
+func (ts *TokenService) generateAccessToken(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, now time.Time) (string, error) {
+	return ts.signToken(ts.newAccessClaims(user, app, role, scope, appRoles, now))
+}
+
+// GenerateBoundAccessToken generates a user access token bound to a DPoP key
+// thumbprint via the `cnf.jkt` claim (RFC 9449 / RFC 7800). An empty jkt yields
+// an ordinary (unbound) access token identical to generateAccessToken, so this
+// is safe to call unconditionally once DPoP wiring lands.
+func (ts *TokenService) GenerateBoundAccessToken(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, jkt string) (string, error) {
+	claims := ts.newAccessClaims(user, app, role, scope, appRoles, time.Now())
+	if jkt != "" {
+		claims.Cnf = &Confirmation{JKT: jkt}
+	}
 	return ts.signToken(claims)
 }
 

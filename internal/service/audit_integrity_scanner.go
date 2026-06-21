@@ -75,3 +75,50 @@ func (s *AuditIntegrityScanner) Scan(ctx context.Context, since time.Time) (chec
 
 	return checked, violations, nil
 }
+
+// StartSchedule runs Scan on the given interval over the trailing lookback
+// window, and returns a stop function that the caller must invoke on shutdown.
+// A lookback <= 0 falls back to 24h. Each scan uses a fresh, bounded background
+// context (it must not be tied to any request). stop() closes the schedule and
+// blocks until the goroutine has fully exited (same contract as
+// KeyManager.StartRotationSchedule), giving deterministic shutdown.
+func (s *AuditIntegrityScanner) StartSchedule(interval, lookback time.Duration) (stop func()) {
+	if lookback <= 0 {
+		lookback = 24 * time.Hour
+	}
+	stopCh := make(chan struct{})
+	doneCh := make(chan struct{})
+	go func() {
+		defer close(doneCh)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				checked, violations, err := s.Scan(ctx, time.Now().Add(-lookback))
+				cancel()
+				switch {
+				case err != nil:
+					logger.Errorf("RFC-007: scheduled audit integrity scan failed: %v", err)
+				case violations > 0:
+					logger.WithFields(logger.Fields{
+						"checked":    checked,
+						"violations": violations,
+					}).Error("RFC-007: scheduled audit integrity scan found violations")
+				default:
+					logger.WithFields(logger.Fields{
+						"checked": checked,
+					}).Info("RFC-007: scheduled audit integrity scan completed (no violations)")
+				}
+			case <-stopCh:
+				logger.Info("RFC-007: audit integrity scan schedule stopped")
+				return
+			}
+		}
+	}()
+	return func() {
+		close(stopCh)
+		<-doneCh
+	}
+}

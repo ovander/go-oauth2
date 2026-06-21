@@ -45,6 +45,9 @@ type App struct {
 	// keyRotationStop stops the scheduled key-rotation goroutine on shutdown.
 	// Nil when scheduled rotation is disabled (KeyRotationInterval == 0).
 	keyRotationStop func()
+	// auditIntegrityStop stops the scheduled audit-integrity scan on shutdown.
+	// Nil when the scan is disabled (AuditIntegrityScanInterval == 0).
+	auditIntegrityStop func()
 }
 
 // keyRetentionFor resolves the retired-key retention window: the configured
@@ -118,6 +121,9 @@ func (a *App) Stop() {
 	}
 	if a.keyRotationStop != nil {
 		a.keyRotationStop()
+	}
+	if a.auditIntegrityStop != nil {
+		a.auditIntegrityStop()
 	}
 }
 
@@ -232,6 +238,18 @@ func Bootstrap(cfg *config.Config) *App {
 	// RFC-007: stamp a tamper-evidence HMAC on each audit row, keyed by
 	// SECRET_KEY_BASE (held in config, never in the DB). Empty secret disables it.
 	securityAuditRepo := repository.NewSecurityAuditLogRepositoryWithIntegrity(db, []byte(cfg.SecretKeyBase))
+
+	// RFC-007: optionally run the audit-row integrity scan on a timer. Disabled
+	// by default (AuditIntegrityScanInterval == 0).
+	var auditIntegrityStop func()
+	if cfg.AuditIntegrityScanInterval > 0 {
+		scanner := service.NewAuditIntegrityScanner(securityAuditRepo, []byte(cfg.SecretKeyBase))
+		auditIntegrityStop = scanner.StartSchedule(cfg.AuditIntegrityScanInterval, cfg.AuditIntegrityScanLookback)
+		logger.WithFields(logger.Fields{
+			"interval": cfg.AuditIntegrityScanInterval.String(),
+			"lookback": cfg.AuditIntegrityScanLookback.String(),
+		}).Info("RFC-007: scheduled audit integrity scan enabled")
+	}
 
 	magicLinkRepo := repository.NewMagicLinkRepository(db)
 
@@ -474,16 +492,17 @@ func Bootstrap(cfg *config.Config) *App {
 			routerConfig,
 		)
 		return &App{
-			OAuthRouter:       routers.OAuth,
-			AdminRouter:       routers.Admin,
-			DB:                db,
-			codeStore:         codeStore,
-			loginRateLimiter:  loginRateLimiter,
-			signupRateLimiter: signupRateLimiter,
-			tokenRateLimiter:  tokenRateLimiter, // MED-05
-			autoDefense:       autoDefense,
-			ipBlockChecker:    ipBlockChecker,
-			keyRotationStop:   keyRotationStop,
+			OAuthRouter:        routers.OAuth,
+			AdminRouter:        routers.Admin,
+			DB:                 db,
+			codeStore:          codeStore,
+			loginRateLimiter:   loginRateLimiter,
+			signupRateLimiter:  signupRateLimiter,
+			tokenRateLimiter:   tokenRateLimiter, // MED-05
+			autoDefense:        autoDefense,
+			ipBlockChecker:     ipBlockChecker,
+			keyRotationStop:    keyRotationStop,
+			auditIntegrityStop: auditIntegrityStop,
 		}
 	}
 
@@ -510,14 +529,15 @@ func Bootstrap(cfg *config.Config) *App {
 		routerConfig,
 	)
 	return &App{
-		Router:            combinedRouter,
-		DB:                db,
-		codeStore:         codeStore,
-		loginRateLimiter:  loginRateLimiter,
-		signupRateLimiter: signupRateLimiter,
-		tokenRateLimiter:  tokenRateLimiter, // MED-05
-		autoDefense:       autoDefense,
-		ipBlockChecker:    ipBlockChecker,
-		keyRotationStop:   keyRotationStop,
+		Router:             combinedRouter,
+		DB:                 db,
+		codeStore:          codeStore,
+		loginRateLimiter:   loginRateLimiter,
+		signupRateLimiter:  signupRateLimiter,
+		tokenRateLimiter:   tokenRateLimiter, // MED-05
+		autoDefense:        autoDefense,
+		ipBlockChecker:     ipBlockChecker,
+		keyRotationStop:    keyRotationStop,
+		auditIntegrityStop: auditIntegrityStop,
 	}
 }

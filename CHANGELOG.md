@@ -11,6 +11,12 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Audit / Security / Ops:** The audit-row integrity scan can now run on a
+  timer. `AuditIntegrityScanner.StartSchedule(interval, lookback)` runs the scan
+  periodically; `Bootstrap` enables it when `AUDIT_INTEGRITY_SCAN_INTERVAL_SECONDS`
+  is set (default `0` = disabled; lookback `AUDIT_INTEGRITY_SCAN_LOOKBACK_SECONDS`
+  defaults to 24h) and stops the goroutine on graceful shutdown. Default
+  behaviour unchanged. _Traceability: C5 → EPIC-5 → RFC-007 → #36._
 - **Audit / Security:** Audit-row tamper-evidence is now **actionable**.
   `repository.VerifyAuditRows` batch-verifies stored rows' HMACs, and the new
   `service.AuditIntegrityScanner.Scan` pages audit rows over a time window,

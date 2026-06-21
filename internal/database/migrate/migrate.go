@@ -290,6 +290,22 @@ var migrations = []Migration{
 			return db.Exec("ALTER TABLE security_audit_logs ADD COLUMN prev_hash VARCHAR(64)").Error
 		},
 	},
+	{
+		// RFC-003 / EPIC-8: per-client DPoP requirement. When true, the token
+		// endpoint rejects a request from this client that lacks a valid DPoP
+		// proof. Additive, defaulted false; existing clients are unaffected.
+		ID:   "0012",
+		Name: "add_apps.require_dpop",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("apps") {
+				return nil
+			}
+			if db.Migrator().HasColumn(&model.App{}, "require_dpop") {
+				return nil
+			}
+			return db.Exec("ALTER TABLE apps ADD COLUMN require_dpop BOOLEAN NOT NULL DEFAULT FALSE").Error
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

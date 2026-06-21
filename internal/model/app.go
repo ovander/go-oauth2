@@ -30,6 +30,13 @@ type App struct {
 	// empty) and the token endpoint never requires one.  PKCE is always
 	// enforced for public clients regardless of the RequirePKCE flag.
 	IsPublic bool `gorm:"column:is_public;default:false" json:"is_public"`
+
+	// RequireDPoP forces DPoP sender-constrained tokens (RFC 9449) for this
+	// client: a token request that does not carry a valid DPoP proof is
+	// rejected. Requires DPoP to be enabled globally (DPOP_MODE != off) for the
+	// proof to be verified; with DPoP disabled, a require_dpop client cannot
+	// obtain tokens.
+	RequireDPoP bool `gorm:"column:require_dpop;default:false" json:"require_dpop"`
 }
 
 // IsConfidential returns true when the client has a stored secret hash,

@@ -564,6 +564,8 @@ func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 			writeOAuthError(w, "invalid_grant", "PKCE verification failed", http.StatusBadRequest)
 		case errors.Is(err, service.ErrInvalidToken):
 			writeOAuthError(w, "invalid_grant", "invalid or expired refresh token", http.StatusBadRequest)
+		case errors.Is(err, service.ErrDPoPRequired):
+			writeOAuthError(w, "invalid_dpop_proof", "this client requires a DPoP proof", http.StatusBadRequest)
 		default:
 			// HIGH-01 fix: never leak raw Go error strings to clients.
 			writeOAuthError(w, "server_error", "an internal error occurred", http.StatusInternalServerError)

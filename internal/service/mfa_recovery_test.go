@@ -191,6 +191,35 @@ func TestRecovery_RedeemInvalidCode(t *testing.T) {
 	}
 }
 
+func TestRecovery_RemainingCountReflectsUsage(t *testing.T) {
+	userRepo := newMFAMemUserRepo(&model.User{ID: 1, Email: "a@b.com", MFAEnabled: true})
+	svc := newRecoveryMFAService(userRepo, newMemRecoveryRepo())
+
+	if n, err := svc.RemainingRecoveryCodes(context.Background(), 1); err != nil || n != 0 {
+		t.Fatalf("expected 0 before generation, got n=%d err=%v", n, err)
+	}
+
+	codes, _ := svc.GenerateRecoveryCodes(context.Background(), 1)
+	if n, _ := svc.RemainingRecoveryCodes(context.Background(), 1); n != recoveryCodeCount {
+		t.Fatalf("expected %d after generation, got %d", recoveryCodeCount, n)
+	}
+
+	if _, err := svc.RedeemRecoveryCode(context.Background(), 1, codes[0]); err != nil {
+		t.Fatalf("redeem: %v", err)
+	}
+	if n, _ := svc.RemainingRecoveryCodes(context.Background(), 1); n != recoveryCodeCount-1 {
+		t.Fatalf("expected %d after one redemption, got %d", recoveryCodeCount-1, n)
+	}
+}
+
+func TestRecovery_RemainingCountNilRepo(t *testing.T) {
+	userRepo := newMFAMemUserRepo(&model.User{ID: 1, Email: "a@b.com", MFAEnabled: true})
+	svc := NewMFAService(userRepo, nil, testEncKey, "Socrate")
+	if n, err := svc.RemainingRecoveryCodes(context.Background(), 1); err != nil || n != 0 {
+		t.Fatalf("expected 0 with no recovery repo, got n=%d err=%v", n, err)
+	}
+}
+
 func TestRecovery_DisableClearsCodes(t *testing.T) {
 	userRepo := newMFAMemUserRepo(&model.User{ID: 1, Email: "a@b.com", MFAEnabled: true})
 	rec := newMemRecoveryRepo()

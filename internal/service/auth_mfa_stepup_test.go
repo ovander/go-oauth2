@@ -35,6 +35,9 @@ func (s *stubMFAVerifier) RedeemRecoveryCode(context.Context, uint, string) (boo
 	s.redeemHit = true
 	return s.redeemOK, s.redeemErr
 }
+func (s *stubMFAVerifier) RemainingRecoveryCodes(context.Context, uint) (int, error) {
+	panic("not used")
+}
 
 func TestStepUpMFA_Disabled_NoVerifier(t *testing.T) {
 	s := &authService{} // mfa == nil

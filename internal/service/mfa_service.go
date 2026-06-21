@@ -49,6 +49,10 @@ type MFAService interface {
 	// RedeemRecoveryCode consumes a single recovery code. It reports whether the
 	// code was valid and unused (and, if so, marks it used).
 	RedeemRecoveryCode(ctx context.Context, userID uint, code string) (bool, error)
+	// RemainingRecoveryCodes reports how many unused recovery codes the user has
+	// left, so a client can prompt to regenerate before they run out. Returns 0
+	// when recovery codes are not configured.
+	RemainingRecoveryCodes(ctx context.Context, userID uint) (int, error)
 }
 
 type mfaService struct {
@@ -217,6 +221,18 @@ func (s *mfaService) RedeemRecoveryCode(ctx context.Context, userID uint, code s
 		}
 	}
 	return false, nil
+}
+
+// RemainingRecoveryCodes reports how many unused recovery codes the user has.
+func (s *mfaService) RemainingRecoveryCodes(ctx context.Context, userID uint) (int, error) {
+	if s.recoveryRepo == nil {
+		return 0, nil
+	}
+	n, err := s.recoveryRepo.CountUnusedByUser(ctx, userID)
+	if err != nil {
+		return 0, err
+	}
+	return int(n), nil
 }
 
 // hashRecoveryCode returns the hex-encoded HMAC-SHA256 of the normalized code,

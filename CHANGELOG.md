@@ -11,6 +11,14 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **MFA / Recovery codes:** The MFA status endpoint (`GET /api/profile/mfa`) now
+  reports `recovery_codes_remaining` so a user (and the UI) can regenerate backup
+  codes before running out — reducing the lockout risk of the admin enforce
+  policy. Backed by `MFAService.RemainingRecoveryCodes`; the count is only
+  computed for enrolled users (0 otherwise). _Traceability: C9 → EPIC-9 →
+  RFC-011 → #58._
+
+### Added
 - **Audit / Security:** Audit rows are now **hash-chained** (RFC-007), closing
   the gap left by per-row HMACs (which detect mutation but not deletion or
   reordering). Each row carries the previous chained row's hash (`prev_hash`,

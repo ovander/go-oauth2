@@ -18,13 +18,14 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockMFAService struct {
-	beginFn    func(ctx context.Context, userID uint) (string, string, error)
-	confirmFn  func(ctx context.Context, userID uint, code string) error
-	verifyFn   func(ctx context.Context, userID uint, code string) error
-	disableFn  func(ctx context.Context, userID uint) error
-	enabledFn  func(ctx context.Context, userID uint) (bool, error)
-	recoveryFn func(ctx context.Context, userID uint) ([]string, error)
-	redeemFn   func(ctx context.Context, userID uint, code string) (bool, error)
+	beginFn     func(ctx context.Context, userID uint) (string, string, error)
+	confirmFn   func(ctx context.Context, userID uint, code string) error
+	verifyFn    func(ctx context.Context, userID uint, code string) error
+	disableFn   func(ctx context.Context, userID uint) error
+	enabledFn   func(ctx context.Context, userID uint) (bool, error)
+	recoveryFn  func(ctx context.Context, userID uint) ([]string, error)
+	redeemFn    func(ctx context.Context, userID uint, code string) (bool, error)
+	remainingFn func(ctx context.Context, userID uint) (int, error)
 }
 
 func (m *mockMFAService) BeginEnrollment(ctx context.Context, userID uint) (string, string, error) {
@@ -47,6 +48,12 @@ func (m *mockMFAService) GenerateRecoveryCodes(ctx context.Context, userID uint)
 }
 func (m *mockMFAService) RedeemRecoveryCode(ctx context.Context, userID uint, code string) (bool, error) {
 	return m.redeemFn(ctx, userID, code)
+}
+func (m *mockMFAService) RemainingRecoveryCodes(ctx context.Context, userID uint) (int, error) {
+	if m.remainingFn == nil {
+		return 0, nil
+	}
+	return m.remainingFn(ctx, userID)
 }
 
 var _ service.MFAService = (*mockMFAService)(nil)
@@ -234,6 +241,51 @@ func TestMFAHandler_Status(t *testing.T) {
 		if resp.Enabled != tc.enabled {
 			t.Fatalf("expected enabled=%v, got %v", tc.enabled, resp.Enabled)
 		}
+	}
+}
+
+func TestMFAHandler_Status_IncludesRecoveryCount(t *testing.T) {
+	h := NewMFAHandler(&mockMFAService{
+		enabledFn:   func(_ context.Context, _ uint) (bool, error) { return true, nil },
+		remainingFn: func(_ context.Context, _ uint) (int, error) { return 4, nil },
+	})
+
+	rr := httptest.NewRecorder()
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/profile/mfa", nil), 7)
+	h.Status(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var resp dto.MFAStatusResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !resp.Enabled || resp.RecoveryCodesRemaining != 4 {
+		t.Fatalf("unexpected status: %+v", resp)
+	}
+}
+
+func TestMFAHandler_Status_NotEnabledSkipsCount(t *testing.T) {
+	called := false
+	h := NewMFAHandler(&mockMFAService{
+		enabledFn:   func(_ context.Context, _ uint) (bool, error) { return false, nil },
+		remainingFn: func(_ context.Context, _ uint) (int, error) { called = true; return 9, nil },
+	})
+
+	rr := httptest.NewRecorder()
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/profile/mfa", nil), 7)
+	h.Status(rr, req)
+
+	var resp dto.MFAStatusResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Enabled || resp.RecoveryCodesRemaining != 0 {
+		t.Fatalf("expected disabled with 0 remaining, got %+v", resp)
+	}
+	if called {
+		t.Error("RemainingRecoveryCodes must not be called when MFA is disabled")
 	}
 }
 

@@ -16,10 +16,12 @@ type MFAConfirmRequest struct {
 	Code string `json:"code"`
 }
 
-// MFAStatusResponse reports whether MFA is currently enabled for the user. It
-// never includes the secret.
+// MFAStatusResponse reports whether MFA is currently enabled for the user and
+// how many recovery codes remain (so a client can prompt to regenerate before
+// they run out). It never includes the secret.
 type MFAStatusResponse struct {
-	Enabled bool `json:"enabled"`
+	Enabled                bool `json:"enabled"`
+	RecoveryCodesRemaining int  `json:"recovery_codes_remaining"`
 }
 
 // MFARecoveryCodesResponse carries a freshly generated set of one-time backup

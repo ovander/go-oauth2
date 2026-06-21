@@ -309,6 +309,7 @@ func Bootstrap(cfg *config.Config) *App {
 		service.AuthServiceConfig{
 			MaxFailedAttempts: cfg.MaxFailedAttempts,
 			LockoutDuration:   time.Duration(cfg.LockoutDurationSecs) * time.Second,
+			AdminMFAPolicy:    cfg.AdminMFAPolicy,
 		},
 	).WithMFA(mfaService)
 

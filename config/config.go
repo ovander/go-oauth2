@@ -42,6 +42,10 @@ type Config struct {
 	// Security
 	MaxFailedAttempts   int
 	LockoutDurationSecs int
+	// AdminMFAPolicy governs whether admin-portal login requires MFA enrollment:
+	// "off" (default, unchanged behaviour), "observe" (allow but audit admins
+	// without MFA), or "enforce" (deny until the admin enrolls). RFC-011.
+	AdminMFAPolicy string
 	// SecretKeyBase is a cryptographic secret (≥32 bytes in production) used
 	// for two purposes:
 	//   1. CSRF cookie signing in the OAuth authorization handler (CRIT-03):
@@ -160,6 +164,7 @@ func Load() *Config {
 		MaxFailedAttempts:   getEnvInt("MAX_FAILED_ATTEMPTS", 5),
 		LockoutDurationSecs: getEnvInt("LOCKOUT_DURATION_SECONDS", 900),
 		SecretKeyBase:       getEnv("SECRET_KEY_BASE", ""),
+		AdminMFAPolicy:      normalizeAdminMFAPolicy(getEnv("ADMIN_MFA_POLICY", "off")),
 
 		// Rate Limiting
 		// LOW-03 fix: window env vars now have an explicit _MS suffix so
@@ -293,6 +298,20 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// normalizeAdminMFAPolicy lower-cases and validates the admin MFA policy,
+// falling back to "off" for any unrecognized value so a typo fails safe (open)
+// rather than locking admins out.
+func normalizeAdminMFAPolicy(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "observe":
+		return "observe"
+	case "enforce":
+		return "enforce"
+	default:
+		return "off"
+	}
 }
 
 func getEnvInt(key string, defaultValue int) int {

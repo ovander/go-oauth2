@@ -76,3 +76,19 @@ func TestAdminAuthHandler_Login_MFARequired(t *testing.T) {
 		t.Fatalf("expected an mfa_required body, got %q", rr.Body.String())
 	}
 }
+
+func TestAdminAuthHandler_Login_MFAEnrollmentRequired(t *testing.T) {
+	h := NewAdminAuthHandler(&mfaLoginAuthService{adminErr: service.ErrMFAEnrollmentRequired}, nil)
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/login",
+		strings.NewReader(`{"email":"a@b.com","password":"x"}`))
+	h.Login(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "mfa_enrollment_required") {
+		t.Fatalf("expected an mfa_enrollment_required body, got %q", rr.Body.String())
+	}
+}

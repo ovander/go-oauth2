@@ -11,6 +11,13 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Security
+- **MFA / Admin policy:** Admin-portal login (`/api/admin/login`) can now require
+  MFA enrollment, governed by `ADMIN_MFA_POLICY` (observe→enforce rollout):
+  `off` (default, unchanged), `observe` (allow superadmins without MFA but audit
+  each as a `mfa_policy_violation`), or `enforce` (deny with
+  `mfa_enrollment_required` / HTTP 403 until the admin enrolls). An unrecognized
+  value fails safe to `off`. Default behaviour is unchanged.
+  _Traceability: C9 → EPIC-9 → RFC-011 → #50._
 - **MFA / Login step-up:** Login now enforces a second factor for MFA-enrolled
   users (RFC-011). When a user with MFA enabled authenticates, `Login` /
   `AdminLogin` require a valid TOTP code: the first password-only request is

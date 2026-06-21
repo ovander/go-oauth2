@@ -17,8 +17,10 @@ var (
 	// MFA login step-up. ErrMFARequired signals that the password was correct but
 	// a second factor (TOTP code) is needed to complete login; the client should
 	// prompt for the code and retry. (ErrMFAInvalidCode is defined in
-	// mfa_service.go.)
-	ErrMFARequired = errors.New("mfa: code required")
+	// mfa_service.go.) ErrMFAEnrollmentRequired signals that an MFA-mandatory
+	// admin has not enrolled a second factor and must do so before logging in.
+	ErrMFARequired           = errors.New("mfa: code required")
+	ErrMFAEnrollmentRequired = errors.New("mfa: enrollment required")
 
 	// App errors
 	ErrAppNotFound        = errors.New("app not found")

@@ -11,6 +11,17 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Tokens / DPoP:** Observe-mode DPoP telemetry at the token endpoint
+  (RFC 9449 rollout). New `middleware.DPoPObserve` verifies a `DPoP` proof on
+  `POST /oauth/token` (binding to the request method/URL, with replay detection)
+  and logs structured telemetry — valid vs. rejected, with a short `jkt` prefix
+  — **without ever changing the response**. Gated by `DPOP_MODE`
+  (`off` default | `observe` | `enforce`-reserved); the replay cache and its
+  janitor are created only when enabled and stopped on shutdown. This is the
+  "warn-mode telemetry" step before token binding/enforcement.
+  _Traceability: C8 → EPIC-8 → RFC-003 → #66._
+
+### Added
 - **Tokens / DPoP:** Access tokens can now be **sender-constrained** via the
   `cnf.jkt` confirmation claim (RFC 9449 / RFC 7800). New
   `TokenService.GenerateBoundAccessToken(..., jkt)` issues a token bound to a

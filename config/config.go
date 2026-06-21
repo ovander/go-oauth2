@@ -46,6 +46,11 @@ type Config struct {
 	// "off" (default, unchanged behaviour), "observe" (allow but audit admins
 	// without MFA), or "enforce" (deny until the admin enrolls). RFC-011.
 	AdminMFAPolicy string
+	// DPoPMode controls DPoP (RFC 9449) sender-constraint handling at the token
+	// endpoint: "off" (default), "observe" (verify any DPoP proof and log
+	// telemetry without affecting responses), or "enforce" (reserved for a later
+	// slice; currently behaves as observe). RFC-003.
+	DPoPMode string
 	// SecretKeyBase is a cryptographic secret (≥32 bytes in production) used
 	// for two purposes:
 	//   1. CSRF cookie signing in the OAuth authorization handler (CRIT-03):
@@ -165,6 +170,7 @@ func Load() *Config {
 		LockoutDurationSecs: getEnvInt("LOCKOUT_DURATION_SECONDS", 900),
 		SecretKeyBase:       getEnv("SECRET_KEY_BASE", ""),
 		AdminMFAPolicy:      normalizeAdminMFAPolicy(getEnv("ADMIN_MFA_POLICY", "off")),
+		DPoPMode:            normalizeDPoPMode(getEnv("DPOP_MODE", "off")),
 
 		// Rate Limiting
 		// LOW-03 fix: window env vars now have an explicit _MS suffix so
@@ -298,6 +304,20 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// normalizeDPoPMode lower-cases and validates the DPoP mode, falling back to
+// "off" for any unrecognized value (fail safe — never enable an unintended
+// mode from a typo).
+func normalizeDPoPMode(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "observe":
+		return "observe"
+	case "enforce":
+		return "enforce"
+	default:
+		return "off"
+	}
 }
 
 // normalizeAdminMFAPolicy lower-cases and validates the admin MFA policy,

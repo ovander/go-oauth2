@@ -15,6 +15,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/service"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/internal/shared/auth/dpop"
 	"github.com/ovandermoten/go-oauth2/internal/web"
 	"github.com/ovandermoten/go-oauth2/pkg/database"
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
@@ -48,6 +49,9 @@ type App struct {
 	// auditIntegrityStop stops the scheduled audit-integrity scan on shutdown.
 	// Nil when the scan is disabled (AuditIntegrityScanInterval == 0).
 	auditIntegrityStop func()
+	// dpopReplayCache backs DPoP observe-mode replay detection; nil when DPoP is
+	// off. Stopped on shutdown.
+	dpopReplayCache *dpop.MemoryReplayCache
 }
 
 // keyRetentionFor resolves the retired-key retention window: the configured
@@ -124,6 +128,9 @@ func (a *App) Stop() {
 	}
 	if a.auditIntegrityStop != nil {
 		a.auditIntegrityStop()
+	}
+	if a.dpopReplayCache != nil {
+		a.dpopReplayCache.Stop()
 	}
 }
 
@@ -460,6 +467,14 @@ func Bootstrap(cfg *config.Config) *App {
 	// ==========================================
 	// Router Configuration
 	// ==========================================
+	// DPoP (RFC 9449) observe-mode telemetry on the token endpoint. The replay
+	// cache (and its janitor) is created only when DPoP is enabled.
+	var dpopReplayCache *dpop.MemoryReplayCache
+	if cfg.DPoPMode != "off" && cfg.DPoPMode != "" {
+		dpopReplayCache = dpop.NewMemoryReplayCache(time.Minute)
+		logger.WithFields(logger.Fields{"mode": cfg.DPoPMode}).Info("DPoP enabled (observe-mode telemetry on /oauth/token)")
+	}
+
 	routerConfig := internalhttp.RouterConfig{
 		AllowedOrigins:    parseAllowedOrigins(cfg.AllowedOrigins),
 		LoginRateLimiter:  loginRateLimiter,
@@ -467,6 +482,11 @@ func Bootstrap(cfg *config.Config) *App {
 		TokenRateLimiter:  tokenRateLimiter, // MED-05: nil only when explicitly disabled
 		IPBlockChecker:    ipBlockChecker,
 		TrustedProxyCIDRs: mustParseTrustedProxies(cfg.TrustedProxies),
+		DPoPMode:          cfg.DPoPMode,
+		DPoPHTUBase:       cfg.OAuthIssuer,
+	}
+	if dpopReplayCache != nil {
+		routerConfig.DPoPReplayCache = dpopReplayCache
 	}
 
 	// ==========================================
@@ -512,6 +532,7 @@ func Bootstrap(cfg *config.Config) *App {
 			ipBlockChecker:     ipBlockChecker,
 			keyRotationStop:    keyRotationStop,
 			auditIntegrityStop: auditIntegrityStop,
+			dpopReplayCache:    dpopReplayCache,
 		}
 	}
 
@@ -549,5 +570,6 @@ func Bootstrap(cfg *config.Config) *App {
 		ipBlockChecker:     ipBlockChecker,
 		keyRotationStop:    keyRotationStop,
 		auditIntegrityStop: auditIntegrityStop,
+		dpopReplayCache:    dpopReplayCache,
 	}
 }

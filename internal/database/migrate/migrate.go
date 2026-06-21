@@ -201,6 +201,26 @@ var migrations = []Migration{
 			return db.Exec("CREATE INDEX idx_admin_logs_correlation_id ON admin_logs(correlation_id)").Error
 		},
 	},
+	{
+		// RFC-007: row_hash is a keyed HMAC over each security_audit_logs row's
+		// immutable content, making the row tamper-evident.  Nullable and
+		// additive (expand–contract): existing rows have no hash and older
+		// writers leave it empty.
+		ID:   "0008",
+		Name: "add_security_audit_logs.row_hash",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("security_audit_logs") {
+				return nil // table does not exist yet — AutoMigrate will create it correctly
+			}
+			if db.Migrator().HasColumn(&model.SecurityAuditLog{}, "row_hash") {
+				return nil // column already present — nothing to do
+			}
+			if err := db.Exec("ALTER TABLE security_audit_logs ADD COLUMN row_hash VARCHAR(64)").Error; err != nil {
+				return err
+			}
+			return db.Exec("CREATE INDEX idx_security_audit_logs_row_hash ON security_audit_logs(row_hash)").Error
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

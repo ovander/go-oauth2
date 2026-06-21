@@ -70,10 +70,14 @@ type SecurityAuditLog struct {
 	// request context.
 	CorrelationID string                 `gorm:"type:varchar(64);index" json:"correlation_id,omitempty"`
 	Details       map[string]interface{} `gorm:"type:jsonb;serializer:json" json:"details"`
-	Success       bool                   `gorm:"index" json:"success"`
-	User          *User                  `gorm:"foreignKey:UserID" json:"user,omitempty"`
-	App           *App                   `gorm:"foreignKey:AppID" json:"app,omitempty"`
-	CreatedAt     time.Time              `gorm:"index" json:"created_at"`
+	// RowHash is a keyed HMAC over the row's immutable content, making the row
+	// tamper-evident (RFC-007). Empty when integrity stamping is disabled (no
+	// configured secret).
+	RowHash   string    `gorm:"column:row_hash;type:varchar(64);index" json:"row_hash,omitempty"`
+	Success   bool      `gorm:"index" json:"success"`
+	User      *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	App       *App      `gorm:"foreignKey:AppID" json:"app,omitempty"`
+	CreatedAt time.Time `gorm:"index" json:"created_at"`
 }
 
 func (SecurityAuditLog) TableName() string {

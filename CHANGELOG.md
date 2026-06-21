@@ -10,6 +10,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Added
+- **Audit / Security:** Security audit rows are now **tamper-evident** — each
+  row carries a keyed HMAC (`row_hash`) over its immutable content, stamped at
+  the repository choke point and keyed by `SECRET_KEY_BASE` (held in config,
+  never in the DB). `repository.VerifyAuditRowHash` detects any row mutated
+  without the secret. Enabled by configuring the secret (disabled otherwise);
+  adds the `security_audit_logs.row_hash` column via migration `0008`.
+  Detects row *mutation*; deletion/reordering (hash-chaining) is a later slice.
+  _Traceability: C5 → EPIC-5 → RFC-007 → #22._
+
 ### Changed
 - **Audit / Observability:** Direct (hot-path) security audit writes —
   `authService`/`oauthService.logSecurityEvent` (login, token, OAuth events) —

@@ -25,16 +25,35 @@ type SecurityAuditLogRepository interface {
 
 type gormSecurityAuditLogRepository struct {
 	db *gorm.DB
+	// secret keys the per-row integrity HMAC (RFC-007). Nil/empty disables
+	// integrity stamping, preserving prior behaviour.
+	secret []byte
 }
 
-// NewSecurityAuditLogRepository creates a new GORM-based security audit log repository
+// NewSecurityAuditLogRepository creates a new GORM-based security audit log
+// repository with integrity stamping disabled.
 func NewSecurityAuditLogRepository(db *gorm.DB) SecurityAuditLogRepository {
-	return &gormSecurityAuditLogRepository{db: db}
+	return NewSecurityAuditLogRepositoryWithIntegrity(db, nil)
+}
+
+// NewSecurityAuditLogRepositoryWithIntegrity creates a repository that stamps a
+// tamper-evidence HMAC (keyed by secret) on every audit row at write time
+// (RFC-007). A nil/empty secret disables stamping.
+func NewSecurityAuditLogRepositoryWithIntegrity(db *gorm.DB, secret []byte) SecurityAuditLogRepository {
+	return &gormSecurityAuditLogRepository{db: db, secret: secret}
 }
 
 func (r *gormSecurityAuditLogRepository) Create(ctx context.Context, log *model.SecurityAuditLog) error {
 	if log.CreatedAt.IsZero() {
 		log.CreatedAt = time.Now()
+	}
+	// RFC-007: reduce to microseconds (PostgreSQL precision) so the stored
+	// timestamp equals what the integrity hash is computed over and what a
+	// later read returns — keeping VerifyAuditRowHash stable across a round trip.
+	log.CreatedAt = log.CreatedAt.UTC().Truncate(time.Microsecond)
+	// Stamp the tamper-evidence HMAC when an integrity secret is configured.
+	if len(r.secret) > 0 {
+		log.RowHash = computeAuditRowHash(r.secret, log)
 	}
 	return r.db.WithContext(ctx).Create(log).Error
 }

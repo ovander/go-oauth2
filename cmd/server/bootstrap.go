@@ -229,7 +229,9 @@ func Bootstrap(cfg *config.Config) *App {
 	appActivityLogRepo := repository.NewAppActivityLogRepository(db)
 	authCodeRepo := repository.NewAuthorizationCodeRepository(db)
 	usedTokenRepo := repository.NewUsedTokenRepository(db)
-	securityAuditRepo := repository.NewSecurityAuditLogRepository(db)
+	// RFC-007: stamp a tamper-evidence HMAC on each audit row, keyed by
+	// SECRET_KEY_BASE (held in config, never in the DB). Empty secret disables it.
+	securityAuditRepo := repository.NewSecurityAuditLogRepositoryWithIntegrity(db, []byte(cfg.SecretKeyBase))
 
 	magicLinkRepo := repository.NewMagicLinkRepository(db)
 

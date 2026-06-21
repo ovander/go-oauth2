@@ -10,6 +10,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Added
+- **Identity / KMS:** `KeyManager.PruneRetiredKeys(maxAge)` removes retired
+  signing keys older than a retention window (mod-time based) from both the
+  in-memory ring and the `retired/` directory, bounding ring and JWKS growth
+  across rotations. New `StartRotationScheduleWithRetention(interval, retention)`
+  prunes automatically after each rotation when `retention > 0`;
+  `StartRotationSchedule(interval)` is unchanged (retention disabled). Pruning
+  is conservative — a retired key whose file cannot be stat'd/removed is kept.
+  _Traceability: C3 → EPIC-3 → RFC-002 → #10._
+
 ### Security
 - **Identity / JWT:** Pinned token verification to an explicit algorithm
   allow-list of exactly `RS256` via `jwt.WithValidMethods` in

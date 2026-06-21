@@ -298,6 +298,59 @@ func (km *KeyManager) RotateKey() error {
 	return km.generateKeys(privatePath, publicPath, keyIDPath)
 }
 
+// PruneRetiredKeys removes retired public keys whose archived file is older
+// than maxAge from both the in-memory ring and the retired/ directory. The
+// retirement time is taken from the retired/<kid>.pub file modification time,
+// which RotateKey sets when it archives a key and which is preserved across
+// restarts.
+//
+// Retired keys are still needed to verify outstanding tokens signed before the
+// last rotation, so callers SHOULD pass a maxAge greater than or equal to the
+// longest token TTL; otherwise an in-flight, not-yet-expired token could lose
+// its verification key. A maxAge <= 0 disables pruning and returns immediately.
+//
+// Pruning is conservative: if a retired key file cannot be stat'd or removed,
+// the key is kept in the ring (so verification keeps working) and the error is
+// reported. The list of pruned KIDs is returned.
+//
+// RFC-002 / EPIC-3: without pruning, the retired ring and the JWKS grow without
+// bound across rotations; this enforces a bounded retention window.
+func (km *KeyManager) PruneRetiredKeys(maxAge time.Duration) (pruned []string, err error) {
+	if maxAge <= 0 {
+		return nil, nil
+	}
+
+	km.mu.Lock()
+	defer km.mu.Unlock()
+
+	cutoff := time.Now().Add(-maxAge)
+	retiredDir := filepath.Join(km.keysPath, "retired")
+
+	for kid := range km.retired {
+		path := filepath.Join(retiredDir, kid+".pub")
+		info, statErr := os.Stat(path)
+		if statErr != nil {
+			// Cannot determine the key's age — keep it rather than risk
+			// dropping a still-valid verification key on a transient error.
+			err = errors.Join(err, fmt.Errorf("stat retired key %s: %w", kid, statErr))
+			continue
+		}
+		if info.ModTime().After(cutoff) {
+			continue // still within the retention window
+		}
+		if rmErr := os.Remove(path); rmErr != nil && !os.IsNotExist(rmErr) {
+			// Keep the in-memory key consistent with disk: if the file
+			// survives, so must the ring entry.
+			err = errors.Join(err, fmt.Errorf("remove retired key %s: %w", kid, rmErr))
+			continue
+		}
+		delete(km.retired, kid)
+		pruned = append(pruned, kid)
+	}
+
+	return pruned, err
+}
+
 // GetPublicKeyByID returns the public key for the given KID, searching both
 // the current key and the retired ring.  Used by TokenService.verifyToken
 // to perform KID-aware key selection (M-03).
@@ -375,6 +428,19 @@ func (km *KeyManager) GetJWKS() dto.JWKS {
 //	stop := km.StartRotationSchedule(30 * 24 * time.Hour)
 //	defer stop()
 func (km *KeyManager) StartRotationSchedule(interval time.Duration) (stop func()) {
+	// retention = 0 keeps the historical behaviour: rotate, but never prune.
+	return km.StartRotationScheduleWithRetention(interval, 0)
+}
+
+// StartRotationScheduleWithRetention behaves like StartRotationSchedule but,
+// when retention > 0, prunes retired keys older than retention after each
+// successful rotation (see PruneRetiredKeys). This bounds the retired key ring
+// and the JWKS over time (RFC-002 / EPIC-3).
+//
+// retention SHOULD be >= the longest token TTL so that no in-flight token loses
+// its verification key. A retention <= 0 disables pruning, making this
+// identical to StartRotationSchedule.
+func (km *KeyManager) StartRotationScheduleWithRetention(interval, retention time.Duration) (stop func()) {
 	stopCh := make(chan struct{})
 	doneCh := make(chan struct{})
 	go func() {
@@ -386,11 +452,25 @@ func (km *KeyManager) StartRotationSchedule(interval time.Duration) (stop func()
 			case <-ticker.C:
 				if err := km.RotateKey(); err != nil {
 					logger.Errorf("LOW-05: scheduled key rotation failed: %v", err)
-				} else {
-					logger.WithFields(logger.Fields{
-						"interval_hours": interval.Hours(),
-						"new_kid":        km.GetKeyID(),
-					}).Info("LOW-05: scheduled key rotation completed")
+					continue
+				}
+				logger.WithFields(logger.Fields{
+					"interval_hours": interval.Hours(),
+					"new_kid":        km.GetKeyID(),
+				}).Info("LOW-05: scheduled key rotation completed")
+
+				// Prune retired keys past the retention window (no-op when
+				// retention <= 0). Called after RotateKey returns so the two
+				// lock acquisitions never nest.
+				if retention > 0 {
+					if prunedKIDs, pruneErr := km.PruneRetiredKeys(retention); pruneErr != nil {
+						logger.Errorf("RFC-002: retired key pruning failed: %v", pruneErr)
+					} else if len(prunedKIDs) > 0 {
+						logger.WithFields(logger.Fields{
+							"retention_hours": retention.Hours(),
+							"pruned_count":    len(prunedKIDs),
+						}).Info("RFC-002: pruned retired signing keys")
+					}
 				}
 			case <-stopCh:
 				logger.Info("LOW-05: key rotation schedule stopped")

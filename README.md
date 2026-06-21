@@ -9,8 +9,7 @@ A complete OAuth 2.0 and OpenID Connect server implementation in Go, following t
 Every push to `main` and every pull request runs `gofmt` (formatting check),
 `go build`, `go vet`, `go test -race`, `golangci-lint`, and `govulncheck` via
 GitHub Actions (`.github/workflows/ci.yml`). The lint set (`.golangci.yml`)
-currently enforces `errcheck`, `govet`, `ineffassign`, and `unused`;
-`staticcheck` is a planned follow-up.
+enforces `errcheck`, `govet`, `ineffassign`, `staticcheck`, and `unused`.
 
 ## Features
 

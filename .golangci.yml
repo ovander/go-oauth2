@@ -6,15 +6,12 @@
 version: "2"
 
 linters:
-  # staticcheck is intentionally deferred to a follow-up: its SA9003
-  # (empty-branch) findings live in the security-critical auth path and several
-  # carry "log error but continue" comments that should add real logging — a
-  # change that warrants careful per-site review rather than a mechanical sweep.
   default: none
   enable:
     - errcheck
     - govet
     - ineffassign
+    - staticcheck
     - unused
   exclusions:
     rules:

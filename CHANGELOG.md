@@ -18,6 +18,12 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
   _Traceability: C6 → EPIC-6 → RFC-014 → #28._
 
 ### Infrastructure
+- **CI / lint:** Enabled `staticcheck` in the `golangci-lint` gate. Fixed its 11
+  findings: the 9 `SA9003` empty error-branches in `auth_service.go` (failed-login
+  counting, account lockout, last-login update) now **log** the previously-silent
+  errors via `logger.Warnf` instead of ignoring them; the RFC-7009 revocation
+  ignore is made explicit (`_ =`); and a `QF1003` if-chain became a tagged switch.
+  Additive logging only — control flow unchanged. _Traceability: C6 → EPIC-6 → RFC-014 → #32._
 - **CI / lint:** Added a `golangci-lint` gate (`.golangci.yml`) enforcing
   `errcheck`, `govet`, `ineffassign`, and `unused`, and resolved all 26
   findings (acknowledged fire-and-forget calls with `_ =`, wrapped deferred

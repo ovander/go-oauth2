@@ -693,9 +693,8 @@ func (h *OAuthHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 	// context).  Self-revocation: the user's own identity is known.
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if ok {
-		if err := h.oauthService.Revoke(r.Context(), req.Token, userID); err != nil {
-			// RFC 7009: always return 200 for revocation
-		}
+		// RFC 7009: always return 200 for revocation, even on error.
+		_ = h.oauthService.Revoke(r.Context(), req.Token, userID)
 		w.WriteHeader(http.StatusOK)
 		return
 	}

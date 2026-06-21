@@ -86,7 +86,9 @@ func (s *authService) WithMFA(mfa MFAService) AuthService {
 // stepUpMFA applies login step-up after the password has been verified. It is a
 // no-op when step-up is not configured or the user has not enabled MFA.
 // Otherwise an empty code yields ErrMFARequired (the client should prompt for a
-// code and retry) and a wrong code yields ErrMFAInvalidCode.
+// code and retry). The code may be a TOTP code or a one-time recovery code; a
+// value that is neither yields ErrMFAInvalidCode. A redeemed recovery code is
+// consumed and audited.
 func (s *authService) stepUpMFA(ctx context.Context, user *model.User, code string) error {
 	if s.mfa == nil || !user.MFAEnabled {
 		return nil
@@ -94,10 +96,23 @@ func (s *authService) stepUpMFA(ctx context.Context, user *model.User, code stri
 	if strings.TrimSpace(code) == "" {
 		return ErrMFARequired
 	}
-	if err := s.mfa.Verify(ctx, user.ID, code); err != nil {
+	// A valid TOTP code is the common path.
+	if err := s.mfa.Verify(ctx, user.ID, code); err == nil {
+		return nil
+	}
+	// Otherwise fall back to a one-time recovery code.
+	used, err := s.mfa.RedeemRecoveryCode(ctx, user.ID, code)
+	if err != nil {
+		logger.Warnf("auth: recovery-code redemption error for user %d: %v", user.ID, err)
 		return ErrMFAInvalidCode
 	}
-	return nil
+	if used {
+		s.logSecurityEvent(ctx, model.SecurityEventMFARecoveryUsed, &user.ID, nil, true, map[string]interface{}{
+			"email": user.Email,
+		})
+		return nil
+	}
+	return ErrMFAInvalidCode
 }
 
 // MFA admin-enrollment policy modes. "off" leaves admin login unchanged;

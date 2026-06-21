@@ -51,6 +51,9 @@ const (
 	// MFA (RFC-011): an admin subject to the MFA policy logged in (observe) or
 	// was denied (enforce) without having MFA enrolled.
 	SecurityEventMFAPolicyViolation SecurityEventType = "mfa_policy_violation"
+	// MFA (RFC-011): a one-time recovery code was redeemed to satisfy login
+	// step-up (in place of a TOTP code).
+	SecurityEventMFARecoveryUsed SecurityEventType = "mfa_recovery_code_used"
 )
 
 // SecuritySeverity indicates the severity level of the event

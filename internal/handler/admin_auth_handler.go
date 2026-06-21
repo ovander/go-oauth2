@@ -62,6 +62,11 @@ func (h *AdminAuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			writeError(w, "invalid credentials", http.StatusUnauthorized)
 		case service.ErrNotAdmin:
 			writeError(w, "admin access required", http.StatusForbidden)
+		case service.ErrMFARequired:
+			// Password was correct; the client must resubmit with mfa_code.
+			writeError(w, "mfa_required", http.StatusUnauthorized)
+		case service.ErrMFAInvalidCode:
+			writeError(w, "invalid mfa code", http.StatusUnauthorized)
 		default:
 			writeError(w, err.Error(), http.StatusBadRequest)
 		}

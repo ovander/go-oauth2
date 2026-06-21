@@ -10,6 +10,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Security
+- **MFA / Login step-up:** Login now enforces a second factor for MFA-enrolled
+  users (RFC-011). When a user with MFA enabled authenticates, `Login` /
+  `AdminLogin` require a valid TOTP code: the first password-only request is
+  rejected with `mfa_required` (HTTP 401) and the client retries with
+  `mfa_code`; a wrong code returns `invalid mfa code` (401) and is audited as a
+  failed login (`reason: mfa_invalid`). Wired via `AuthService.WithMFA` and
+  active only for users who have opted in by enrolling — users without MFA see
+  no change. _Traceability: C9 → EPIC-9 → RFC-011 → #48._
+
 ### Added
 - **MFA / API:** Self-service TOTP enrollment endpoints (authenticated, under
   `/api/profile/mfa`): `POST /enroll` (returns the secret + `otpauth://`

@@ -61,6 +61,7 @@ func (s *med03AuthService) ValidateInviteToken(_ context.Context, _ string) (*dt
 func (s *med03AuthService) AcceptInvite(_ context.Context, _, _, _ string) (*dto.LoginResponse, error) {
 	return nil, nil
 }
+func (s *med03AuthService) WithMFA(_ service.MFAService) service.AuthService { return s }
 
 // ---------------------------------------------------------------------------
 // Minimal UserService stub (unused by Signup handler but required by constructor)

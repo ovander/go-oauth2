@@ -293,7 +293,11 @@ func Bootstrap(cfg *config.Config) *App {
 		logger.Info("⚠️  Email service not configured (SMTP_HOST not set)")
 	}
 
-	// Use auth service with full features (single-use tokens + audit logging)
+	// MFA (TOTP) service — shared by the enrollment handler and login step-up.
+	mfaService := service.NewMFAService(userRepo, []byte(cfg.SecretKeyBase), cfg.OAuthIssuer)
+
+	// Use auth service with full features (single-use tokens + audit logging).
+	// WithMFA enables login step-up for MFA-enrolled users.
 	authService := service.NewAuthServiceFull(
 		userRepo,
 		appRepo,
@@ -306,7 +310,7 @@ func Bootstrap(cfg *config.Config) *App {
 			MaxFailedAttempts: cfg.MaxFailedAttempts,
 			LockoutDuration:   time.Duration(cfg.LockoutDurationSecs) * time.Second,
 		},
-	)
+	).WithMFA(mfaService)
 
 	// M-09 fix: securityAuditService was created and immediately discarded.
 	// The monitoring handler receives securityAuditRepo directly and does not
@@ -351,7 +355,6 @@ func Bootstrap(cfg *config.Config) *App {
 	oauthHandler := handler.NewOAuthHandler(oauthService, authService, appService, templateService, tokenService, cfg.OAuthIssuer, []byte(cfg.SecretKeyBase))
 	appUsersHandler := handler.NewAppUsersHandler(userService, userAppRoleService, appService, adminLogService, emailService, tokenService, cfg.OAuthIssuer)
 	profileHandler := handler.NewProfileHandler(userService)
-	mfaService := service.NewMFAService(userRepo, []byte(cfg.SecretKeyBase), cfg.OAuthIssuer)
 	mfaHandler := handler.NewMFAHandler(mfaService)
 	adminHandler := handler.NewAdminHandler(appService, userService, userAppRoleService, adminLogService, appActivityLogService, emailService)
 	adminAuthHandler := handler.NewAdminAuthHandler(authService, userService)

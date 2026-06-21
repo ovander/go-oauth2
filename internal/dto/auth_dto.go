@@ -15,12 +15,18 @@ type LoginRequest struct {
 	Email       string `json:"email"`
 	Password    string `json:"password"`
 	AppClientID string `json:"app_client_id"`
+	// MFACode is the TOTP code, required only when the user has MFA enabled.
+	// Omitted on the first request; the server replies with an "mfa_required"
+	// error and the client retries with the code. RFC-011 / EPIC-9.
+	MFACode string `json:"mfa_code,omitempty"`
 }
 
 // AdminLoginRequest is for admin portal login (no app context required)
 type AdminLoginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+	// MFACode is the TOTP code, required only when the admin has MFA enabled.
+	MFACode string `json:"mfa_code,omitempty"`
 }
 
 type RefreshRequest struct {

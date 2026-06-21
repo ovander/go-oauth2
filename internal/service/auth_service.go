@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ovandermoten/go-oauth2/internal/dto"
@@ -27,6 +28,11 @@ type AuthService interface {
 	ChangePassword(ctx context.Context, userID uint, currentPassword, newPassword string) error
 	ValidateInviteToken(ctx context.Context, token string) (*dto.InviteValidationResponse, error)
 	AcceptInvite(ctx context.Context, token, name, password string) (*dto.LoginResponse, error)
+	// WithMFA enables login step-up: when set, a user with MFA enabled must
+	// present a valid TOTP code (LoginRequest.MFACode) to complete login.
+	// Optional and nil-safe — without it, login behaviour is unchanged. Returns
+	// the receiver for chaining. RFC-011 / EPIC-9.
+	WithMFA(mfa MFAService) AuthService
 }
 
 type authService struct {
@@ -39,6 +45,30 @@ type authService struct {
 	emailService      EmailService
 	maxFailedAttempts int
 	lockoutDuration   time.Duration
+	mfa               MFAService // optional; nil disables login step-up
+}
+
+// WithMFA wires the MFA verifier for login step-up and returns the receiver.
+func (s *authService) WithMFA(mfa MFAService) AuthService {
+	s.mfa = mfa
+	return s
+}
+
+// stepUpMFA applies login step-up after the password has been verified. It is a
+// no-op when step-up is not configured or the user has not enabled MFA.
+// Otherwise an empty code yields ErrMFARequired (the client should prompt for a
+// code and retry) and a wrong code yields ErrMFAInvalidCode.
+func (s *authService) stepUpMFA(ctx context.Context, user *model.User, code string) error {
+	if s.mfa == nil || !user.MFAEnabled {
+		return nil
+	}
+	if strings.TrimSpace(code) == "" {
+		return ErrMFARequired
+	}
+	if err := s.mfa.Verify(ctx, user.ID, code); err != nil {
+		return ErrMFAInvalidCode
+	}
+	return nil
 }
 
 // AuthServiceConfig holds auth service configuration
@@ -314,6 +344,17 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 		return nil, fmt.Errorf("%w: please verify your email first", ErrUserNotVerified)
 	}
 
+	// Login step-up (RFC-011): an MFA-enrolled user must present a valid TOTP code.
+	if err := s.stepUpMFA(ctx, user, req.MFACode); err != nil {
+		if errors.Is(err, ErrMFAInvalidCode) {
+			s.logSecurityEvent(ctx, model.SecurityEventLoginFailed, &user.ID, nil, false, map[string]interface{}{
+				"email":  user.Email,
+				"reason": "mfa_invalid",
+			})
+		}
+		return nil, err
+	}
+
 	// App-specific login - requires app_client_id
 	app, err := s.appRepo.FindByClientID(ctx, req.AppClientID)
 	if err != nil {
@@ -419,6 +460,18 @@ func (s *authService) AdminLogin(ctx context.Context, req dto.AdminLoginRequest)
 			"reason":     "not_superadmin",
 		})
 		return nil, ErrNotAdmin
+	}
+
+	// Login step-up (RFC-011): an MFA-enrolled admin must present a valid TOTP code.
+	if err := s.stepUpMFA(ctx, user, req.MFACode); err != nil {
+		if errors.Is(err, ErrMFAInvalidCode) {
+			s.logSecurityEvent(ctx, model.SecurityEventLoginFailed, &user.ID, nil, false, map[string]interface{}{
+				"email":      user.Email,
+				"login_type": "admin_portal",
+				"reason":     "mfa_invalid",
+			})
+		}
+		return nil, err
 	}
 
 	// Reset failed attempts and update last login

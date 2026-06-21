@@ -14,6 +14,12 @@ var (
 	ErrCannotDeleteSelf           = errors.New("cannot delete your own account")
 	ErrCannotDeleteLastSuperadmin = errors.New("cannot delete the last superadmin")
 
+	// MFA login step-up. ErrMFARequired signals that the password was correct but
+	// a second factor (TOTP code) is needed to complete login; the client should
+	// prompt for the code and retry. (ErrMFAInvalidCode is defined in
+	// mfa_service.go.)
+	ErrMFARequired = errors.New("mfa: code required")
+
 	// App errors
 	ErrAppNotFound        = errors.New("app not found")
 	ErrClientIDExists     = errors.New("client ID already exists")

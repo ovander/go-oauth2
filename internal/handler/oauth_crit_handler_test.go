@@ -154,6 +154,7 @@ func (m *critAuthService) ValidateInviteToken(_ context.Context, _ string) (*dto
 func (m *critAuthService) AcceptInvite(_ context.Context, _, _, _ string) (*dto.LoginResponse, error) {
 	panic("AcceptInvite called unexpectedly")
 }
+func (m *critAuthService) WithMFA(_ service.MFAService) service.AuthService { return m }
 
 // Compile-time interface compliance check.
 var _ service.AuthService = (*critAuthService)(nil)

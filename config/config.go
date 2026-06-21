@@ -92,6 +92,13 @@ type Config struct {
 	// outlive the longest token (KEY_RETENTION_SECONDS).
 	KeyRetention time.Duration
 
+	// AuditIntegrityScanInterval is how often the audit-row integrity scan runs.
+	// Zero (the default) disables it (AUDIT_INTEGRITY_SCAN_INTERVAL_SECONDS).
+	AuditIntegrityScanInterval time.Duration
+	// AuditIntegrityScanLookback is the trailing window each scan verifies.
+	// Defaults to 24h (AUDIT_INTEGRITY_SCAN_LOOKBACK_SECONDS).
+	AuditIntegrityScanLookback time.Duration
+
 	// Trusted Proxies
 	// Comma-separated IPs or CIDR ranges whose X-Forwarded-For / X-Real-IP
 	// headers are trusted for real-IP extraction (e.g. "10.0.0.0/8,172.16.0.0/12").
@@ -192,6 +199,9 @@ func Load() *Config {
 		KeyRotationInterval: time.Duration(getEnvInt("KEY_ROTATION_INTERVAL_SECONDS", 0)) * time.Second,
 		// 0 = derive from RefreshTokenTTL at bootstrap.
 		KeyRetention: time.Duration(getEnvInt("KEY_RETENTION_SECONDS", 0)) * time.Second,
+		// 0 = disabled; lookback defaults to 24h.
+		AuditIntegrityScanInterval: time.Duration(getEnvInt("AUDIT_INTEGRITY_SCAN_INTERVAL_SECONDS", 0)) * time.Second,
+		AuditIntegrityScanLookback: time.Duration(getEnvInt("AUDIT_INTEGRITY_SCAN_LOOKBACK_SECONDS", 86400)) * time.Second,
 
 		// Trusted Proxies
 		TrustedProxies: getEnv("TRUSTED_PROXIES", ""),

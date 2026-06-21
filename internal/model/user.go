@@ -42,8 +42,12 @@ type User struct {
 	LockedUntil         *time.Time     `gorm:"column:locked_until;index" json:"-"`
 	LastLoginAttempt    *time.Time     `gorm:"column:last_login_attempt" json:"-"`
 	PasswordChangedAt   *time.Time     `gorm:"column:password_changed_at" json:"-"`
-	CreatedAt           time.Time      `gorm:"column:inserted_at" json:"created_at"`
-	UpdatedAt           time.Time      `json:"updated_at"`
+	// MFASecret is the user's TOTP secret, stored encrypted at rest
+	// (auth.EncryptSecret). Empty when MFA is not enrolled. Never serialized.
+	MFASecret  string    `gorm:"column:mfa_secret" json:"-"`
+	MFAEnabled bool      `gorm:"column:mfa_enabled;default:false" json:"mfa_enabled"`
+	CreatedAt  time.Time `gorm:"column:inserted_at" json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 func (User) TableName() string {

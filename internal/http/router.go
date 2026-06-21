@@ -12,6 +12,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/middleware"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/internal/shared/auth/dpop"
 	internalweb "github.com/ovandermoten/go-oauth2/internal/web"
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
 	"github.com/ovandermoten/go-oauth2/web"
@@ -60,6 +61,13 @@ type RouterConfig struct {
 	// headers are trusted for real-IP extraction.  Leave nil to always use
 	// RemoteAddr (safe when the server is exposed directly to the internet).
 	TrustedProxyCIDRs []*net.IPNet
+	// DPoP (RFC 9449) observe-mode telemetry on the token endpoint. DPoPMode is
+	// "off" (disabled), "observe", or "enforce"; DPoPReplayCache backs proof
+	// replay detection; DPoPHTUBase is the canonical scheme://host of the issuer.
+	// All zero/nil values leave the token endpoint unchanged.
+	DPoPMode        string
+	DPoPReplayCache dpop.ReplayCache
+	DPoPHTUBase     string
 }
 
 // Routers holds both the OAuth and Admin routers for separate port binding
@@ -168,12 +176,13 @@ func newOAuthRouter(
 		// Token endpoint - JSON
 		// MED-05: apply per-IP rate limiting to prevent brute-force attacks
 		// against authorization codes, refresh tokens, and client credentials.
+		dpopObserve := middleware.DPoPObserve(config.DPoPReplayCache, config.DPoPMode, config.DPoPHTUBase)
 		if config.TokenRateLimiter != nil {
 			r.With(middleware.JSONContentType(), middleware.NoCacheHeaders(),
-				middleware.RateLimitMiddleware(config.TokenRateLimiter, config.TrustedProxyCIDRs)).
+				middleware.RateLimitMiddleware(config.TokenRateLimiter, config.TrustedProxyCIDRs), dpopObserve).
 				Post("/token", oauthHandler.Token)
 		} else {
-			r.With(middleware.JSONContentType(), middleware.NoCacheHeaders()).
+			r.With(middleware.JSONContentType(), middleware.NoCacheHeaders(), dpopObserve).
 				Post("/token", oauthHandler.Token)
 		}
 

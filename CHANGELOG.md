@@ -18,10 +18,14 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
   _Traceability: C6 → EPIC-6 → RFC-014 → #28._
 
 ### Infrastructure
+- **CI / formatting:** Normalized the entire repository with `gofmt` and added a
+  `gofmt` gate to CI so unformatted code fails the build. Formatting-only change
+  (no semantics). `golangci-lint` enforcement remains a follow-up.
+  _Traceability: C6 → EPIC-6 → RFC-014 → #26._
+
 - **CI:** Added a GitHub Actions workflow (`.github/workflows/ci.yml`) that runs
   `go build`, `go vet`, `go test -race`, and `govulncheck` on every push to
-  `main` and every pull request. `gofmt`/`golangci-lint` gates are a planned
-  follow-up. _Traceability: C6 → EPIC-6 → RFC-014 → #24._
+  `main` and every pull request. _Traceability: C6 → EPIC-6 → RFC-014 → #24._
 
 ### Security
 - **Toolchain:** Bumped the Go directive to `1.25.11`, clearing 12 standard-

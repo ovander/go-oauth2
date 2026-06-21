@@ -59,15 +59,19 @@ func (s *appUsersTestUserService) Update(_ context.Context, _ uint, _ dto.Update
 func (s *appUsersTestUserService) UpdateProfile(_ context.Context, _ uint, _ dto.UpdateProfileRequest) (*model.User, error) {
 	panic("not implemented")
 }
-func (s *appUsersTestUserService) Delete(_ context.Context, _ uint) error                   { panic("not implemented") }
-func (s *appUsersTestUserService) Block(_ context.Context, _ uint) error                    { panic("not implemented") }
-func (s *appUsersTestUserService) VerifyEmail(_ context.Context, _ uint) error              { return nil }
-func (s *appUsersTestUserService) UpdatePassword(_ context.Context, _ uint, _ string) error { return nil }
-func (s *appUsersTestUserService) IncrementTokenVersion(_ context.Context, _ uint) error    { return nil }
-func (s *appUsersTestUserService) RevokeTokens(_ context.Context, _ uint) error             { return nil }
-func (s *appUsersTestUserService) Unlock(_ context.Context, _ uint) error                   { return nil }
-func (s *appUsersTestUserService) ListSuperadmins(_ context.Context) ([]model.User, error)  { return nil, nil }
-func (s *appUsersTestUserService) CountSuperadmins(_ context.Context) (int64, error)        { return 0, nil }
+func (s *appUsersTestUserService) Delete(_ context.Context, _ uint) error      { panic("not implemented") }
+func (s *appUsersTestUserService) Block(_ context.Context, _ uint) error       { panic("not implemented") }
+func (s *appUsersTestUserService) VerifyEmail(_ context.Context, _ uint) error { return nil }
+func (s *appUsersTestUserService) UpdatePassword(_ context.Context, _ uint, _ string) error {
+	return nil
+}
+func (s *appUsersTestUserService) IncrementTokenVersion(_ context.Context, _ uint) error { return nil }
+func (s *appUsersTestUserService) RevokeTokens(_ context.Context, _ uint) error          { return nil }
+func (s *appUsersTestUserService) Unlock(_ context.Context, _ uint) error                { return nil }
+func (s *appUsersTestUserService) ListSuperadmins(_ context.Context) ([]model.User, error) {
+	return nil, nil
+}
+func (s *appUsersTestUserService) CountSuperadmins(_ context.Context) (int64, error) { return 0, nil }
 func (s *appUsersTestUserService) CreateSuperadmin(_ context.Context, _ dto.CreateSuperadminRequest) (*model.User, error) {
 	panic("not implemented")
 }

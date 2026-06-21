@@ -122,7 +122,7 @@ func TestMED05_RateLimitTokenWindow_LegacyFallback(t *testing.T) {
 func TestMED05_RateLimitTokenWindowMS_TakesPriorityOverLegacy(t *testing.T) {
 	withEnv(t,
 		"RATE_LIMIT_TOKEN_WINDOW_MS", "90000", // 90 s — should win
-		"RATE_LIMIT_TOKEN_WINDOW", "30000",    // 30 s — should be ignored
+		"RATE_LIMIT_TOKEN_WINDOW", "30000", // 30 s — should be ignored
 	)
 	cfg := Load()
 	if cfg.RateLimitTokenWindow != 90*time.Second {

@@ -21,16 +21,16 @@ import (
 //	changes      – AdminLog.Details (stored as jsonb, arbitrary key/value map)
 //	ip_address   – not stored in AdminLog; always empty string for legacy rows
 type AdminAuditLogResponse struct {
-	ID          uint                   `json:"id"`
-	AdminID     uint                   `json:"admin_id"`
-	AdminEmail  string                 `json:"admin_email"`
-	Action      string                 `json:"action"`
-	TargetType  string                 `json:"target_type"`
-	TargetID    *uint                  `json:"target_id,omitempty"`
-	TargetName  string                 `json:"target_name,omitempty"`
-	Changes     map[string]interface{} `json:"changes,omitempty"`
-	IPAddress   string                 `json:"ip_address,omitempty"`
-	CreatedAt   time.Time              `json:"created_at"`
+	ID         uint                   `json:"id"`
+	AdminID    uint                   `json:"admin_id"`
+	AdminEmail string                 `json:"admin_email"`
+	Action     string                 `json:"action"`
+	TargetType string                 `json:"target_type"`
+	TargetID   *uint                  `json:"target_id,omitempty"`
+	TargetName string                 `json:"target_name,omitempty"`
+	Changes    map[string]interface{} `json:"changes,omitempty"`
+	IPAddress  string                 `json:"ip_address,omitempty"`
+	CreatedAt  time.Time              `json:"created_at"`
 }
 
 // AdminAuditListResponse is the paginated envelope returned by GET /api/admin/logs.
@@ -91,19 +91,19 @@ type ServerConfigFeatures struct {
 
 // ServerConfigResponse is the shape returned by GET /api/admin/settings/config.
 type ServerConfigResponse struct {
-	IssuerURL          string               `json:"issuer_url"`
-	AccessTokenTTL     int                  `json:"access_token_ttl"`    // seconds
-	RefreshTokenTTL    int                  `json:"refresh_token_ttl"`   // seconds
-	RateLimitRequests  int                  `json:"rate_limit_requests"` // login limit
-	RateLimitWindow    int                  `json:"rate_limit_window"`   // seconds
-	Environment        string               `json:"environment"`
-	Version            string               `json:"version"`
-	Features           ServerConfigFeatures `json:"features"`
+	IssuerURL         string               `json:"issuer_url"`
+	AccessTokenTTL    int                  `json:"access_token_ttl"`    // seconds
+	RefreshTokenTTL   int                  `json:"refresh_token_ttl"`   // seconds
+	RateLimitRequests int                  `json:"rate_limit_requests"` // login limit
+	RateLimitWindow   int                  `json:"rate_limit_window"`   // seconds
+	Environment       string               `json:"environment"`
+	Version           string               `json:"version"`
+	Features          ServerConfigFeatures `json:"features"`
 }
 
 // ConnectionTestResponse is returned by the test-db and test-cache endpoints.
 type ConnectionTestResponse struct {
-	Status    string `json:"status"`    // "ok" or "error"
+	Status    string `json:"status"` // "ok" or "error"
 	LatencyMs int64  `json:"latency_ms"`
 	Error     string `json:"error,omitempty"`
 }

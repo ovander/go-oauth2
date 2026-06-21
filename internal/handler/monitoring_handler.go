@@ -20,12 +20,12 @@ import (
 
 // MonitoringHandler handles security monitoring endpoints
 type MonitoringHandler struct {
-	db                  *gorm.DB
-	alertRuleRepo       repository.AlertRuleRepository
-	triggeredAlertRepo  repository.TriggeredAlertRepository
-	blockedIPRepo       repository.BlockedIPRepository
-	securityAuditRepo   repository.SecurityAuditLogRepository
-	geoIPService        service.GeoIPService
+	db                 *gorm.DB
+	alertRuleRepo      repository.AlertRuleRepository
+	triggeredAlertRepo repository.TriggeredAlertRepository
+	blockedIPRepo      repository.BlockedIPRepository
+	securityAuditRepo  repository.SecurityAuditLogRepository
+	geoIPService       service.GeoIPService
 }
 
 // NewMonitoringHandler creates a new monitoring handler

@@ -19,15 +19,15 @@ type UpdateSuperadminRequest struct {
 // Response DTOs
 
 type SuperadminResponse struct {
-	ID            uint       `json:"id"`
-	Email         string     `json:"email"`
-	Name          string     `json:"name"`
-	IsVerified    bool       `json:"is_verified"`
-	LastLogin     *time.Time `json:"last_login,omitempty"`
-	FailedLogins  int        `json:"failed_logins"`
-	LockedUntil   *time.Time `json:"locked_until,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	ID           uint       `json:"id"`
+	Email        string     `json:"email"`
+	Name         string     `json:"name"`
+	IsVerified   bool       `json:"is_verified"`
+	LastLogin    *time.Time `json:"last_login,omitempty"`
+	FailedLogins int        `json:"failed_logins"`
+	LockedUntil  *time.Time `json:"locked_until,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 type SuperadminListResponse struct {

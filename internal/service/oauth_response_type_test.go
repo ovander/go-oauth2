@@ -70,11 +70,11 @@ func TestIsValidResponseType_CaseSensitive_Rejected(t *testing.T) {
 func TestIsValidResponseType_Injection_Rejected(t *testing.T) {
 	// Adversarial / unexpected values must be rejected.
 	injections := []string{
-		"code ",     // trailing space
-		" code",     // leading space
-		"code\n",    // newline
-		"code%20",   // URL-encoded space (not yet decoded)
-		"code\x00",  // null byte
+		"code ",    // trailing space
+		" code",    // leading space
+		"code\n",   // newline
+		"code%20",  // URL-encoded space (not yet decoded)
+		"code\x00", // null byte
 	}
 	for _, rt := range injections {
 		if isValidResponseType(rt) {

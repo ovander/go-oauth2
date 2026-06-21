@@ -114,8 +114,8 @@ func TestConnectionConfig_NegativeDBTimeout_DoesNotOverride(t *testing.T) {
 func TestConnectionConfig_MultiplePoolSizes(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		poolSize        int
-		wantMaxIdle     int
+		poolSize    int
+		wantMaxIdle int
 	}{
 		{poolSize: 2, wantMaxIdle: 1},
 		{poolSize: 10, wantMaxIdle: 5},

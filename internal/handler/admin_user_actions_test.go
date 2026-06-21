@@ -72,8 +72,10 @@ func (s *adminTestUserService) UpdatePassword(_ context.Context, _ uint, _ strin
 func (s *adminTestUserService) IncrementTokenVersion(_ context.Context, _ uint) error    { return nil }
 func (s *adminTestUserService) RevokeTokens(_ context.Context, _ uint) error             { return nil }
 func (s *adminTestUserService) Unlock(_ context.Context, _ uint) error                   { return nil }
-func (s *adminTestUserService) ListSuperadmins(_ context.Context) ([]model.User, error)  { return nil, nil }
-func (s *adminTestUserService) CountSuperadmins(_ context.Context) (int64, error)        { return 0, nil }
+func (s *adminTestUserService) ListSuperadmins(_ context.Context) ([]model.User, error) {
+	return nil, nil
+}
+func (s *adminTestUserService) CountSuperadmins(_ context.Context) (int64, error) { return 0, nil }
 func (s *adminTestUserService) CreateSuperadmin(_ context.Context, _ dto.CreateSuperadminRequest) (*model.User, error) {
 	panic("not implemented")
 }
@@ -103,7 +105,7 @@ func (n *noopAdminLogService) GetByDateRange(_ context.Context, _ uint, _, _ tim
 // panicAppService — AppService stub that panics on any call (unused by these tests).
 type panicAppService struct{}
 
-func (p *panicAppService) List(_ context.Context) ([]model.App, error)      { panic("not implemented") }
+func (p *panicAppService) List(_ context.Context) ([]model.App, error) { panic("not implemented") }
 func (p *panicAppService) GetByID(_ context.Context, _ uint) (*model.App, error) {
 	panic("not implemented")
 }
@@ -161,20 +163,22 @@ func (p *panicUserAppRoleService) SetInviteSent(_ context.Context, _, _ uint) er
 // panicEmailService — EmailService stub that panics on any call.
 type panicEmailService struct{}
 
-func (p *panicEmailService) SendVerificationEmail(_, _, _, _ string) error      { panic("not implemented") }
-func (p *panicEmailService) SendPasswordResetEmail(_, _, _, _ string) error     { panic("not implemented") }
-func (p *panicEmailService) SendInvitationEmail(_, _, _, _, _ string) error     { panic("not implemented") }
-func (p *panicEmailService) SendInviteEmail(_, _, _ string) error               { panic("not implemented") }
-func (p *panicEmailService) SendWelcomeEmail(_, _, _ string) error              { panic("not implemented") }
-func (p *panicEmailService) SendAppCredentialsEmail(_, _, _, _, _ string) error { panic("not implemented") }
-func (p *panicEmailService) SendMagicLinkEmail(_, _, _, _ string) error         { panic("not implemented") }
+func (p *panicEmailService) SendVerificationEmail(_, _, _, _ string) error  { panic("not implemented") }
+func (p *panicEmailService) SendPasswordResetEmail(_, _, _, _ string) error { panic("not implemented") }
+func (p *panicEmailService) SendInvitationEmail(_, _, _, _, _ string) error { panic("not implemented") }
+func (p *panicEmailService) SendInviteEmail(_, _, _ string) error           { panic("not implemented") }
+func (p *panicEmailService) SendWelcomeEmail(_, _, _ string) error          { panic("not implemented") }
+func (p *panicEmailService) SendAppCredentialsEmail(_, _, _, _, _ string) error {
+	panic("not implemented")
+}
+func (p *panicEmailService) SendMagicLinkEmail(_, _, _, _ string) error { panic("not implemented") }
 
 // Compile-time interface checks.
-var _ service.UserService        = (*adminTestUserService)(nil)
-var _ service.AdminLogService    = (*noopAdminLogService)(nil)
-var _ service.AppService         = (*panicAppService)(nil)
+var _ service.UserService = (*adminTestUserService)(nil)
+var _ service.AdminLogService = (*noopAdminLogService)(nil)
+var _ service.AppService = (*panicAppService)(nil)
 var _ service.UserAppRoleService = (*panicUserAppRoleService)(nil)
-var _ service.EmailService       = (*panicEmailService)(nil)
+var _ service.EmailService = (*panicEmailService)(nil)
 
 // ---------------------------------------------------------------------------
 // Helpers

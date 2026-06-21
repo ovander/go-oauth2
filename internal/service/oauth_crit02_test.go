@@ -71,8 +71,8 @@ func (r *memCodeRepo) Delete(_ context.Context, code string) error {
 	return nil
 }
 
-func (r *memCodeRepo) DeleteExpired(_ context.Context) (int64, error)  { return 0, nil }
-func (r *memCodeRepo) DeleteByUserID(_ context.Context, _ uint) error  { return nil }
+func (r *memCodeRepo) DeleteExpired(_ context.Context) (int64, error) { return 0, nil }
+func (r *memCodeRepo) DeleteByUserID(_ context.Context, _ uint) error { return nil }
 
 // ---------------------------------------------------------------------------
 // Minimal App repository stub
@@ -88,13 +88,17 @@ func (r *crit02AppRepo) FindByClientID(_ context.Context, _ string) (*model.App,
 	}
 	return r.app, nil
 }
-func (r *crit02AppRepo) FindAll(_ context.Context) ([]model.App, error)           { return nil, nil }
-func (r *crit02AppRepo) FindByID(_ context.Context, _ uint) (*model.App, error)   { return nil, errors.New("not found") }
-func (r *crit02AppRepo) FindByOwnerID(_ context.Context, _ uint) ([]model.App, error) { return nil, nil }
-func (r *crit02AppRepo) Create(_ context.Context, _ *model.App) error             { return nil }
-func (r *crit02AppRepo) Update(_ context.Context, _ *model.App) error             { return nil }
-func (r *crit02AppRepo) Delete(_ context.Context, _ uint) error                   { return nil }
-func (r *crit02AppRepo) GetAllRedirectURIs(_ context.Context) ([]string, error)   { return nil, nil }
+func (r *crit02AppRepo) FindAll(_ context.Context) ([]model.App, error) { return nil, nil }
+func (r *crit02AppRepo) FindByID(_ context.Context, _ uint) (*model.App, error) {
+	return nil, errors.New("not found")
+}
+func (r *crit02AppRepo) FindByOwnerID(_ context.Context, _ uint) ([]model.App, error) {
+	return nil, nil
+}
+func (r *crit02AppRepo) Create(_ context.Context, _ *model.App) error           { return nil }
+func (r *crit02AppRepo) Update(_ context.Context, _ *model.App) error           { return nil }
+func (r *crit02AppRepo) Delete(_ context.Context, _ uint) error                 { return nil }
+func (r *crit02AppRepo) GetAllRedirectURIs(_ context.Context) ([]string, error) { return nil, nil }
 
 // Compile-time interface compliance check.
 var _ repository.AppRepository = (*crit02AppRepo)(nil)
@@ -125,11 +129,11 @@ func (stubUserRepo) FindByRole(_ context.Context, _ model.UserRole) ([]model.Use
 func (stubUserRepo) CountByRole(_ context.Context, _ model.UserRole) (int64, error) { return 0, nil }
 func (stubUserRepo) Create(_ context.Context, _ *model.User) error                  { return nil }
 func (stubUserRepo) Update(_ context.Context, _ *model.User) error                  { return nil }
-func (stubUserRepo) Delete(_ context.Context, _ uint) error                          { return nil }
-func (stubUserRepo) IncrementTokenVersion(_ context.Context, _ uint) error           { return nil }
-func (stubUserRepo) IncrementFailedLoginAttempts(_ context.Context, _ uint) error    { return nil }
-func (stubUserRepo) ResetFailedLoginAttempts(_ context.Context, _ uint) error        { return nil }
-func (stubUserRepo) LockAccount(_ context.Context, _ uint, _ *time.Time) error       { return nil }
+func (stubUserRepo) Delete(_ context.Context, _ uint) error                         { return nil }
+func (stubUserRepo) IncrementTokenVersion(_ context.Context, _ uint) error          { return nil }
+func (stubUserRepo) IncrementFailedLoginAttempts(_ context.Context, _ uint) error   { return nil }
+func (stubUserRepo) ResetFailedLoginAttempts(_ context.Context, _ uint) error       { return nil }
+func (stubUserRepo) LockAccount(_ context.Context, _ uint, _ *time.Time) error      { return nil }
 
 // Compile-time interface compliance check.
 var _ repository.UserRepository = stubUserRepo{}

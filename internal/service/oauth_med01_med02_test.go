@@ -215,7 +215,7 @@ func TestMED01_Revoke_MalformedToken_FallsBackToNuclear(t *testing.T) {
 	svc := &oauthService{
 		userRepo: trackRepo, appRepo: &crit02AppRepo{app: app},
 		userAppRoleRepo: &high04RoleRepo{role: &model.UserAppRole{UserID: user.ID, AppID: app.ID, Role: model.AppRoleUser}},
-		codeStore: cs, tokenService: ts, keyManager: km,
+		codeStore:       cs, tokenService: ts, keyManager: km,
 		usedTokenRepo: usedRepo, issuer: "https://auth.example.com",
 	}
 
@@ -249,7 +249,7 @@ func (r *trackIncrUserRepo) CountByRole(ctx context.Context, role model.UserRole
 }
 func (r *trackIncrUserRepo) Create(ctx context.Context, u *model.User) error { return nil }
 func (r *trackIncrUserRepo) Update(ctx context.Context, u *model.User) error { return nil }
-func (r *trackIncrUserRepo) Delete(ctx context.Context, id uint) error        { return nil }
+func (r *trackIncrUserRepo) Delete(ctx context.Context, id uint) error       { return nil }
 func (r *trackIncrUserRepo) IncrementTokenVersion(ctx context.Context, id uint) error {
 	if r.cb != nil {
 		r.cb()

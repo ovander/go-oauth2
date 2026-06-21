@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	ErrInvalidCodeVerifier = errors.New("invalid code verifier")
+	ErrInvalidCodeVerifier    = errors.New("invalid code verifier")
 	ErrInvalidChallengeMethod = errors.New("invalid code challenge method")
 	ErrPKCEVerificationFailed = errors.New("PKCE verification failed")
 )

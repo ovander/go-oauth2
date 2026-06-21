@@ -154,4 +154,3 @@ func TestValidatePassword_ConcurrentCalls_NoRace(t *testing.T) {
 	}
 	wg.Wait()
 }
-

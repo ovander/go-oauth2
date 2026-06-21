@@ -51,8 +51,10 @@ func (r *stubAppRepo) FindAll(_ context.Context) ([]model.App, error) {
 func (r *stubAppRepo) FindByOwnerID(_ context.Context, _ uint) ([]model.App, error) {
 	panic("not implemented")
 }
-func (r *stubAppRepo) Count(_ context.Context) (int64, error)              { panic("not implemented") }
-func (r *stubAppRepo) GetAllRedirectURIs(_ context.Context) ([]string, error) { panic("not implemented") }
+func (r *stubAppRepo) Count(_ context.Context) (int64, error) { panic("not implemented") }
+func (r *stubAppRepo) GetAllRedirectURIs(_ context.Context) ([]string, error) {
+	panic("not implemented")
+}
 
 var _ repository.AppRepository = (*stubAppRepo)(nil)
 

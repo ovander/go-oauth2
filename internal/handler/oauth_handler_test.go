@@ -36,7 +36,7 @@ func (m *mockAppService) GetByClientID(ctx context.Context, clientID string) (*m
 	panic("GetByClientID called unexpectedly")
 }
 
-func (m *mockAppService) List(ctx context.Context) ([]model.App, error)      { panic("not implemented") }
+func (m *mockAppService) List(ctx context.Context) ([]model.App, error) { panic("not implemented") }
 func (m *mockAppService) GetByID(ctx context.Context, id uint) (*model.App, error) {
 	panic("not implemented")
 }
@@ -49,7 +49,7 @@ func (m *mockAppService) Create(ctx context.Context, req dto.CreateAppRequest, o
 func (m *mockAppService) Update(ctx context.Context, id uint, req dto.UpdateAppRequest) (*model.App, error) {
 	panic("not implemented")
 }
-func (m *mockAppService) Delete(ctx context.Context, id uint) error          { panic("not implemented") }
+func (m *mockAppService) Delete(ctx context.Context, id uint) error { panic("not implemented") }
 func (m *mockAppService) RotateSecret(ctx context.Context, id uint) (*model.App, string, error) {
 	panic("not implemented")
 }
@@ -119,9 +119,9 @@ func buildJWTPayload(claims map[string]interface{}) string {
 
 func TestExtractClientIDFromTokenHint_ValidToken(t *testing.T) {
 	tests := []struct {
-		name    string
-		aud     interface{}
-		wantID  string
+		name   string
+		aud    interface{}
+		wantID string
 	}{
 		{
 			name:   "string audience",

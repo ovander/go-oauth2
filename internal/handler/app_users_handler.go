@@ -11,9 +11,9 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/dto"
 	"github.com/ovandermoten/go-oauth2/internal/middleware"
 	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
 	"github.com/ovandermoten/go-oauth2/internal/service"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
 type AppUsersHandler struct {

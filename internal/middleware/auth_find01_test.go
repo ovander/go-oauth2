@@ -65,10 +65,10 @@ func (r *find01UserRepo) FindByRole(_ context.Context, _ model.UserRole) ([]mode
 func (r *find01UserRepo) CountByRole(_ context.Context, _ model.UserRole) (int64, error) {
 	return 0, nil
 }
-func (r *find01UserRepo) Create(_ context.Context, _ *model.User) error           { return nil }
-func (r *find01UserRepo) Update(_ context.Context, _ *model.User) error           { return nil }
-func (r *find01UserRepo) Delete(_ context.Context, _ uint) error                  { return nil }
-func (r *find01UserRepo) IncrementTokenVersion(_ context.Context, _ uint) error   { return nil }
+func (r *find01UserRepo) Create(_ context.Context, _ *model.User) error                { return nil }
+func (r *find01UserRepo) Update(_ context.Context, _ *model.User) error                { return nil }
+func (r *find01UserRepo) Delete(_ context.Context, _ uint) error                       { return nil }
+func (r *find01UserRepo) IncrementTokenVersion(_ context.Context, _ uint) error        { return nil }
 func (r *find01UserRepo) IncrementFailedLoginAttempts(_ context.Context, _ uint) error { return nil }
 func (r *find01UserRepo) ResetFailedLoginAttempts(_ context.Context, _ uint) error     { return nil }
 func (r *find01UserRepo) LockAccount(_ context.Context, _ uint, _ *time.Time) error    { return nil }

@@ -4,8 +4,8 @@
 //
 // The two residual err.Error() usages fixed in this session were in the
 // redirect_uri validation paths of GET and POST /oauth/authorize.  Both now:
-//   1. Log the full error internally via the structured logger.
-//   2. Map the sentinel error to a safe description via redirectURIErrorDescription.
+//  1. Log the full error internally via the structured logger.
+//  2. Map the sentinel error to a safe description via redirectURIErrorDescription.
 //
 // The server_error default branches in Token and UserInfo were fixed in the
 // prior session; tests here guard against regression.

@@ -11,12 +11,12 @@ import (
 )
 
 type AuthHandler struct {
-	authService     service.AuthService
-	userService     service.UserService
-	emailService    service.EmailService
-	autoDefense     *service.AutoDefenseService
-	environment     string
-	issuer          string
+	authService  service.AuthService
+	userService  service.UserService
+	emailService service.EmailService
+	autoDefense  *service.AutoDefenseService
+	environment  string
+	issuer       string
 }
 
 func NewAuthHandler(authService service.AuthService, userService service.UserService, emailService service.EmailService, environment, issuer string) *AuthHandler {

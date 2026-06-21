@@ -54,14 +54,14 @@ func NewOAuthHandler(
 		secretKey = k
 	}
 	return &OAuthHandler{
-		oauthService:  oauthService,
-		authService:   authService,
-		appService:    appService,
+		oauthService:    oauthService,
+		authService:     authService,
+		appService:      appService,
 		templateService: templateService,
-		tokenService:  tokenService,
-		issuer:        issuer,
-		secretKey:     secretKey,
-		httpsRequired: strings.HasPrefix(issuer, "https://"),
+		tokenService:    tokenService,
+		issuer:          issuer,
+		secretKey:       secretKey,
+		httpsRequired:   strings.HasPrefix(issuer, "https://"),
 	}
 }
 
@@ -166,15 +166,16 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 
 // POST /oauth/authorize — handles two actions:
 //
-//   action=login   (default) — authenticates email+password credentials and,
-//                              on success, renders the consent page.
-//   action=consent           — validates a signed consent token and the user's
-//                              explicit "Allow" / "Deny" choice, then issues
-//                              the authorization code or redirects with an error.
+//	action=login   (default) — authenticates email+password credentials and,
+//	                           on success, renders the consent page.
+//	action=consent           — validates a signed consent token and the user's
+//	                           explicit "Allow" / "Deny" choice, then issues
+//	                           the authorization code or redirects with an error.
 //
 // CRIT-03: both actions first validate the CSRF double-submit cookie.
 // CRIT-04: on successful login the handler renders the consent page rather
-//          than immediately issuing an authorization code.
+//
+//	than immediately issuing an authorization code.
 func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 	// G120: cap the form body to 1 MB to prevent memory-exhaustion via huge POST bodies.
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
@@ -906,4 +907,3 @@ func writeOAuthError(w http.ResponseWriter, errorCode, description string, statu
 		ErrorDescription: description,
 	})
 }
-

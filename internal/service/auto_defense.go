@@ -39,7 +39,7 @@ func DefaultAutoDefenseConfig() AutoDefenseConfig {
 		MaxBlockDuration:          24 * time.Hour,   // Up to 24 hours
 		BlockEscalationMultiplier: 2.0,              // Double on each offense
 
-		BruteForceThreshold: 20,              // 20 attempts
+		BruteForceThreshold: 20,               // 20 attempts
 		BruteForceWindow:    30 * time.Second, // in 30 seconds = brute force
 
 		CleanupInterval: 5 * time.Minute,

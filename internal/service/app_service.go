@@ -111,13 +111,13 @@ func (s *appService) Create(ctx context.Context, req dto.CreateAppRequest, owner
 		IsPublic:         req.IsPublic,
 		// Public clients always require PKCE — enforce it even if the caller
 		// did not explicitly set require_pkce in the request.
-		RequirePKCE: req.IsPublic || req.RequirePKCE,
-		Active:      true,
-		URL:         req.URL,
+		RequirePKCE:  req.IsPublic || req.RequirePKCE,
+		Active:       true,
+		URL:          req.URL,
 		RedirectURIs: model.StringArray(req.RedirectURIs),
-		OwnerID:     &ownerID,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		OwnerID:      &ownerID,
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
 	}
 
 	if err := s.repo.Create(ctx, app); err != nil {

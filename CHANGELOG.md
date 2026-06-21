@@ -10,6 +10,15 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Security
+- **MFA / Login recovery:** Login step-up now accepts a one-time **recovery
+  code** in place of a TOTP code, completing the backup story (#52): a user who
+  has lost their authenticator can submit a recovery code in the `mfa_code`
+  field at login. A valid TOTP code is still the common path and never consumes
+  a backup code; only when TOTP fails is the value tried (and consumed) as a
+  recovery code, with the redemption audited (`mfa_recovery_code_used`).
+  _Traceability: C9 → EPIC-9 → RFC-011 → #54._
+
 ### Added
 - **MFA / Recovery codes:** One-time backup codes for MFA. `MFAService` can now
   `GenerateRecoveryCodes` (10 per set, replacing any prior set; returned once)

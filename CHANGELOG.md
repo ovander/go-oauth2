@@ -10,6 +10,19 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Added
+- **Audit / Security:** Audit rows are now **hash-chained** (RFC-007), closing
+  the gap left by per-row HMACs (which detect mutation but not deletion or
+  reordering). Each row carries the previous chained row's hash (`prev_hash`,
+  bound into its own `row_hash`); `repository.VerifyAuditChain` flags any row
+  whose backward link is broken, and the integrity scanner records a critical
+  `audit_integrity_violation` (with `chain_break_row_id`) for each. Appends are
+  serialized with a transaction-scoped advisory lock so the chain cannot fork
+  under concurrent writes. Adds the nullable `security_audit_logs.prev_hash`
+  column via migration `0011`; existing rows keep an empty `prev_hash` and remain
+  verifiable for mutation (the chain hash is backward compatible).
+  _Traceability: C5 → EPIC-5 → RFC-007 → #56._
+
 ### Security
 - **MFA / Login recovery:** Login step-up now accepts a one-time **recovery
   code** in place of a TOTP code, completing the backup story (#52): a user who

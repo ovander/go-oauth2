@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/ovandermoten/go-oauth2/internal/model"
@@ -43,6 +44,10 @@ func NewSecurityAuditLogRepositoryWithIntegrity(db *gorm.DB, secret []byte) Secu
 	return &gormSecurityAuditLogRepository{db: db, secret: secret}
 }
 
+// auditChainLockKey is a fixed advisory-lock key used to serialize audit-row
+// appends so the RFC-007 hash chain cannot fork under concurrent writes.
+const auditChainLockKey = int64(0x4155444954434841) // "AUDITCHA"
+
 func (r *gormSecurityAuditLogRepository) Create(ctx context.Context, log *model.SecurityAuditLog) error {
 	if log.CreatedAt.IsZero() {
 		log.CreatedAt = time.Now()
@@ -51,11 +56,33 @@ func (r *gormSecurityAuditLogRepository) Create(ctx context.Context, log *model.
 	// timestamp equals what the integrity hash is computed over and what a
 	// later read returns — keeping VerifyAuditRowHash stable across a round trip.
 	log.CreatedAt = log.CreatedAt.UTC().Truncate(time.Microsecond)
-	// Stamp the tamper-evidence HMAC when an integrity secret is configured.
-	if len(r.secret) > 0 {
-		log.RowHash = computeAuditRowHash(r.secret, log)
+
+	// No integrity secret: preserve prior (unchained, unstamped) behaviour.
+	if len(r.secret) == 0 {
+		return r.db.WithContext(ctx).Create(log).Error
 	}
-	return r.db.WithContext(ctx).Create(log).Error
+
+	// RFC-007: chain the row to the current tip and stamp the HMAC inside a
+	// transaction. A transaction-scoped advisory lock serializes concurrent
+	// audit appends so the chain links to a single, stable predecessor and does
+	// not fork. The lock is released automatically at commit/rollback.
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", auditChainLockKey).Error; err != nil {
+			return err
+		}
+		var tip model.SecurityAuditLog
+		err := tx.Where("row_hash <> ''").Order("id DESC").Limit(1).Take(&tip).Error
+		switch {
+		case err == nil:
+			log.PrevHash = tip.RowHash
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			log.PrevHash = "" // genesis row
+		default:
+			return err
+		}
+		log.RowHash = computeAuditRowHash(r.secret, log)
+		return tx.Create(log).Error
+	})
 }
 
 func (r *gormSecurityAuditLogRepository) FindByUser(ctx context.Context, userID uint, page, pageSize int) ([]model.SecurityAuditLog, int64, error) {

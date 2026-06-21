@@ -273,6 +273,23 @@ var migrations = []Migration{
 			return nil
 		},
 	},
+	{
+		// RFC-007: hash-chaining for the audit log. prev_hash links each row to
+		// the previous row's row_hash so deletion/reordering is detectable, not
+		// just in-place mutation. Additive and nullable; existing rows keep an
+		// empty prev_hash and remain verifiable for mutation.
+		ID:   "0011",
+		Name: "add_security_audit_logs.prev_hash",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("security_audit_logs") {
+				return nil
+			}
+			if db.Migrator().HasColumn(&model.SecurityAuditLog{}, "prev_hash") {
+				return nil
+			}
+			return db.Exec("ALTER TABLE security_audit_logs ADD COLUMN prev_hash VARCHAR(64)").Error
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

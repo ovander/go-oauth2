@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"sort"
 	"time"
 
 	"github.com/ovandermoten/go-oauth2/internal/model"
@@ -18,9 +19,10 @@ import (
 // and never in the database, a row mutated by anyone with database-only access
 // — but without the secret — fails verification and is therefore detectable.
 //
-// Scope/limitation: this detects row *mutation*. It does not detect row
-// deletion or insertion; that requires hash-chaining (a separate RFC-007
-// slice).
+// Each row also carries the previous chained row's hash (PrevHash), forming a
+// hash chain. VerifyAuditChain walks an ordered range and reports any row whose
+// backward link is broken — which is what a deletion, insertion, or reordering
+// of rows produces — extending detection beyond in-place mutation.
 
 // computeAuditRowHash returns the hex-encoded HMAC-SHA256 over a canonical,
 // DB-round-trip-stable serialization of the row's immutable fields. It returns
@@ -67,6 +69,43 @@ func VerifyAuditRows(secret []byte, logs []model.SecurityAuditLog) []uint {
 	return tampered
 }
 
+// VerifyAuditChain checks the hash chain over a slice of audit rows and returns
+// the IDs of rows whose backward link is broken — i.e. a row that carries a
+// PrevHash which does not equal the RowHash of the immediately preceding chained
+// row in the slice. A break is what deletion, insertion, or reordering of rows
+// produces.
+//
+// The slice is sorted by ID ascending first (callers may pass any order). Only
+// rows that carry a RowHash participate; rows with an empty RowHash (written
+// before integrity stamping) are skipped and do not break the chain. The first
+// participating row is the anchor and is not link-checked, since its
+// predecessor may lie outside the provided range. Returns nil for an empty
+// secret. VerifyAuditChain checks links only; pair it with VerifyAuditRows to
+// also catch in-place mutation.
+func VerifyAuditChain(secret []byte, logs []model.SecurityAuditLog) []uint {
+	if len(secret) == 0 {
+		return nil
+	}
+	// Sort a copy by ID ascending so the caller's ordering does not matter.
+	ordered := make([]model.SecurityAuditLog, len(logs))
+	copy(ordered, logs)
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].ID < ordered[j].ID })
+
+	var broken []uint
+	var prev *model.SecurityAuditLog
+	for i := range ordered {
+		row := &ordered[i]
+		if row.RowHash == "" {
+			continue // unchained (pre-integrity) row
+		}
+		if prev != nil && row.PrevHash != prev.RowHash {
+			broken = append(broken, row.ID)
+		}
+		prev = row
+	}
+	return broken
+}
+
 // canonicalAuditPayload builds a deterministic, DB-round-trip-stable byte
 // representation of the immutable audit fields. CreatedAt is reduced to
 // microseconds (PostgreSQL timestamptz precision) and Details is normalized
@@ -84,6 +123,10 @@ func canonicalAuditPayload(log *model.SecurityAuditLog) []byte {
 		Success            bool            `json:"success"`
 		Details            json.RawMessage `json:"details"`
 		CreatedAtUnixMicro int64           `json:"created_at_unix_micro"`
+		// PrevHash chains the row to its predecessor. It is omitempty so rows
+		// written before chaining (PrevHash == "") hash identically to the
+		// pre-chaining format and remain verifiable.
+		PrevHash string `json:"prev_hash,omitempty"`
 	}{
 		UserID:             log.UserID,
 		AppID:              log.AppID,
@@ -95,6 +138,7 @@ func canonicalAuditPayload(log *model.SecurityAuditLog) []byte {
 		Success:            log.Success,
 		Details:            canonicalJSON(log.Details),
 		CreatedAtUnixMicro: log.CreatedAt.UTC().Truncate(time.Microsecond).UnixMicro(),
+		PrevHash:           log.PrevHash,
 	}
 	// A struct marshals with fields in declaration order; map keys inside
 	// Details are already normalized/sorted by canonicalJSON.

@@ -54,6 +54,7 @@ func (s *AuditIntegrityScanner) Scan(ctx context.Context, since time.Time) (chec
 		}
 		checked += len(rows)
 
+		// In-place mutation: a row whose stored HMAC no longer matches.
 		for _, id := range repository.VerifyAuditRows(s.secret, rows) {
 			violations++
 			logger.Errorf("RFC-007: audit integrity violation — security_audit_logs row %d failed HMAC verification", id)
@@ -64,6 +65,20 @@ func (s *AuditIntegrityScanner) Scan(ctx context.Context, since time.Time) (chec
 				Severity:  model.SecuritySeverityCritical,
 				Success:   false,
 				Details:   map[string]interface{}{"tampered_row_id": id},
+				CreatedAt: time.Now(),
+			})
+		}
+
+		// Chain break: a row whose backward link does not match its predecessor —
+		// what deletion, insertion, or reordering produces.
+		for _, id := range repository.VerifyAuditChain(s.secret, rows) {
+			violations++
+			logger.Errorf("RFC-007: audit chain violation — security_audit_logs row %d has a broken hash-chain link (deletion/reordering)", id)
+			_ = s.repo.Create(ctx, &model.SecurityAuditLog{
+				EventType: model.SecurityEventAuditIntegrityViolation,
+				Severity:  model.SecuritySeverityCritical,
+				Success:   false,
+				Details:   map[string]interface{}{"chain_break_row_id": id},
 				CreatedAt: time.Now(),
 			})
 		}

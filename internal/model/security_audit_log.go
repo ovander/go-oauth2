@@ -83,7 +83,12 @@ type SecurityAuditLog struct {
 	// RowHash is a keyed HMAC over the row's immutable content, making the row
 	// tamper-evident (RFC-007). Empty when integrity stamping is disabled (no
 	// configured secret).
-	RowHash   string    `gorm:"column:row_hash;type:varchar(64);index" json:"row_hash,omitempty"`
+	RowHash string `gorm:"column:row_hash;type:varchar(64);index" json:"row_hash,omitempty"`
+	// PrevHash links this row to the previous chained row's RowHash, forming a
+	// hash chain so that deletion or reordering of rows is detectable (RFC-007),
+	// not just in-place mutation. Empty for the genesis row and for rows written
+	// before chaining was enabled.
+	PrevHash  string    `gorm:"column:prev_hash;type:varchar(64)" json:"prev_hash,omitempty"`
 	Success   bool      `gorm:"index" json:"success"`
 	User      *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	App       *App      `gorm:"foreignKey:AppID" json:"app,omitempty"`

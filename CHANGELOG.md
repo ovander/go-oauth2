@@ -11,6 +11,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **MFA:** New `service.MFAService` — the TOTP enrollment/verification lifecycle
+  (`BeginEnrollment`, `ConfirmEnrollment`, `Verify`, `Disable`, `IsEnabled`).
+  Enrollment generates a TOTP secret, stores it **encrypted at rest**
+  (`auth.EncryptSecret`, keyed by `SECRET_KEY_BASE`), and leaves MFA disabled
+  until a code is confirmed; a database compromise alone does not reveal the
+  seed. Adds `users.mfa_secret` / `users.mfa_enabled` (`User.MFASecret` is never
+  serialized) via migration `0009` (additive, nullable/defaulted). The service
+  is not yet wired into HTTP enrollment or login step-up — that is the next
+  slice. Also adds `totp.GenerateCode` (the symmetric counterpart to
+  `ValidateCode`). _Traceability: C9 → EPIC-9 → RFC-011 → #44._
 - **Security / crypto:** New `auth.EncryptSecret` / `auth.DecryptSecret` —
   authenticated AES-256-GCM encryption (key derived from `SECRET_KEY_BASE` via
   SHA-256, random nonce) for storing short restricted secrets (e.g. TOTP seeds)

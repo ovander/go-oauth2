@@ -221,6 +221,29 @@ var migrations = []Migration{
 			return db.Exec("CREATE INDEX idx_security_audit_logs_row_hash ON security_audit_logs(row_hash)").Error
 		},
 	},
+	{
+		// RFC-011 / EPIC-9: per-user TOTP MFA. mfa_secret stores the TOTP seed
+		// encrypted at rest; mfa_enabled flags an enrolled+confirmed user.
+		// Additive and nullable; existing users default to MFA disabled.
+		ID:   "0009",
+		Name: "add_users.mfa_secret_and_enabled",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("users") {
+				return nil // table does not exist yet — AutoMigrate will create it correctly
+			}
+			if !db.Migrator().HasColumn(&model.User{}, "mfa_secret") {
+				if err := db.Exec("ALTER TABLE users ADD COLUMN mfa_secret VARCHAR(255)").Error; err != nil {
+					return err
+				}
+			}
+			if !db.Migrator().HasColumn(&model.User{}, "mfa_enabled") {
+				if err := db.Exec("ALTER TABLE users ADD COLUMN mfa_enabled BOOLEAN NOT NULL DEFAULT FALSE").Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

@@ -94,6 +94,17 @@ func ValidateCode(secret, code string, t time.Time) bool {
 	return false
 }
 
+// GenerateCode returns the TOTP code for secret at time t (the value an
+// authenticator app would display). It is the symmetric counterpart to
+// ValidateCode. An unparseable secret returns an error.
+func GenerateCode(secret string, t time.Time) (string, error) {
+	key, err := decodeSecret(secret)
+	if err != nil {
+		return "", fmt.Errorf("totp: %w", err)
+	}
+	return hotp(key, uint64(t.Unix())/period), nil
+}
+
 // decodeSecret accepts the authenticator-standard unpadded base32, but also
 // tolerates padded/whitespaced/lowercase input.
 func decodeSecret(secret string) ([]byte, error) {

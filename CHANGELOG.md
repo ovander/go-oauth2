@@ -11,6 +11,18 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Tokens / DPoP:** New `internal/shared/auth/dpop` package — standalone
+  verification of DPoP proof JWTs (RFC 9449), the foundation for
+  sender-constrained access tokens (EPIC-8 / RFC-003). `dpop.Verify` validates a
+  proof's `typ` (`dpop+jwt`), algorithm (ES256), embedded public `jwk`,
+  signature, `htm`/`htu` request binding, and `iat` freshness, and returns the
+  RFC 7638 JWK thumbprint (`jkt`) used to bind a token to the key. Rejects
+  non-ES256 proofs, a `jwk` carrying a private key, and stale/future proofs.
+  Verified against generated keys and tamper cases. Not yet wired into the token
+  endpoint or resource path — those are later slices.
+  _Traceability: C8 → EPIC-8 → RFC-003 → #60._
+
+### Added
 - **MFA / Recovery codes:** The MFA status endpoint (`GET /api/profile/mfa`) now
   reports `recovery_codes_remaining` so a user (and the UI) can regenerate backup
   codes before running out — reducing the lockout risk of the admin enforce

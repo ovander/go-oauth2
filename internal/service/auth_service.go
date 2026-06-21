@@ -46,6 +46,35 @@ type authService struct {
 	maxFailedAttempts int
 	lockoutDuration   time.Duration
 	mfa               MFAService // optional; nil disables login step-up
+	adminMFAPolicy    string     // "off" (default) | "observe" | "enforce"
+}
+
+// enforceAdminMFAPolicy applies the admin-enrollment MFA policy at admin-portal
+// login. It is a no-op when the policy is off or the admin already has MFA
+// enrolled. Otherwise it audits the gap and, under "enforce", denies login with
+// ErrMFAEnrollmentRequired (the admin must enroll before they can log in).
+func (s *authService) enforceAdminMFAPolicy(ctx context.Context, user *model.User) error {
+	if user.MFAEnabled {
+		return nil
+	}
+	switch s.adminMFAPolicy {
+	case MFAPolicyObserve:
+		s.logSecurityEvent(ctx, model.SecurityEventMFAPolicyViolation, &user.ID, nil, true, map[string]interface{}{
+			"email":      user.Email,
+			"login_type": "admin_portal",
+			"policy":     MFAPolicyObserve,
+		})
+		return nil
+	case MFAPolicyEnforce:
+		s.logSecurityEvent(ctx, model.SecurityEventMFAPolicyViolation, &user.ID, nil, false, map[string]interface{}{
+			"email":      user.Email,
+			"login_type": "admin_portal",
+			"policy":     MFAPolicyEnforce,
+		})
+		return ErrMFAEnrollmentRequired
+	default: // MFAPolicyOff / unset
+		return nil
+	}
 }
 
 // WithMFA wires the MFA verifier for login step-up and returns the receiver.
@@ -71,10 +100,22 @@ func (s *authService) stepUpMFA(ctx context.Context, user *model.User, code stri
 	return nil
 }
 
+// MFA admin-enrollment policy modes. "off" leaves admin login unchanged;
+// "observe" allows an admin without MFA but audits it; "enforce" denies login
+// until the admin enrolls. (Observe→enforce rollout, RFC-011.)
+const (
+	MFAPolicyOff     = "off"
+	MFAPolicyObserve = "observe"
+	MFAPolicyEnforce = "enforce"
+)
+
 // AuthServiceConfig holds auth service configuration
 type AuthServiceConfig struct {
 	MaxFailedAttempts int
 	LockoutDuration   time.Duration
+	// AdminMFAPolicy is one of "off" (default), "observe", or "enforce" and
+	// governs whether admin-portal login requires MFA enrollment.
+	AdminMFAPolicy string
 }
 
 // NewAuthService creates a new auth service
@@ -103,6 +144,7 @@ func NewAuthService(
 		tokenService:      tokenService,
 		maxFailedAttempts: config.MaxFailedAttempts,
 		lockoutDuration:   config.LockoutDuration,
+		adminMFAPolicy:    config.AdminMFAPolicy,
 	}
 }
 
@@ -133,6 +175,7 @@ func NewAuthServiceWithUsedTokenRepo(
 		tokenService:      tokenService,
 		maxFailedAttempts: config.MaxFailedAttempts,
 		lockoutDuration:   config.LockoutDuration,
+		adminMFAPolicy:    config.AdminMFAPolicy,
 	}
 }
 
@@ -166,6 +209,7 @@ func NewAuthServiceFull(
 		emailService:      emailService,
 		maxFailedAttempts: config.MaxFailedAttempts,
 		lockoutDuration:   config.LockoutDuration,
+		adminMFAPolicy:    config.AdminMFAPolicy,
 	}
 }
 
@@ -460,6 +504,12 @@ func (s *authService) AdminLogin(ctx context.Context, req dto.AdminLoginRequest)
 			"reason":     "not_superadmin",
 		})
 		return nil, ErrNotAdmin
+	}
+
+	// Admin MFA-enrollment policy (RFC-011): under "enforce", an admin without
+	// MFA is denied until they enroll; under "observe" the gap is only audited.
+	if err := s.enforceAdminMFAPolicy(ctx, user); err != nil {
+		return nil, err
 	}
 
 	// Login step-up (RFC-011): an MFA-enrolled admin must present a valid TOTP code.

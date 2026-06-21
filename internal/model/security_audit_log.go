@@ -47,6 +47,10 @@ const (
 
 	// Integrity (RFC-007): a stored audit row failed HMAC verification.
 	SecurityEventAuditIntegrityViolation SecurityEventType = "audit_integrity_violation"
+
+	// MFA (RFC-011): an admin subject to the MFA policy logged in (observe) or
+	// was denied (enforce) without having MFA enrolled.
+	SecurityEventMFAPolicyViolation SecurityEventType = "mfa_policy_violation"
 )
 
 // SecuritySeverity indicates the severity level of the event

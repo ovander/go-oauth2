@@ -67,6 +67,9 @@ func (h *AdminAuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			writeError(w, "mfa_required", http.StatusUnauthorized)
 		case service.ErrMFAInvalidCode:
 			writeError(w, "invalid mfa code", http.StatusUnauthorized)
+		case service.ErrMFAEnrollmentRequired:
+			// Policy requires admins to enroll MFA before they can log in.
+			writeError(w, "mfa_enrollment_required", http.StatusForbidden)
 		default:
 			writeError(w, err.Error(), http.StatusBadRequest)
 		}

@@ -10,6 +10,15 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Added
+- **Audit / Security:** Audit-row tamper-evidence is now **actionable**.
+  `repository.VerifyAuditRows` batch-verifies stored rows' HMACs, and the new
+  `service.AuditIntegrityScanner.Scan` pages audit rows over a time window,
+  flags any that fail verification, and records a critical
+  `audit_integrity_violation` event (with the offending row id) per tampered
+  row. (An opt-in scheduler to run this automatically is a tracked follow-up.)
+  _Traceability: C5 → EPIC-5 → RFC-007 → #34._
+
 ### Fixed
 - **Tests:** Made `TestLOW02_MaxAge_ExactlyAtBoundary_Accepted` deterministic by
   re-anchoring `LastLogin` immediately before the call, eliminating a timing

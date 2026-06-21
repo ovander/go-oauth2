@@ -11,6 +11,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Tokens / DPoP:** `DPOP_MODE=enforce` now **rejects a present-but-invalid**
+  DPoP proof at the token endpoint with `400 invalid_dpop_proof` (RFC 9449 §5) —
+  a malformed, expired, replayed, or mismatched proof can no longer be silently
+  downgraded to a bearer token. A valid proof still binds the token and a request
+  with **no** proof still proceeds (requiring DPoP per client is a later slice),
+  so existing non-DPoP clients are unaffected. The token-endpoint middleware
+  (`middleware.DPoP`, renamed from `DPoPObserve`) now handles off/observe/enforce.
+  _Traceability: C8 → EPIC-8 → RFC-003 → #70._
+
+### Added
 - **Tokens / DPoP:** **Opportunistic sender-constraint** at the token endpoint
   (RFC 9449). When a valid DPoP proof accompanies an `authorization_code` or
   `refresh_token` grant (`DPOP_MODE=observe`/`enforce`), the issued **access

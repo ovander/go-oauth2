@@ -591,7 +591,7 @@ func (s *oauthService) Introspect(ctx context.Context, token string) (*dto.Intro
 		clientID = claims.Audience[0]
 	}
 
-	return &dto.IntrospectResponse{
+	resp := &dto.IntrospectResponse{
 		Active:    true,
 		Scope:     claims.Scope,
 		ClientID:  clientID,
@@ -600,7 +600,13 @@ func (s *oauthService) Introspect(ctx context.Context, token string) (*dto.Intro
 		Exp:       claims.ExpiresAt.Unix(),
 		Iat:       claims.IssuedAt.Unix(),
 		Sub:       claims.Subject,
-	}, nil
+	}
+	// Surface DPoP sender-constraint so resource servers can enforce it
+	// (RFC 7662 §2.2 / RFC 9449 §7).
+	if claims.Cnf != nil && claims.Cnf.JKT != "" {
+		resp.Cnf = &dto.CnfClaim{JKT: claims.Cnf.JKT}
+	}
+	return resp, nil
 }
 
 // Revoke handles token revocation (RFC 7009).

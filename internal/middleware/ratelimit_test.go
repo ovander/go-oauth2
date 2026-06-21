@@ -143,8 +143,8 @@ func TestGetClientIPSafe_UntrustedRemoteAddr_IgnoresProxyHeaders(t *testing.T) {
 		{
 			name:       "untrusted peer cannot spoof XFF",
 			remoteAddr: "1.2.3.4:5678", // NOT in 10.0.0.0/8
-			xff:        "10.0.0.1",      // attacker claims to be internal
-			wantIP:     "1.2.3.4",       // must use RemoteAddr
+			xff:        "10.0.0.1",     // attacker claims to be internal
+			wantIP:     "1.2.3.4",      // must use RemoteAddr
 		},
 		{
 			name:       "untrusted peer with multi-hop XFF",

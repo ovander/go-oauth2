@@ -33,7 +33,7 @@ func seedCodeWithPKCE(t *testing.T, svc *oauthService, clientID, redirectURI str
 	t.Helper()
 
 	verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk" // 43-char URL-safe string
-	challenge := auth.GenerateCodeChallenge(verifier)           // S256
+	challenge := auth.GenerateCodeChallenge(verifier)        // S256
 
 	var err error
 	code, err = svc.codeStore.GenerateCode(
@@ -54,7 +54,7 @@ func publicClientApp() *model.App {
 	return &model.App{
 		ID:               99,
 		ClientID:         "public-spa",
-		ClientSecretHash: "",   // no secret — public client
+		ClientSecretHash: "", // no secret — public client
 		IsPublic:         true,
 		RequirePKCE:      true,
 		Active:           true,

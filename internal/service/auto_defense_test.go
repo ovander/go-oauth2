@@ -36,7 +36,7 @@ func (r *noopBlockedIPRepo) Create(_ context.Context, _ *model.BlockedIP) error 
 	r.creates++
 	return nil
 }
-func (r *noopBlockedIPRepo) Delete(_ context.Context, _ uint) error             { return nil }
+func (r *noopBlockedIPRepo) Delete(_ context.Context, _ uint) error { return nil }
 func (r *noopBlockedIPRepo) FindByID(_ context.Context, _ uint) (*model.BlockedIP, error) {
 	return nil, nil
 }
@@ -110,7 +110,7 @@ func newTestAutoDefense() (*AutoDefenseService, *noopBlockedIPRepo) {
 		BruteForceThreshold:       10,
 		BruteForceWindow:          time.Second,
 		CleanupInterval:           time.Hour, // don't fire during tests
-		MaxTrackedIPs:             3,          // intentionally small for eviction tests
+		MaxTrackedIPs:             3,         // intentionally small for eviction tests
 	}
 	svc := NewAutoDefenseService(repo, &noopSecurityAuditRepo{}, cfg)
 	return svc, repo
@@ -193,7 +193,7 @@ func TestAutoDefense_LRU_MostRecentlyUsed_NotEvicted(t *testing.T) {
 	// Record activity for 3 IPs.
 	svc.RecordFailedLogin(ctx, "old.old.old.1", "ua") // added first (LRU candidate)
 	svc.RecordFailedLogin(ctx, "old.old.old.2", "ua")
-	svc.RecordFailedLogin(ctx, "recent.ip.1", "ua")   // added last (most recently used)
+	svc.RecordFailedLogin(ctx, "recent.ip.1", "ua") // added last (most recently used)
 
 	// Touch "old.old.old.1" again to make it "most recently used".
 	svc.RecordFailedLogin(ctx, "old.old.old.1", "ua")

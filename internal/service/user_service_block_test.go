@@ -24,9 +24,9 @@ import (
 type memUserRepo struct {
 	users map[uint]*model.User
 	// lockCalled records whether LockAccount was called and with which args.
-	lockCalled  bool
-	lockUserID  uint
-	lockUntil   *time.Time
+	lockCalled bool
+	lockUserID uint
+	lockUntil  *time.Time
 }
 
 func newMemUserRepo(us ...*model.User) *memUserRepo {

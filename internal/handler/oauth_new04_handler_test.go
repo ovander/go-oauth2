@@ -6,14 +6,15 @@
 // when valid credentials are supplied.
 //
 // Three paths after the fix:
-//   Path 1 — Bearer token in context (OptionalAuthMiddleware):
-//             Revoke with known userID; always return 200 (existing behaviour).
-//   Path 2 — Client credentials (Basic Auth or form body):
-//             Validate via AppService.ValidateClientCredentials; if valid, revoke
-//             and return 200; if invalid, return 401.
-//   Path 3 — No credentials at all:
-//             Return 200 without revoking (RFC 7009 §2.2 — token enumeration
-//             prevention).
+//
+//	Path 1 — Bearer token in context (OptionalAuthMiddleware):
+//	          Revoke with known userID; always return 200 (existing behaviour).
+//	Path 2 — Client credentials (Basic Auth or form body):
+//	          Validate via AppService.ValidateClientCredentials; if valid, revoke
+//	          and return 200; if invalid, return 401.
+//	Path 3 — No credentials at all:
+//	          Return 200 without revoking (RFC 7009 §2.2 — token enumeration
+//	          prevention).
 //
 // Tests:
 //   - Valid client credentials (Basic Auth) → Revoke() called, 200

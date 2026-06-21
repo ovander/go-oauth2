@@ -40,7 +40,7 @@ func (r *stubBlockedIPRepo) FindActive(_ context.Context) ([]model.BlockedIP, er
 	return r.findActiveResult, r.findActiveErr
 }
 func (r *stubBlockedIPRepo) Create(_ context.Context, _ *model.BlockedIP) error { return nil }
-func (r *stubBlockedIPRepo) Delete(_ context.Context, _ uint) error              { return nil }
+func (r *stubBlockedIPRepo) Delete(_ context.Context, _ uint) error             { return nil }
 func (r *stubBlockedIPRepo) FindByID(_ context.Context, _ uint) (*model.BlockedIP, error) {
 	return nil, errors.New("not found")
 }

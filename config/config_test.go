@@ -121,7 +121,7 @@ func TestGetEnvBool_UnknownValue_ReturnsDefault(t *testing.T) {
 		{"maybe", true},
 		{"2", true},
 		{"enabled", false},
-		{"", false},     // empty string → use default (env helper returns "" → default path)
+		{"", false},         // empty string → use default (env helper returns "" → default path)
 		{"  true  ", false}, // leading/trailing spaces — TrimSpace is applied
 	}
 
@@ -228,7 +228,7 @@ func TestConfig_Validate_Production_RelativeKeysPath_ReturnsError(t *testing.T) 
 		SecretKeyBase: "32-character-secret-key-base-xxxx",
 		DatabaseURL:   "postgres://prod.example.com/db",
 		OAuthIssuer:   "https://auth.example.com",
-		KeysPath:      "keys",       // relative path — must be rejected
+		KeysPath:      "keys", // relative path — must be rejected
 	}
 
 	err := cfg.Validate()

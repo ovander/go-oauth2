@@ -11,23 +11,23 @@ import (
 
 // ConnectionConfig holds database connection configuration
 type ConnectionConfig struct {
-	PoolSize          int
-	MaxIdleConns      int
-	ConnMaxLifetime   time.Duration
-	ConnMaxIdleTime   time.Duration
-	SlowQueryLogTime  time.Duration
-	PrepareStmt       bool
+	PoolSize         int
+	MaxIdleConns     int
+	ConnMaxLifetime  time.Duration
+	ConnMaxIdleTime  time.Duration
+	SlowQueryLogTime time.Duration
+	PrepareStmt      bool
 }
 
 // DefaultConnectionConfig returns sensible defaults for connection config
 func DefaultConnectionConfig(poolSize int) ConnectionConfig {
 	return ConnectionConfig{
-		PoolSize:          poolSize,
-		MaxIdleConns:      poolSize / 2,
-		ConnMaxLifetime:   time.Hour,
-		ConnMaxIdleTime:   10 * time.Minute,
-		SlowQueryLogTime:  200 * time.Millisecond,
-		PrepareStmt:       true,
+		PoolSize:         poolSize,
+		MaxIdleConns:     poolSize / 2,
+		ConnMaxLifetime:  time.Hour,
+		ConnMaxIdleTime:  10 * time.Minute,
+		SlowQueryLogTime: 200 * time.Millisecond,
+		PrepareStmt:      true,
 	}
 }
 

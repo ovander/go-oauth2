@@ -76,10 +76,10 @@ type LockedAccountInfo struct {
 
 // ThreatMetricsResponse contains aggregated threat intelligence
 type ThreatMetricsResponse struct {
-	TimeRange      string             `json:"time_range"`
-	Summary        ThreatSummary      `json:"summary"`
-	TopThreats     []ThreatTypeStats  `json:"top_threats"`
-	SuspiciousIPs  []SuspiciousIPInfo `json:"suspicious_ips"`
+	TimeRange      string              `json:"time_range"`
+	Summary        ThreatSummary       `json:"summary"`
+	TopThreats     []ThreatTypeStats   `json:"top_threats"`
+	SuspiciousIPs  []SuspiciousIPInfo  `json:"suspicious_ips"`
 	LockedAccounts []LockedAccountInfo `json:"locked_accounts"`
 }
 
@@ -139,21 +139,21 @@ type TokenHourlyStats struct {
 
 // TokenStatsResponse contains token statistics
 type TokenStatsResponse struct {
-	Period                string             `json:"period"`
-	Issued                TokenCounts        `json:"issued"`
-	Refreshed             int64              `json:"refreshed"`
-	Revoked               int64              `json:"revoked"`
-	ExpiredUsageAttempts  int64              `json:"expired_usage_attempts"`
-	InvalidUsageAttempts  int64              `json:"invalid_usage_attempts"`
-	ByApp                 []TokenAppStats    `json:"by_app"`
-	ByHour                []TokenHourlyStats `json:"by_hour"`
+	Period               string             `json:"period"`
+	Issued               TokenCounts        `json:"issued"`
+	Refreshed            int64              `json:"refreshed"`
+	Revoked              int64              `json:"revoked"`
+	ExpiredUsageAttempts int64              `json:"expired_usage_attempts"`
+	InvalidUsageAttempts int64              `json:"invalid_usage_attempts"`
+	ByApp                []TokenAppStats    `json:"by_app"`
+	ByHour               []TokenHourlyStats `json:"by_hour"`
 }
 
 // ActiveTokensResponse contains active token counts
 type ActiveTokensResponse struct {
-	TotalActiveTokens int64                 `json:"total_active_tokens"`
-	ByType            map[string]int64      `json:"by_type"`
-	ByApp             []TokenAppStats       `json:"by_app"`
+	TotalActiveTokens int64            `json:"total_active_tokens"`
+	ByType            map[string]int64 `json:"by_type"`
+	ByApp             []TokenAppStats  `json:"by_app"`
 }
 
 // ==========================================
@@ -451,43 +451,43 @@ type ReportResponse struct {
 
 // SecurityReportData represents the data in a security report
 type SecurityReportData struct {
-	GeneratedAt time.Time             `json:"generated_at"`
-	Period      ReportPeriod          `json:"period"`
-	Overview    ReportOverview        `json:"overview"`
-	Threats     ReportThreats         `json:"threats"`
-	Users       ReportUsers           `json:"users"`
-	Apps        ReportApps            `json:"apps"`
+	GeneratedAt time.Time      `json:"generated_at"`
+	Period      ReportPeriod   `json:"period"`
+	Overview    ReportOverview `json:"overview"`
+	Threats     ReportThreats  `json:"threats"`
+	Users       ReportUsers    `json:"users"`
+	Apps        ReportApps     `json:"apps"`
 }
 
 // ReportOverview contains high-level statistics
 type ReportOverview struct {
-	TotalEvents        int64 `json:"total_events"`
-	CriticalEvents     int64 `json:"critical_events"`
-	SuccessfulLogins   int64 `json:"successful_logins"`
-	FailedLogins       int64 `json:"failed_logins"`
-	UniqueUsers        int64 `json:"unique_users"`
-	BlockedIPs         int64 `json:"blocked_ips"`
-	AlertsTriggered    int64 `json:"alerts_triggered"`
+	TotalEvents      int64 `json:"total_events"`
+	CriticalEvents   int64 `json:"critical_events"`
+	SuccessfulLogins int64 `json:"successful_logins"`
+	FailedLogins     int64 `json:"failed_logins"`
+	UniqueUsers      int64 `json:"unique_users"`
+	BlockedIPs       int64 `json:"blocked_ips"`
+	AlertsTriggered  int64 `json:"alerts_triggered"`
 }
 
 // ReportThreats contains threat-related statistics
 type ReportThreats struct {
-	TopAttackTypes    []ThreatTypeStats  `json:"top_attack_types"`
-	SuspiciousIPs     []SuspiciousIPInfo `json:"suspicious_ips"`
-	BruteForceAttempts int64             `json:"brute_force_attempts"`
+	TopAttackTypes     []ThreatTypeStats  `json:"top_attack_types"`
+	SuspiciousIPs      []SuspiciousIPInfo `json:"suspicious_ips"`
+	BruteForceAttempts int64              `json:"brute_force_attempts"`
 }
 
 // ReportUsers contains user-related statistics
 type ReportUsers struct {
-	TotalUsers      int64               `json:"total_users"`
-	ActiveUsers     int64               `json:"active_users"`
-	NewUsers        int64               `json:"new_users"`
-	LockedAccounts  []LockedAccountInfo `json:"locked_accounts"`
+	TotalUsers     int64               `json:"total_users"`
+	ActiveUsers    int64               `json:"active_users"`
+	NewUsers       int64               `json:"new_users"`
+	LockedAccounts []LockedAccountInfo `json:"locked_accounts"`
 }
 
 // ReportApps contains app-related statistics
 type ReportApps struct {
-	TotalApps    int64           `json:"total_apps"`
-	ActiveApps   int64           `json:"active_apps"`
-	TopApps      []TokenAppStats `json:"top_apps"`
+	TotalApps  int64           `json:"total_apps"`
+	ActiveApps int64           `json:"active_apps"`
+	TopApps    []TokenAppStats `json:"top_apps"`
 }

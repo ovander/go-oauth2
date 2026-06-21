@@ -134,7 +134,7 @@ func (r *fakeMagicLinkUserRepo) CountByRole(_ context.Context, _ model.UserRole)
 	return 0, nil
 }
 func (r *fakeMagicLinkUserRepo) Create(_ context.Context, _ *model.User) error { return nil }
-func (r *fakeMagicLinkUserRepo) Delete(_ context.Context, _ uint) error         { return nil }
+func (r *fakeMagicLinkUserRepo) Delete(_ context.Context, _ uint) error        { return nil }
 func (r *fakeMagicLinkUserRepo) IncrementTokenVersion(_ context.Context, _ uint) error {
 	return nil
 }
@@ -175,10 +175,12 @@ func (r *fakeMagicLinkAppRepo) FindByID(_ context.Context, _ uint) (*model.App, 
 func (r *fakeMagicLinkAppRepo) FindByOwnerID(_ context.Context, _ uint) ([]model.App, error) {
 	return nil, nil
 }
-func (r *fakeMagicLinkAppRepo) Create(_ context.Context, _ *model.App) error         { return nil }
-func (r *fakeMagicLinkAppRepo) Update(_ context.Context, _ *model.App) error         { return nil }
-func (r *fakeMagicLinkAppRepo) Delete(_ context.Context, _ uint) error               { return nil }
-func (r *fakeMagicLinkAppRepo) GetAllRedirectURIs(_ context.Context) ([]string, error) { return nil, nil }
+func (r *fakeMagicLinkAppRepo) Create(_ context.Context, _ *model.App) error { return nil }
+func (r *fakeMagicLinkAppRepo) Update(_ context.Context, _ *model.App) error { return nil }
+func (r *fakeMagicLinkAppRepo) Delete(_ context.Context, _ uint) error       { return nil }
+func (r *fakeMagicLinkAppRepo) GetAllRedirectURIs(_ context.Context) ([]string, error) {
+	return nil, nil
+}
 
 // fakeUserAppRoleRepo is a minimal UserAppRoleRepository for magic-link tests.
 type fakeMagicLinkRoleRepo struct {

@@ -8,7 +8,7 @@
 // We use a stateless HMAC-SHA256-signed token so that no server-side
 // session is needed:
 //
-//   token = base64url(JSON payload) "." base64url(HMAC-SHA256(payload, secret))
+//	token = base64url(JSON payload) "." base64url(HMAC-SHA256(payload, secret))
 //
 // The payload contains the userID, clientID, and an expiry timestamp.
 // Validation verifies the signature, checks expiry, and returns the

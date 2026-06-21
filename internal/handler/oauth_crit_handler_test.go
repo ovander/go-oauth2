@@ -1,15 +1,18 @@
 // Package handler — white-box handler-level tests for the four CRIT fixes.
 //
 // CRIT-01: /oauth/introspect requires client authentication (already present in
-//          the handler; these tests document and guard that behaviour).
+//
+//	the handler; these tests document and guard that behaviour).
 //
 // CRIT-03: POST /oauth/authorize rejects requests whose CSRF double-submit
-//          cookie does not match the form field.
+//
+//	cookie does not match the form field.
 //
 // CRIT-04: GET /oauth/authorize for an already-authenticated user renders the
-//          consent page instead of immediately issuing an authorization code.
-//          POST /oauth/authorize with action=consent processes the user's
-//          explicit Allow/Deny choice.
+//
+//	consent page instead of immediately issuing an authorization code.
+//	POST /oauth/authorize with action=consent processes the user's
+//	explicit Allow/Deny choice.
 package handler
 
 import (
@@ -52,8 +55,10 @@ func (m *critAppService) ValidateClientCredentials(ctx context.Context, clientID
 	}
 	return nil, errors.New("invalid credentials")
 }
-func (m *critAppService) List(_ context.Context) ([]model.App, error)           { return nil, nil }
-func (m *critAppService) GetByID(_ context.Context, _ uint) (*model.App, error) { return nil, errors.New("not found") }
+func (m *critAppService) List(_ context.Context) ([]model.App, error) { return nil, nil }
+func (m *critAppService) GetByID(_ context.Context, _ uint) (*model.App, error) {
+	return nil, errors.New("not found")
+}
 func (m *critAppService) GetByOwnerID(_ context.Context, _ uint) ([]model.App, error) {
 	return nil, nil
 }

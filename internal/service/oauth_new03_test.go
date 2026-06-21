@@ -57,13 +57,13 @@ func (r *new03UserRepo) FindByRole(_ context.Context, _ model.UserRole) ([]model
 func (r *new03UserRepo) CountByRole(_ context.Context, _ model.UserRole) (int64, error) {
 	return 0, nil
 }
-func (r *new03UserRepo) Create(_ context.Context, _ *model.User) error      { return nil }
-func (r *new03UserRepo) Update(_ context.Context, _ *model.User) error      { return nil }
-func (r *new03UserRepo) Delete(_ context.Context, _ uint) error              { return nil }
-func (r *new03UserRepo) IncrementTokenVersion(_ context.Context, _ uint) error { return nil }
+func (r *new03UserRepo) Create(_ context.Context, _ *model.User) error                { return nil }
+func (r *new03UserRepo) Update(_ context.Context, _ *model.User) error                { return nil }
+func (r *new03UserRepo) Delete(_ context.Context, _ uint) error                       { return nil }
+func (r *new03UserRepo) IncrementTokenVersion(_ context.Context, _ uint) error        { return nil }
 func (r *new03UserRepo) IncrementFailedLoginAttempts(_ context.Context, _ uint) error { return nil }
-func (r *new03UserRepo) ResetFailedLoginAttempts(_ context.Context, _ uint) error { return nil }
-func (r *new03UserRepo) LockAccount(_ context.Context, _ uint, _ *time.Time) error { return nil }
+func (r *new03UserRepo) ResetFailedLoginAttempts(_ context.Context, _ uint) error     { return nil }
+func (r *new03UserRepo) LockAccount(_ context.Context, _ uint, _ *time.Time) error    { return nil }
 
 var errUserNotFound = errNF{}
 
@@ -140,11 +140,11 @@ func TestNEW03_Introspect_SameVersion_ReturnsActive(t *testing.T) {
 // issued before the version bump.
 //
 // Scenario:
-//   1. Token is issued when user.TokenVersion = 2.
-//   2. IncrementTokenVersion is called → user.TokenVersion becomes 3.
-//   3. Introspect is called with the old token (still within its TTL).
-//   4. Introspect must return active:false because the token's embedded version
-//      (2) is less than the user's current version (3).
+//  1. Token is issued when user.TokenVersion = 2.
+//  2. IncrementTokenVersion is called → user.TokenVersion becomes 3.
+//  3. Introspect is called with the old token (still within its TTL).
+//  4. Introspect must return active:false because the token's embedded version
+//     (2) is less than the user's current version (3).
 func TestNEW03_Introspect_StaleVersion_ReturnsInactive(t *testing.T) {
 	t.Parallel()
 

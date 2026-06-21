@@ -27,7 +27,7 @@ import (
 // ---------------------------------------------------------------------------
 
 var (
-	testTokenSvc *auth.TokenService
+	testTokenSvc  *auth.TokenService
 	testSetupOnce sync.Once
 	testSetupErr  error
 )
@@ -77,13 +77,13 @@ func (r *alreadyUsedTokenRepo) MarkAsUsed(_ context.Context, _, _ string, _ uint
 	return repository.ErrTokenAlreadyUsed
 }
 func (r *alreadyUsedTokenRepo) IsUsed(_ context.Context, _ string) (bool, error) { return true, nil }
-func (r *alreadyUsedTokenRepo) DeleteExpired(_ context.Context) (int64, error)    { return 0, nil }
+func (r *alreadyUsedTokenRepo) DeleteExpired(_ context.Context) (int64, error)   { return 0, nil }
 
 // succeedOnceTokenRepo allows the first call and rejects the second —
 // useful for testing concurrent behaviour in a single goroutine.
 type succeedOnceTokenRepo struct {
-	mu    sync.Mutex
-	used  map[string]bool
+	mu   sync.Mutex
+	used map[string]bool
 }
 
 func (r *succeedOnceTokenRepo) MarkAsUsed(_ context.Context, jti, _ string, _ uint, _ time.Time) error {
@@ -113,17 +113,33 @@ func (r *stubUserRepo) FindByID(_ context.Context, _ uint) (*model.User, error) 
 	}
 	return nil, errors.New("user not found")
 }
-func (r *stubUserRepo) FindByEmail(_ context.Context, _ string) (*model.User, error)      { panic("unexpected: FindByEmail") }
-func (r *stubUserRepo) FindAll(_ context.Context, _, _ int) ([]model.User, int64, error)   { panic("unexpected: FindAll") }
-func (r *stubUserRepo) FindByRole(_ context.Context, _ model.UserRole) ([]model.User, error) { panic("unexpected: FindByRole") }
-func (r *stubUserRepo) CountByRole(_ context.Context, _ model.UserRole) (int64, error)     { panic("unexpected: CountByRole") }
-func (r *stubUserRepo) Create(_ context.Context, _ *model.User) error                      { return nil }
-func (r *stubUserRepo) Update(_ context.Context, _ *model.User) error                      { return nil }
-func (r *stubUserRepo) Delete(_ context.Context, _ uint) error                             { panic("unexpected: Delete") }
-func (r *stubUserRepo) IncrementTokenVersion(_ context.Context, _ uint) error              { panic("unexpected: IncrementTokenVersion") }
-func (r *stubUserRepo) IncrementFailedLoginAttempts(_ context.Context, _ uint) error       { panic("unexpected: IncrementFailedLoginAttempts") }
-func (r *stubUserRepo) ResetFailedLoginAttempts(_ context.Context, _ uint) error           { panic("unexpected: ResetFailedLoginAttempts") }
-func (r *stubUserRepo) LockAccount(_ context.Context, _ uint, _ *time.Time) error          { panic("unexpected: LockAccount") }
+func (r *stubUserRepo) FindByEmail(_ context.Context, _ string) (*model.User, error) {
+	panic("unexpected: FindByEmail")
+}
+func (r *stubUserRepo) FindAll(_ context.Context, _, _ int) ([]model.User, int64, error) {
+	panic("unexpected: FindAll")
+}
+func (r *stubUserRepo) FindByRole(_ context.Context, _ model.UserRole) ([]model.User, error) {
+	panic("unexpected: FindByRole")
+}
+func (r *stubUserRepo) CountByRole(_ context.Context, _ model.UserRole) (int64, error) {
+	panic("unexpected: CountByRole")
+}
+func (r *stubUserRepo) Create(_ context.Context, _ *model.User) error { return nil }
+func (r *stubUserRepo) Update(_ context.Context, _ *model.User) error { return nil }
+func (r *stubUserRepo) Delete(_ context.Context, _ uint) error        { panic("unexpected: Delete") }
+func (r *stubUserRepo) IncrementTokenVersion(_ context.Context, _ uint) error {
+	panic("unexpected: IncrementTokenVersion")
+}
+func (r *stubUserRepo) IncrementFailedLoginAttempts(_ context.Context, _ uint) error {
+	panic("unexpected: IncrementFailedLoginAttempts")
+}
+func (r *stubUserRepo) ResetFailedLoginAttempts(_ context.Context, _ uint) error {
+	panic("unexpected: ResetFailedLoginAttempts")
+}
+func (r *stubUserRepo) LockAccount(_ context.Context, _ uint, _ *time.Time) error {
+	panic("unexpected: LockAccount")
+}
 
 // stubAppRepo returns a pre-configured app for FindByID; panics elsewhere.
 type stubAppRepo struct {
@@ -136,25 +152,41 @@ func (r *stubAppRepo) FindByID(_ context.Context, _ uint) (*model.App, error) {
 	}
 	return nil, errors.New("app not found")
 }
-func (r *stubAppRepo) FindAll(_ context.Context) ([]model.App, error)                              { panic("unexpected: FindAll") }
-func (r *stubAppRepo) FindByClientID(_ context.Context, _ string) (*model.App, error)              { panic("unexpected: FindByClientID") }
-func (r *stubAppRepo) FindByOwnerID(_ context.Context, _ uint) ([]model.App, error)                { panic("unexpected: FindByOwnerID") }
-func (r *stubAppRepo) Create(_ context.Context, _ *model.App) error                                { panic("unexpected: Create") }
-func (r *stubAppRepo) Update(_ context.Context, _ *model.App) error                                { panic("unexpected: Update") }
-func (r *stubAppRepo) Delete(_ context.Context, _ uint) error                                      { panic("unexpected: Delete") }
-func (r *stubAppRepo) GetAllRedirectURIs(_ context.Context) ([]string, error)                      { panic("unexpected: GetAllRedirectURIs") }
+func (r *stubAppRepo) FindAll(_ context.Context) ([]model.App, error) { panic("unexpected: FindAll") }
+func (r *stubAppRepo) FindByClientID(_ context.Context, _ string) (*model.App, error) {
+	panic("unexpected: FindByClientID")
+}
+func (r *stubAppRepo) FindByOwnerID(_ context.Context, _ uint) ([]model.App, error) {
+	panic("unexpected: FindByOwnerID")
+}
+func (r *stubAppRepo) Create(_ context.Context, _ *model.App) error { panic("unexpected: Create") }
+func (r *stubAppRepo) Update(_ context.Context, _ *model.App) error { panic("unexpected: Update") }
+func (r *stubAppRepo) Delete(_ context.Context, _ uint) error       { panic("unexpected: Delete") }
+func (r *stubAppRepo) GetAllRedirectURIs(_ context.Context) ([]string, error) {
+	panic("unexpected: GetAllRedirectURIs")
+}
 
 // nilUserAppRoleRepo satisfies the interface without doing anything.
 type nilUserAppRoleRepo struct{}
 
-func (r *nilUserAppRoleRepo) FindByUserAndApp(_ context.Context, _, _ uint) (*model.UserAppRole, error) { return nil, errors.New("not found") }
-func (r *nilUserAppRoleRepo) FindByUser(_ context.Context, _ uint) ([]model.UserAppRole, error)        { return nil, nil }
-func (r *nilUserAppRoleRepo) FindByApp(_ context.Context, _ uint, _, _ int, _ string) ([]model.UserAppRole, int64, error) { return nil, 0, nil }
-func (r *nilUserAppRoleRepo) FindAllByUser(_ context.Context, _ uint) ([]model.UserAppRole, error)     { return nil, nil }
-func (r *nilUserAppRoleRepo) Create(_ context.Context, _ *model.UserAppRole) error                     { return nil }
-func (r *nilUserAppRoleRepo) Update(_ context.Context, _ *model.UserAppRole) error                     { return nil }
-func (r *nilUserAppRoleRepo) Delete(_ context.Context, _, _ uint) error                                { return nil }
-func (r *nilUserAppRoleRepo) GetUserRolesMap(_ context.Context, _ uint) (map[string]string, error)     { return nil, nil }
+func (r *nilUserAppRoleRepo) FindByUserAndApp(_ context.Context, _, _ uint) (*model.UserAppRole, error) {
+	return nil, errors.New("not found")
+}
+func (r *nilUserAppRoleRepo) FindByUser(_ context.Context, _ uint) ([]model.UserAppRole, error) {
+	return nil, nil
+}
+func (r *nilUserAppRoleRepo) FindByApp(_ context.Context, _ uint, _, _ int, _ string) ([]model.UserAppRole, int64, error) {
+	return nil, 0, nil
+}
+func (r *nilUserAppRoleRepo) FindAllByUser(_ context.Context, _ uint) ([]model.UserAppRole, error) {
+	return nil, nil
+}
+func (r *nilUserAppRoleRepo) Create(_ context.Context, _ *model.UserAppRole) error { return nil }
+func (r *nilUserAppRoleRepo) Update(_ context.Context, _ *model.UserAppRole) error { return nil }
+func (r *nilUserAppRoleRepo) Delete(_ context.Context, _, _ uint) error            { return nil }
+func (r *nilUserAppRoleRepo) GetUserRolesMap(_ context.Context, _ uint) (map[string]string, error) {
+	return nil, nil
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -266,33 +298,45 @@ type callTrackingUserRepo struct {
 	order *[]string
 	user  *model.User
 }
+
 func (r *callTrackingUserRepo) FindByID(_ context.Context, _ uint) (*model.User, error) {
 	*r.order = append(*r.order, "FindByID")
 	return r.user, nil
 }
-func (r *callTrackingUserRepo) FindByEmail(_ context.Context, _ string) (*model.User, error)      { return nil, nil }
-func (r *callTrackingUserRepo) FindAll(_ context.Context, _, _ int) ([]model.User, int64, error)   { return nil, 0, nil }
-func (r *callTrackingUserRepo) FindByRole(_ context.Context, _ model.UserRole) ([]model.User, error) { return nil, nil }
-func (r *callTrackingUserRepo) CountByRole(_ context.Context, _ model.UserRole) (int64, error)     { return 0, nil }
-func (r *callTrackingUserRepo) Create(_ context.Context, _ *model.User) error                      { return nil }
-func (r *callTrackingUserRepo) Update(_ context.Context, _ *model.User) error                      { return nil }
-func (r *callTrackingUserRepo) Delete(_ context.Context, _ uint) error                             { return nil }
-func (r *callTrackingUserRepo) IncrementTokenVersion(_ context.Context, _ uint) error              { return nil }
-func (r *callTrackingUserRepo) IncrementFailedLoginAttempts(_ context.Context, _ uint) error       { return nil }
-func (r *callTrackingUserRepo) ResetFailedLoginAttempts(_ context.Context, _ uint) error           { return nil }
-func (r *callTrackingUserRepo) LockAccount(_ context.Context, _ uint, _ *time.Time) error          { return nil }
+func (r *callTrackingUserRepo) FindByEmail(_ context.Context, _ string) (*model.User, error) {
+	return nil, nil
+}
+func (r *callTrackingUserRepo) FindAll(_ context.Context, _, _ int) ([]model.User, int64, error) {
+	return nil, 0, nil
+}
+func (r *callTrackingUserRepo) FindByRole(_ context.Context, _ model.UserRole) ([]model.User, error) {
+	return nil, nil
+}
+func (r *callTrackingUserRepo) CountByRole(_ context.Context, _ model.UserRole) (int64, error) {
+	return 0, nil
+}
+func (r *callTrackingUserRepo) Create(_ context.Context, _ *model.User) error         { return nil }
+func (r *callTrackingUserRepo) Update(_ context.Context, _ *model.User) error         { return nil }
+func (r *callTrackingUserRepo) Delete(_ context.Context, _ uint) error                { return nil }
+func (r *callTrackingUserRepo) IncrementTokenVersion(_ context.Context, _ uint) error { return nil }
+func (r *callTrackingUserRepo) IncrementFailedLoginAttempts(_ context.Context, _ uint) error {
+	return nil
+}
+func (r *callTrackingUserRepo) ResetFailedLoginAttempts(_ context.Context, _ uint) error  { return nil }
+func (r *callTrackingUserRepo) LockAccount(_ context.Context, _ uint, _ *time.Time) error { return nil }
 
 // callTrackingTokenRepo records MarkAsUsed calls and returns a configured error.
 type callTrackingTokenRepo struct {
 	order *[]string
 	err   error
 }
+
 func (r *callTrackingTokenRepo) MarkAsUsed(_ context.Context, _, _ string, _ uint, _ time.Time) error {
 	*r.order = append(*r.order, "MarkAsUsed")
 	return r.err
 }
 func (r *callTrackingTokenRepo) IsUsed(_ context.Context, _ string) (bool, error) { return false, nil }
-func (r *callTrackingTokenRepo) DeleteExpired(_ context.Context) (int64, error)    { return 0, nil }
+func (r *callTrackingTokenRepo) DeleteExpired(_ context.Context) (int64, error)   { return 0, nil }
 
 // ---------------------------------------------------------------------------
 // C-03: ResetPassword — duplicate token returns ErrTokenAlreadyUsed

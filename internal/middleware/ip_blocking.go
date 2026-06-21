@@ -36,8 +36,8 @@ type IPBlockCheckerConfig struct {
 // DefaultIPBlockCheckerConfig returns sensible defaults
 func DefaultIPBlockCheckerConfig() IPBlockCheckerConfig {
 	return IPBlockCheckerConfig{
-		CacheTTL:        30 * time.Second,  // Cache for 30 seconds
-		RefreshInterval: 60 * time.Second,  // Refresh from DB every minute
+		CacheTTL:        30 * time.Second, // Cache for 30 seconds
+		RefreshInterval: 60 * time.Second, // Refresh from DB every minute
 	}
 }
 

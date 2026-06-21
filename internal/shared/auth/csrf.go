@@ -5,18 +5,18 @@
 // login and consent forms.
 //
 // How it works:
-//   1. On GET /oauth/authorize the server calls GenerateCSRFToken, which
-//      places a 32-byte random value in a SameSite=Strict HttpOnly cookie
-//      and returns the same value for embedding in the form as a hidden
-//      field named "csrf_token".
-//   2. On POST /oauth/authorize the server calls ValidateCSRFToken, which
-//      reads the cookie and compares it (constant-time) to the form field.
-//   3. A cross-origin attacker cannot forge a valid POST because:
-//      - HttpOnly prevents XSS from reading the cookie via document.cookie.
-//      - SameSite=Strict prevents the browser from attaching the cookie on
-//        cross-site form submissions.
-//      - Without the cookie value the attacker cannot supply a matching form
-//        field, so validation fails.
+//  1. On GET /oauth/authorize the server calls GenerateCSRFToken, which
+//     places a 32-byte random value in a SameSite=Strict HttpOnly cookie
+//     and returns the same value for embedding in the form as a hidden
+//     field named "csrf_token".
+//  2. On POST /oauth/authorize the server calls ValidateCSRFToken, which
+//     reads the cookie and compares it (constant-time) to the form field.
+//  3. A cross-origin attacker cannot forge a valid POST because:
+//     - HttpOnly prevents XSS from reading the cookie via document.cookie.
+//     - SameSite=Strict prevents the browser from attaching the cookie on
+//     cross-site form submissions.
+//     - Without the cookie value the attacker cannot supply a matching form
+//     field, so validation fails.
 package auth
 
 import (

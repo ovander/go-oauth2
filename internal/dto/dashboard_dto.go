@@ -4,14 +4,14 @@ import "time"
 
 // DashboardStatsResponse contains overview statistics for the admin dashboard
 type DashboardStatsResponse struct {
-	TotalUsers       int64 `json:"total_users"`
-	ActiveUsers      int64 `json:"active_users"`
-	TotalApps        int64 `json:"total_apps"`
-	ActiveApps       int64 `json:"active_apps"`
-	TodayLogins      int64 `json:"today_logins"`
-	TodaySignups     int64 `json:"today_signups"`
-	FailedLogins24h  int64 `json:"failed_logins_24h"`
-	LockedAccounts   int64 `json:"locked_accounts"`
+	TotalUsers      int64 `json:"total_users"`
+	ActiveUsers     int64 `json:"active_users"`
+	TotalApps       int64 `json:"total_apps"`
+	ActiveApps      int64 `json:"active_apps"`
+	TodayLogins     int64 `json:"today_logins"`
+	TodaySignups    int64 `json:"today_signups"`
+	FailedLogins24h int64 `json:"failed_logins_24h"`
+	LockedAccounts  int64 `json:"locked_accounts"`
 }
 
 // DashboardActivityItem represents a single activity entry
@@ -37,11 +37,11 @@ type DashboardActivityResponse struct {
 
 // DashboardHealthResponse contains system health information
 type DashboardHealthResponse struct {
-	Status    string                 `json:"status"`
-	Database  HealthCheckResult      `json:"database"`
-	Uptime    string                 `json:"uptime"`
-	Version   string                 `json:"version"`
-	Details   map[string]interface{} `json:"details,omitempty"`
+	Status   string                 `json:"status"`
+	Database HealthCheckResult      `json:"database"`
+	Uptime   string                 `json:"uptime"`
+	Version  string                 `json:"version"`
+	Details  map[string]interface{} `json:"details,omitempty"`
 }
 
 // HealthCheckResult represents a single health check
@@ -53,10 +53,10 @@ type HealthCheckResult struct {
 
 // LoginTrendItem represents login data for a specific day
 type LoginTrendItem struct {
-	Date          string `json:"date"`
-	SuccessCount  int64  `json:"success_count"`
-	FailureCount  int64  `json:"failure_count"`
-	UniqueUsers   int64  `json:"unique_users"`
+	Date         string `json:"date"`
+	SuccessCount int64  `json:"success_count"`
+	FailureCount int64  `json:"failure_count"`
+	UniqueUsers  int64  `json:"unique_users"`
 }
 
 // DashboardLoginTrendsResponse contains login trend data
@@ -67,12 +67,12 @@ type DashboardLoginTrendsResponse struct {
 
 // AppUsageItem represents usage statistics for a single app
 type AppUsageItem struct {
-	AppID        uint   `json:"app_id"`
-	AppName      string `json:"app_name"`
-	ClientID     string `json:"client_id"`
-	TotalUsers   int64  `json:"total_users"`
-	ActiveUsers  int64  `json:"active_users"`
-	TotalLogins  int64  `json:"total_logins"`
+	AppID        uint       `json:"app_id"`
+	AppName      string     `json:"app_name"`
+	ClientID     string     `json:"client_id"`
+	TotalUsers   int64      `json:"total_users"`
+	ActiveUsers  int64      `json:"active_users"`
+	TotalLogins  int64      `json:"total_logins"`
 	LastActivity *time.Time `json:"last_activity,omitempty"`
 }
 

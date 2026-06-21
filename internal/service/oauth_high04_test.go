@@ -25,9 +25,9 @@ import (
 // ---------------------------------------------------------------------------
 
 type memUsedTokenRepo struct {
-	mu              sync.Mutex
-	used            map[string]struct{}
-	forceIsUsedErr  bool // simulate DB error in IsUsed
+	mu             sync.Mutex
+	used           map[string]struct{}
+	forceIsUsedErr bool // simulate DB error in IsUsed
 }
 
 func newMemUsedTokenRepo() *memUsedTokenRepo {
@@ -85,13 +85,13 @@ func (r *high04UserRepo) FindByRole(_ context.Context, _ model.UserRole) ([]mode
 func (r *high04UserRepo) CountByRole(_ context.Context, _ model.UserRole) (int64, error) {
 	return 0, nil
 }
-func (r *high04UserRepo) Create(_ context.Context, _ *model.User) error               { return nil }
-func (r *high04UserRepo) Update(_ context.Context, _ *model.User) error               { return nil }
-func (r *high04UserRepo) Delete(_ context.Context, _ uint) error                      { return nil }
-func (r *high04UserRepo) IncrementTokenVersion(_ context.Context, _ uint) error       { return nil }
+func (r *high04UserRepo) Create(_ context.Context, _ *model.User) error                { return nil }
+func (r *high04UserRepo) Update(_ context.Context, _ *model.User) error                { return nil }
+func (r *high04UserRepo) Delete(_ context.Context, _ uint) error                       { return nil }
+func (r *high04UserRepo) IncrementTokenVersion(_ context.Context, _ uint) error        { return nil }
 func (r *high04UserRepo) IncrementFailedLoginAttempts(_ context.Context, _ uint) error { return nil }
-func (r *high04UserRepo) ResetFailedLoginAttempts(_ context.Context, _ uint) error    { return nil }
-func (r *high04UserRepo) LockAccount(_ context.Context, _ uint, _ *time.Time) error   { return nil }
+func (r *high04UserRepo) ResetFailedLoginAttempts(_ context.Context, _ uint) error     { return nil }
+func (r *high04UserRepo) LockAccount(_ context.Context, _ uint, _ *time.Time) error    { return nil }
 
 var _ repository.UserRepository = (*high04UserRepo)(nil)
 
@@ -120,7 +120,7 @@ func (r *high04RoleRepo) FindAllByUser(_ context.Context, _ uint) ([]model.UserA
 }
 func (r *high04RoleRepo) Create(_ context.Context, _ *model.UserAppRole) error { return nil }
 func (r *high04RoleRepo) Update(_ context.Context, _ *model.UserAppRole) error { return nil }
-func (r *high04RoleRepo) Delete(_ context.Context, _, _ uint) error             { return nil }
+func (r *high04RoleRepo) Delete(_ context.Context, _, _ uint) error            { return nil }
 func (r *high04RoleRepo) GetUserRolesMap(_ context.Context, _ uint) (map[string]string, error) {
 	return make(map[string]string), nil
 }

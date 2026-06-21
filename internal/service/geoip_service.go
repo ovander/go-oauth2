@@ -31,9 +31,9 @@ type GeoIPService interface {
 }
 
 type geoIPService struct {
-	cityDB    *geoip2.Reader
-	asnDB     *geoip2.Reader
-	mu        sync.RWMutex
+	cityDB     *geoip2.Reader
+	asnDB      *geoip2.Reader
+	mu         sync.RWMutex
 	configured bool
 }
 

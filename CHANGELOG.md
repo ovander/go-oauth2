@@ -11,6 +11,11 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Security / crypto:** New `auth.EncryptSecret` / `auth.DecryptSecret` —
+  authenticated AES-256-GCM encryption (key derived from `SECRET_KEY_BASE` via
+  SHA-256, random nonce) for storing short restricted secrets (e.g. TOTP seeds)
+  encrypted at rest. Decryption fails on a wrong key or tampered ciphertext.
+  _Traceability: C12 (supporting EPIC-9 MFA) → RFC-010/RFC-011 → #42._
 - **MFA:** New `internal/shared/auth/totp` package — standard-library TOTP
   (RFC 6238 / HOTP RFC 4226) primitives: `GenerateSecret`, `ProvisioningURI`
   (otpauth:// for authenticator apps), and `ValidateCode` (6 digits, 30s, ±1

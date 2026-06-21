@@ -19,6 +19,10 @@ func signWithMethod(t *testing.T, km *KeyManager, method jwt.SigningMethod, key 
 	t.Helper()
 	claims := AccessTokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			// Issuer must match the verifying service (RFC-002, #38) so the
+			// RS256 acceptance case validates; the rejection cases fail earlier
+			// on the algorithm allow-list regardless of issuer.
+			Issuer:    "https://test.example.com",
 			Subject:   "1",
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 			ID:        "test-jti",

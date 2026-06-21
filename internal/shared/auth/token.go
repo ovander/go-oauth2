@@ -388,6 +388,12 @@ func (ts *TokenService) signToken(claims jwt.Claims) (string, error) {
 // before the Keyfunc runs, so any other alg — RS384/RS512, "none", or an HMAC
 // algorithm (alg-confusion) — is rejected regardless of the key returned. The
 // Keyfunc's *jwt.SigningMethodRSA assertion is retained as defense in depth.
+//
+// It also enforces two claim invariants at the parser level: the issuer must
+// equal this server's configured issuer (jwt.WithIssuer), so a token minted by
+// a different issuer is rejected even if its signature would otherwise verify;
+// and an expiry is mandatory (jwt.WithExpirationRequired), so a token with no
+// exp can never be treated as non-expiring.
 func (ts *TokenService) verifyToken(tokenString string, claims jwt.Claims) error {
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
@@ -401,7 +407,7 @@ func (ts *TokenService) verifyToken(tokenString string, claims jwt.Claims) error
 			return ts.keyManager.GetPublicKey(), nil
 		}
 		return pub, nil
-	}, jwt.WithValidMethods([]string{"RS256"}))
+	}, jwt.WithValidMethods([]string{"RS256"}), jwt.WithIssuer(ts.issuer), jwt.WithExpirationRequired())
 
 	if err != nil {
 		// Provide more specific error messages
@@ -416,6 +422,9 @@ func (ts *TokenService) verifyToken(tokenString string, claims jwt.Claims) error
 		}
 		if errors.Is(err, jwt.ErrTokenSignatureInvalid) {
 			return ErrTokenSignature
+		}
+		if errors.Is(err, jwt.ErrTokenInvalidIssuer) || errors.Is(err, jwt.ErrTokenRequiredClaimMissing) {
+			return ErrTokenClaimsInvalid
 		}
 		return fmt.Errorf("token verification failed: %w", err)
 	}

@@ -10,6 +10,13 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Security
+- **Identity / JWT:** Token verification now enforces the issuer
+  (`jwt.WithIssuer`) and requires an expiry (`jwt.WithExpirationRequired`): a
+  token whose `iss` is not this server's issuer, or that carries no `exp`, is
+  rejected at the parser level. Backward compatible — every issued token sets
+  both claims. _Traceability: C3 → EPIC-3 → RFC-002 → #38._
+
 ### Added
 - **Audit / Security / Ops:** The audit-row integrity scan can now run on a
   timer. `AuditIntegrityScanner.StartSchedule(interval, lookback)` runs the scan

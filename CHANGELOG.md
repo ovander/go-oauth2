@@ -10,6 +10,13 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Changed
+- **Audit / Observability:** Direct (hot-path) security audit writes —
+  `authService`/`oauthService.logSecurityEvent` (login, token, OAuth events) —
+  now also stamp the `correlation_id` from the request context, via a shared
+  `newSecurityAuditLog` builder. Completes request-path audit correlation
+  coverage left open by #16. _Traceability: C4 → EPIC-4 → RFC-008 → #20._
+
 ### Added
 - **Audit / Observability:** Admin-action logs now record a `correlation_id`,
   completing correlation coverage across both audit stores. Adds the

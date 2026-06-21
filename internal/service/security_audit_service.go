@@ -102,6 +102,26 @@ func correlationIDFromContext(ctx context.Context) string {
 	return ""
 }
 
+// newSecurityAuditLog builds a SecurityAuditLog with the severity derived for
+// the event and the correlation ID stamped from ctx (RFC-007/RFC-008). It is
+// the shared construction path for the direct (hot-path) audit writers
+// (authService/oauthService.logSecurityEvent) so correlation coverage is
+// consistent across all request-scoped audit rows.
+func newSecurityAuditLog(ctx context.Context, eventType model.SecurityEventType, userID, appID *uint, ipAddress, userAgent string, success bool, details map[string]interface{}) *model.SecurityAuditLog {
+	return &model.SecurityAuditLog{
+		UserID:        userID,
+		AppID:         appID,
+		EventType:     eventType,
+		Severity:      model.GetSeverityForEvent(eventType, success),
+		IPAddress:     ipAddress,
+		UserAgent:     userAgent,
+		CorrelationID: correlationIDFromContext(ctx),
+		Success:       success,
+		Details:       details,
+		CreatedAt:     time.Now(),
+	}
+}
+
 func (s *securityAuditService) LogFromRequest(ctx context.Context, r *http.Request, event SecurityEvent) error {
 	// Extract IP address from request
 	if event.IPAddress == "" {

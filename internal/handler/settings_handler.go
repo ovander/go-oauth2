@@ -43,8 +43,9 @@ func (h *SettingsHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
 		Environment:       h.cfg.Environment,
 		Version:           "1.0.0",
 		Features: dto.ServerConfigFeatures{
-			// MFA is not yet implemented — always false.
-			MFAEnabled: false,
+			// MFA self-service (TOTP) enrollment endpoints are available
+			// (RFC-011 / EPIC-9). Login step-up enforcement is a later slice.
+			MFAEnabled: true,
 			// Password policy is enforced via auth.ValidatePassword.
 			PasswordPolicyEnabled: true,
 			// Audit logging is always active (admin_logs + security_audit_logs).

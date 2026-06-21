@@ -103,6 +103,12 @@ make run
 - `GET /api/profile` - Get profile
 - `PUT/PATCH /api/profile` - Update profile
 
+### MFA (TOTP, self-service)
+- `GET /api/profile/mfa` - MFA status (`{enabled}`)
+- `POST /api/profile/mfa/enroll` - Begin enrollment (returns secret + `otpauth://` URI)
+- `POST /api/profile/mfa/confirm` - Confirm enrollment with a code
+- `POST /api/profile/mfa/disable` - Disable MFA
+
 ### Admin
 - `GET /api/admin/apps` - List owned apps
 - `POST /api/admin/apps` - Create app

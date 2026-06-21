@@ -703,22 +703,22 @@ func (s *oauthService) GetUserInfo(ctx context.Context, userID uint, clientID st
 // GetOpenIDConfiguration returns the OpenID Connect discovery document
 func (s *oauthService) GetOpenIDConfiguration(issuer string) *dto.OpenIDConfiguration {
 	return &dto.OpenIDConfiguration{
-		Issuer:                            issuer,
-		AuthorizationEndpoint:             issuer + "/oauth/authorize",
-		TokenEndpoint:                     issuer + "/oauth/token",
-		UserinfoEndpoint:                  issuer + "/oauth/userinfo",
-		JwksURI:                           issuer + "/.well-known/jwks.json",
-		IntrospectionEndpoint:             issuer + "/oauth/introspect",
-		RevocationEndpoint:                issuer + "/oauth/revoke",
+		Issuer:                issuer,
+		AuthorizationEndpoint: issuer + "/oauth/authorize",
+		TokenEndpoint:         issuer + "/oauth/token",
+		UserinfoEndpoint:      issuer + "/oauth/userinfo",
+		JwksURI:               issuer + "/.well-known/jwks.json",
+		IntrospectionEndpoint: issuer + "/oauth/introspect",
+		RevocationEndpoint:    issuer + "/oauth/revoke",
 		// H-01 fix: only "code" is advertised — implicit and hybrid flows are removed.
 		ResponseTypesSupported: []string{"code"},
 		// H-02 fix: only "S256" is advertised — "plain" provides no security benefit
 		// (the code_verifier IS the code_challenge, so interception defeats it).
-		CodeChallengeMethodsSupported:     []string{"S256"},
-		GrantTypesSupported:               []string{"authorization_code", "refresh_token", "client_credentials"},
-		SubjectTypesSupported:             []string{"public"},
-		IDTokenSigningAlgValuesSupported:  []string{"RS256"},
-		ScopesSupported:                   []string{"openid", "email", "profile", "offline_access", "api"},
+		CodeChallengeMethodsSupported:    []string{"S256"},
+		GrantTypesSupported:              []string{"authorization_code", "refresh_token", "client_credentials"},
+		SubjectTypesSupported:            []string{"public"},
+		IDTokenSigningAlgValuesSupported: []string{"RS256"},
+		ScopesSupported:                  []string{"openid", "email", "profile", "offline_access", "api"},
 		// HIGH-08 fix: remove "none" from token_endpoint_auth_methods_supported.
 		// Advertising "none" signals that unauthenticated token requests are
 		// acceptable, which misleads clients and relying parties.  Public clients
@@ -778,17 +778,9 @@ func (s *oauthService) logSecurityEvent(ctx context.Context, eventType model.Sec
 		return
 	}
 
-	severity := model.GetSeverityForEvent(eventType, success)
-
-	log := &model.SecurityAuditLog{
-		UserID:    userID,
-		AppID:     appID,
-		EventType: eventType,
-		Severity:  severity,
-		Success:   success,
-		Details:   details,
-		CreatedAt: time.Now(),
-	}
+	// RFC-008: build via the shared helper so the correlation ID from the
+	// request context is stamped on oauth/token audit rows.
+	log := newSecurityAuditLog(ctx, eventType, userID, appID, "", "", success, details)
 
 	// Fire and forget - don't let audit logging failure affect the main operation
 	_ = s.auditRepo.Create(ctx, log)

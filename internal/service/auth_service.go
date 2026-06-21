@@ -840,17 +840,9 @@ func (s *authService) logSecurityEvent(ctx context.Context, eventType model.Secu
 		return
 	}
 
-	severity := model.GetSeverityForEvent(eventType, success)
-
-	log := &model.SecurityAuditLog{
-		UserID:    userID,
-		AppID:     appID,
-		EventType: eventType,
-		Severity:  severity,
-		Success:   success,
-		Details:   details,
-		CreatedAt: time.Now(),
-	}
+	// RFC-008: build via the shared helper so the correlation ID from the
+	// request context is stamped on login/lockout/etc. audit rows.
+	log := newSecurityAuditLog(ctx, eventType, userID, appID, "", "", success, details)
 
 	// Fire and forget - don't let audit logging failure affect the main operation
 	_ = s.auditRepo.Create(ctx, log)

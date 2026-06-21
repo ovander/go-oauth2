@@ -44,7 +44,19 @@ func (h *MFAHandler) Status(w http.ResponseWriter, r *http.Request) {
 		writeError(w, "could not read MFA status", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, dto.MFAStatusResponse{Enabled: enabled})
+
+	// Only surface a remaining-code count for enrolled users (it is always 0
+	// before enrollment).
+	remaining := 0
+	if enabled {
+		remaining, err = h.mfaService.RemainingRecoveryCodes(r.Context(), userID)
+		if err != nil {
+			logger.Warnf("mfa: recovery-code count for user %d: %v", userID, err)
+			writeError(w, "could not read MFA status", http.StatusInternalServerError)
+			return
+		}
+	}
+	writeJSON(w, dto.MFAStatusResponse{Enabled: enabled, RecoveryCodesRemaining: remaining})
 }
 
 // Enroll handles POST /api/profile/mfa/enroll.

@@ -10,6 +10,14 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Added
+- **MFA:** New `internal/shared/auth/totp` package — standard-library TOTP
+  (RFC 6238 / HOTP RFC 4226) primitives: `GenerateSecret`, `ProvisioningURI`
+  (otpauth:// for authenticator apps), and `ValidateCode` (6 digits, 30s, ±1
+  step skew, constant-time). Verified against the RFC 6238 test vectors. First
+  building block of MFA; not yet wired into enrollment/login.
+  _Traceability: C9 → EPIC-9 → RFC-011 → #40._
+
 ### Security
 - **Identity / JWT:** Token verification now enforces the issuer
   (`jwt.WithIssuer`) and requires an expiry (`jwt.WithExpirationRequired`): a

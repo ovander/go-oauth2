@@ -35,7 +35,11 @@ func (s *adminLogService) LogAction(ctx context.Context, adminID uint, appID *ui
 		TargetUserID: targetUserID,
 		Action:       action,
 		Details:      details,
-		CreatedAt:    time.Now(),
+		// RFC-007/RFC-008: tie the admin-action row to the request that
+		// produced it. correlationIDFromContext is defined in
+		// security_audit_service.go (same package).
+		CorrelationID: correlationIDFromContext(ctx),
+		CreatedAt:     time.Now(),
 	}
 	return s.repo.Create(ctx, log)
 }

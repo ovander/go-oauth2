@@ -28,10 +28,14 @@ type AdminLog struct {
 	TargetUserID *uint                  `gorm:"column:target_user_id;index" json:"target_user_id,omitempty"`
 	Action       AdminAction            `gorm:"type:varchar(50);index" json:"action"`
 	Details      map[string]interface{} `gorm:"type:jsonb;serializer:json" json:"details"`
-	Admin        *User                  `gorm:"foreignKey:AdminID" json:"admin,omitempty"`
-	App          *App                   `gorm:"foreignKey:AppID" json:"app,omitempty"`
-	TargetUser   *User                  `gorm:"foreignKey:TargetUserID" json:"target_user,omitempty"`
-	CreatedAt    time.Time              `gorm:"column:inserted_at;index" json:"created_at"`
+	// CorrelationID links this admin-action row to the request that produced it
+	// for end-to-end tracing (RFC-007/RFC-008). Empty when produced outside a
+	// request context.
+	CorrelationID string    `gorm:"column:correlation_id;type:varchar(64);index" json:"correlation_id,omitempty"`
+	Admin         *User     `gorm:"foreignKey:AdminID" json:"admin,omitempty"`
+	App           *App      `gorm:"foreignKey:AppID" json:"app,omitempty"`
+	TargetUser    *User     `gorm:"foreignKey:TargetUserID" json:"target_user,omitempty"`
+	CreatedAt     time.Time `gorm:"column:inserted_at;index" json:"created_at"`
 }
 
 func (AdminLog) TableName() string {

@@ -303,6 +303,7 @@ func newOAuthRouter(
 					r.Post("/enroll", mfaHandler.Enroll)
 					r.Post("/confirm", mfaHandler.Confirm)
 					r.Post("/disable", mfaHandler.Disable)
+					r.Post("/recovery-codes", mfaHandler.RecoveryCodes)
 				})
 			}
 		})

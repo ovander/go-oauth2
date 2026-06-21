@@ -93,7 +93,7 @@ var _ repository.UserRepository = (*mfaMemUserRepo)(nil)
 var testEncKey = []byte("test-secret-key-base-for-mfa-aes")
 
 func newTestMFAService(repo repository.UserRepository) MFAService {
-	return NewMFAService(repo, testEncKey, "Socrate")
+	return NewMFAService(repo, nil, testEncKey, "Socrate")
 }
 
 // ---------------------------------------------------------------------------

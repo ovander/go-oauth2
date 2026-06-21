@@ -21,3 +21,9 @@ type MFAConfirmRequest struct {
 type MFAStatusResponse struct {
 	Enabled bool `json:"enabled"`
 }
+
+// MFARecoveryCodesResponse carries a freshly generated set of one-time backup
+// codes. They are shown only once (stored hashed) — the user must save them.
+type MFARecoveryCodesResponse struct {
+	RecoveryCodes []string `json:"recovery_codes"`
+}

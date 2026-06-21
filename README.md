@@ -108,6 +108,7 @@ make run
 - `POST /api/profile/mfa/enroll` - Begin enrollment (returns secret + `otpauth://` URI)
 - `POST /api/profile/mfa/confirm` - Confirm enrollment with a code
 - `POST /api/profile/mfa/disable` - Disable MFA
+- `POST /api/profile/mfa/recovery-codes` - (Re)generate one-time backup codes (returned once)
 
 ### Admin
 - `GET /api/admin/apps` - List owned apps

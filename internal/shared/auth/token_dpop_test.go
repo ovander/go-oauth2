@@ -55,6 +55,42 @@ func TestGenerateBoundAccessToken_EmptyJKTIsUnbound(t *testing.T) {
 	}
 }
 
+func TestGenerateTokenSetWithDPoP_BindsAccessToken(t *testing.T) {
+	ts := newDPoPTokenService(t)
+	user := &model.User{ID: 5, TokenVersion: 1}
+	app := &model.App{ClientID: "client-dpop"}
+
+	set, err := ts.GenerateTokenSetWithDPoP(user, app, "user", "openid", nil, "", time.Now().Unix(), "jkt-bound")
+	if err != nil {
+		t.Fatalf("GenerateTokenSetWithDPoP: %v", err)
+	}
+	claims, err := ts.VerifyAccessToken(set.AccessToken)
+	if err != nil {
+		t.Fatalf("VerifyAccessToken: %v", err)
+	}
+	if claims.Cnf == nil || claims.Cnf.JKT != "jkt-bound" {
+		t.Fatalf("expected access token bound to jkt, got %+v", claims.Cnf)
+	}
+}
+
+func TestGenerateTokenSetWithDPoP_EmptyJKTMatchesPlainSet(t *testing.T) {
+	ts := newDPoPTokenService(t)
+	user := &model.User{ID: 5, TokenVersion: 1}
+	app := &model.App{ClientID: "client-dpop"}
+
+	set, err := ts.GenerateTokenSetWithDPoP(user, app, "user", "openid", nil, "", time.Now().Unix(), "")
+	if err != nil {
+		t.Fatalf("GenerateTokenSetWithDPoP: %v", err)
+	}
+	claims, err := ts.VerifyAccessToken(set.AccessToken)
+	if err != nil {
+		t.Fatalf("VerifyAccessToken: %v", err)
+	}
+	if claims.Cnf != nil {
+		t.Fatalf("empty jkt must yield an unbound token, got %+v", claims.Cnf)
+	}
+}
+
 func TestGenerateTokenSet_HasNoCnf(t *testing.T) {
 	// The ordinary token path must remain unbound (backward compatible).
 	ts := newDPoPTokenService(t)

@@ -155,15 +155,29 @@ type TokenSet struct {
 	ExpiresIn    int
 }
 
-// GenerateTokenSet generates a complete token set for a user
+// GenerateTokenSet generates a complete token set for a user.
 func (ts *TokenService) GenerateTokenSet(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, nonce string, authTime int64) (*TokenSet, error) {
+	return ts.generateTokenSet(user, app, role, scope, appRoles, nonce, authTime, "")
+}
+
+// GenerateTokenSetWithDPoP generates a complete token set whose access token is
+// sender-constrained to the DPoP key thumbprint jkt via the cnf.jkt claim
+// (RFC 9449). An empty jkt yields a set identical to GenerateTokenSet, so the
+// token endpoint can call this unconditionally and pass the thumbprint only when
+// a valid DPoP proof accompanied the request. The refresh and ID tokens are
+// unchanged (refresh-token binding is a later slice).
+func (ts *TokenService) GenerateTokenSetWithDPoP(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, nonce string, authTime int64, jkt string) (*TokenSet, error) {
+	return ts.generateTokenSet(user, app, role, scope, appRoles, nonce, authTime, jkt)
+}
+
+func (ts *TokenService) generateTokenSet(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, nonce string, authTime int64, jkt string) (*TokenSet, error) {
 	now := time.Now()
 	if authTime == 0 {
 		authTime = now.Unix()
 	}
 
-	// Generate access token
-	accessToken, err := ts.generateAccessToken(user, app, role, scope, appRoles, now)
+	// Generate access token (bound to the DPoP key when jkt is non-empty).
+	accessToken, err := ts.GenerateBoundAccessToken(user, app, role, scope, appRoles, jkt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
@@ -213,11 +227,6 @@ func (ts *TokenService) newAccessClaims(user *model.User, app *model.App, role s
 		AppRoles:     appRoles,
 		Roles:        roles,
 	}
-}
-
-// generateAccessToken generates an access token with token version for revocation support
-func (ts *TokenService) generateAccessToken(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, now time.Time) (string, error) {
-	return ts.signToken(ts.newAccessClaims(user, app, role, scope, appRoles, now))
 }
 
 // GenerateBoundAccessToken generates a user access token bound to a DPoP key

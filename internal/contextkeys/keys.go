@@ -11,4 +11,8 @@ const (
 	RequestIDKey         contextKey = "request_id"
 	IPAddressKey         contextKey = "ip_address"
 	ServiceAccountAppKey contextKey = "service_account_app"
+	// DPoPJKTKey carries the verified DPoP JWK thumbprint (jkt) of the proof that
+	// accompanied the request, so the token endpoint can sender-constrain the
+	// issued access token (RFC 9449). Empty/absent when no valid proof was sent.
+	DPoPJKTKey contextKey = "dpop_jkt"
 )

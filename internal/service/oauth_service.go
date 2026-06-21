@@ -8,12 +8,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
 	"github.com/ovandermoten/go-oauth2/internal/dto"
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
+
+// dpopJKTFromContext returns the verified DPoP JWK thumbprint placed on the
+// request context by middleware.DPoPObserve, or "" when no valid proof was sent.
+func dpopJKTFromContext(ctx context.Context) string {
+	jkt, _ := ctx.Value(contextkeys.DPoPJKTKey).(string)
+	return jkt
+}
 
 // OAuth service errors
 var (
@@ -316,7 +324,7 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 
 	// Generate tokens
 	now := time.Now()
-	tokenSet, err := s.tokenService.GenerateTokenSet(
+	tokenSet, err := s.tokenService.GenerateTokenSetWithDPoP(
 		user,
 		app,
 		authCode.Role,
@@ -324,6 +332,7 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 		authCode.AppRoles,
 		authCode.Nonce,
 		now.Unix(),
+		dpopJKTFromContext(ctx),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate token set: %w", err)
@@ -452,7 +461,7 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 	// Resource servers relying on auth_time for session-freshness enforcement
 	// should use max_age on the authorization request to force re-auth when
 	// needed (see LOW-02 / ErrReauthRequired).
-	tokenSet, err := s.tokenService.GenerateTokenSet(
+	tokenSet, err := s.tokenService.GenerateTokenSetWithDPoP(
 		user,
 		app,
 		string(userAppRole.Role),
@@ -460,6 +469,7 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 		appRoles,
 		"", // nonce: intentionally absent on refresh — see LOW-04 comment above
 		claims.AuthTime,
+		dpopJKTFromContext(ctx),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate token set: %w", err)

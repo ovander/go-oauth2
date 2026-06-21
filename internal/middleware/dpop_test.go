@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth/dpop"
 )
 
@@ -115,6 +116,41 @@ func TestDPoPObserve_NoHeaderNeverBlocks(t *testing.T) {
 	rr := doPost(h, "")
 	if !ran || rr.Code != http.StatusOK {
 		t.Fatalf("observe must pass through when no DPoP header is present; ran=%v code=%d", ran, rr.Code)
+	}
+}
+
+func TestDPoPObserve_StashesThumbprintForValidProof(t *testing.T) {
+	cache := dpop.NewMemoryReplayCache(time.Minute)
+	defer cache.Stop()
+
+	var gotJKT string
+	var present bool
+	terminal := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotJKT, present = r.Context().Value(contextkeys.DPoPJKTKey).(string)
+		w.WriteHeader(http.StatusOK)
+	})
+	h := DPoPObserve(cache, "observe", htuBase)(terminal)
+
+	doPost(h, makeProof(t))
+	if !present || gotJKT == "" {
+		t.Fatalf("expected a verified jkt on the context, present=%v jkt=%q", present, gotJKT)
+	}
+}
+
+func TestDPoPObserve_NoThumbprintForInvalidProof(t *testing.T) {
+	cache := dpop.NewMemoryReplayCache(time.Minute)
+	defer cache.Stop()
+
+	var present bool
+	terminal := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, present = r.Context().Value(contextkeys.DPoPJKTKey).(string)
+		w.WriteHeader(http.StatusOK)
+	})
+	h := DPoPObserve(cache, "observe", htuBase)(terminal)
+
+	doPost(h, "garbage-not-a-jwt")
+	if present {
+		t.Fatal("an invalid proof must not place a jkt on the context")
 	}
 }
 

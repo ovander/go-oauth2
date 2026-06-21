@@ -11,6 +11,17 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Tokens / DPoP:** **Opportunistic sender-constraint** at the token endpoint
+  (RFC 9449). When a valid DPoP proof accompanies an `authorization_code` or
+  `refresh_token` grant (`DPOP_MODE=observe`/`enforce`), the issued **access
+  token is now bound** to the proof's key via `cnf.jkt` — the middleware places
+  the verified thumbprint on the request context and the grant uses the new
+  `TokenService.GenerateTokenSetWithDPoP`. Clients that send no proof, or an
+  invalid one, are unaffected and receive an ordinary bearer token (still never
+  rejected — that is the enforce slice). Refresh-token binding is a later slice.
+  _Traceability: C8 → EPIC-8 → RFC-003 → #68._
+
+### Added
 - **Tokens / DPoP:** Observe-mode DPoP telemetry at the token endpoint
   (RFC 9449 rollout). New `middleware.DPoPObserve` verifies a `DPoP` proof on
   `POST /oauth/token` (binding to the request method/URL, with replay detection)

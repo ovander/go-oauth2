@@ -1,10 +1,12 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth/dpop"
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
@@ -48,6 +50,10 @@ func DPoPObserve(cache dpop.ReplayCache, mode, htuBase string) func(http.Handler
 						"jkt":     jktPrefix(proof.Thumbprint),
 						"jti_set": proof.JTI != "",
 					}).Info("dpop: valid proof (observe)")
+					// Make the verified thumbprint available to the token endpoint
+					// so it can opportunistically sender-constrain the issued
+					// access token (cnf.jkt). This never rejects the request.
+					r = r.WithContext(context.WithValue(r.Context(), contextkeys.DPoPJKTKey, proof.Thumbprint))
 				}
 			}
 			next.ServeHTTP(w, r)

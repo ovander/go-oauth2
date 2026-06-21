@@ -10,6 +10,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Security
+- **Identity / JWT:** Pinned token verification to an explicit algorithm
+  allow-list of exactly `RS256` via `jwt.WithValidMethods` in
+  `verifyToken`. Tokens presenting any other `alg` (`RS384`/`RS512`, `none`,
+  or an HMAC algorithm) are now rejected by the parser before the keyfunc
+  runs, regardless of the key. Backward compatible — the server only ever
+  issues RS256. _Traceability: C3 → EPIC-3 → RFC-002 → #8._
+
+## [0.2.0]
+
 ### Added
 - **Identity / KMS:** Introduced a `Signer` interface in `internal/shared/auth`
   that abstracts the JWT signing operation, with a default `localSigner`

@@ -11,6 +11,14 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **MFA / API:** Self-service TOTP enrollment endpoints (authenticated, under
+  `/api/profile/mfa`): `POST /enroll` (returns the secret + `otpauth://`
+  provisioning URI), `POST /confirm` (validates a code and enables MFA),
+  `POST /disable`, and `GET /mfa` (status). Wires `service.MFAService` into the
+  router/bootstrap; a user can only ever change their own MFA (the id comes from
+  the authenticated context). `settings/config` now reports `MFAEnabled: true`.
+  Login step-up enforcement is the next slice. _Traceability: C9 → EPIC-9 →
+  RFC-011 → #46._
 - **MFA:** New `service.MFAService` — the TOTP enrollment/verification lifecycle
   (`BeginEnrollment`, `ConfirmEnrollment`, `Verify`, `Disable`, `IsEnabled`).
   Enrollment generates a TOTP secret, stores it **encrypted at rest**

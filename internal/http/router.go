@@ -75,6 +75,7 @@ func NewRouters(
 	oauthHandler *handler.OAuthHandler,
 	appUsersHandler *handler.AppUsersHandler,
 	profileHandler *handler.ProfileHandler,
+	mfaHandler *handler.MFAHandler,
 	adminHandler *handler.AdminHandler,
 	adminAuthHandler *handler.AdminAuthHandler,
 	dashboardHandler *handler.DashboardHandler,
@@ -92,7 +93,7 @@ func NewRouters(
 	config RouterConfig,
 ) *Routers {
 	return &Routers{
-		OAuth: newOAuthRouter(authHandler, oauthHandler, webHandler, profileHandler, healthHandler, magicLinkHandler, tokenService, userRepo, config),
+		OAuth: newOAuthRouter(authHandler, oauthHandler, webHandler, profileHandler, mfaHandler, healthHandler, magicLinkHandler, tokenService, userRepo, config),
 		Admin: newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, adminLogsHandler, settingsHandler, healthHandler, magicLinkHandler, tokenService, userRepo, userAppRoleRepo, appRepo, config),
 	}
 }
@@ -104,6 +105,7 @@ func newOAuthRouter(
 	oauthHandler *handler.OAuthHandler,
 	webHandler *internalweb.WebHandler,
 	profileHandler *handler.ProfileHandler,
+	mfaHandler *handler.MFAHandler, // nil-safe; MFA self-service routes
 	healthHandler *handler.HealthHandler,
 	magicLinkHandler *handler.MagicLinkHandler, // nil-safe; only Verify is registered here
 	tokenService *auth.TokenService,
@@ -293,6 +295,16 @@ func newOAuthRouter(
 			r.Get("/", profileHandler.GetProfile)
 			r.Put("/", profileHandler.UpdateProfile)
 			r.Patch("/", profileHandler.UpdateProfile)
+
+			// MFA self-service (TOTP) — RFC-011 / EPIC-9.
+			if mfaHandler != nil {
+				r.Route("/mfa", func(r chi.Router) {
+					r.Get("/", mfaHandler.Status)
+					r.Post("/enroll", mfaHandler.Enroll)
+					r.Post("/confirm", mfaHandler.Confirm)
+					r.Post("/disable", mfaHandler.Disable)
+				})
+			}
 		})
 	})
 
@@ -534,6 +546,7 @@ func NewRouter(
 	oauthHandler *handler.OAuthHandler,
 	appUsersHandler *handler.AppUsersHandler,
 	profileHandler *handler.ProfileHandler,
+	mfaHandler *handler.MFAHandler,
 	adminHandler *handler.AdminHandler,
 	adminAuthHandler *handler.AdminAuthHandler,
 	dashboardHandler *handler.DashboardHandler,
@@ -569,7 +582,7 @@ func NewRouter(
 	r.Use(middleware.JSONContentType())
 
 	// Mount OAuth router
-	oauthRouter := newOAuthRouter(authHandler, oauthHandler, webHandler, profileHandler, healthHandler, magicLinkHandler, tokenService, userRepo, config)
+	oauthRouter := newOAuthRouter(authHandler, oauthHandler, webHandler, profileHandler, mfaHandler, healthHandler, magicLinkHandler, tokenService, userRepo, config)
 	r.Mount("/", oauthRouter)
 
 	// Mount Admin router under /admin prefix (for single-port mode)

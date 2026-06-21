@@ -351,6 +351,8 @@ func Bootstrap(cfg *config.Config) *App {
 	oauthHandler := handler.NewOAuthHandler(oauthService, authService, appService, templateService, tokenService, cfg.OAuthIssuer, []byte(cfg.SecretKeyBase))
 	appUsersHandler := handler.NewAppUsersHandler(userService, userAppRoleService, appService, adminLogService, emailService, tokenService, cfg.OAuthIssuer)
 	profileHandler := handler.NewProfileHandler(userService)
+	mfaService := service.NewMFAService(userRepo, []byte(cfg.SecretKeyBase), cfg.OAuthIssuer)
+	mfaHandler := handler.NewMFAHandler(mfaService)
 	adminHandler := handler.NewAdminHandler(appService, userService, userAppRoleService, adminLogService, appActivityLogService, emailService)
 	adminAuthHandler := handler.NewAdminAuthHandler(authService, userService)
 	dashboardHandler := handler.NewDashboardHandler(db, userRepo, appRepo, userAppRoleRepo)
@@ -475,6 +477,7 @@ func Bootstrap(cfg *config.Config) *App {
 			oauthHandler,
 			appUsersHandler,
 			profileHandler,
+			mfaHandler,
 			adminHandler,
 			adminAuthHandler,
 			dashboardHandler,
@@ -512,6 +515,7 @@ func Bootstrap(cfg *config.Config) *App {
 		oauthHandler,
 		appUsersHandler,
 		profileHandler,
+		mfaHandler,
 		adminHandler,
 		adminAuthHandler,
 		dashboardHandler,

@@ -53,6 +53,23 @@ jobs:
       - name: Test (race)
         run: go test -race ./...
 
+  lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.5.0
+
   govulncheck:
     name: govulncheck
     runs-on: ubuntu-latest

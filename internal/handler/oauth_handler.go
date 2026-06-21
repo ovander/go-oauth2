@@ -50,7 +50,9 @@ func NewOAuthHandler(
 		// Consent tokens will not survive restarts, which is acceptable
 		// in non-production environments.
 		k := make([]byte, 32)
-		rand.Read(k) //nolint:errcheck — crypto/rand.Read never fails on Linux
+		// crypto/rand.Read does not fail on Linux; this is a dev-only fallback
+		// key used when no SECRET_KEY_BASE is configured.
+		_, _ = rand.Read(k)
 		secretKey = k
 	}
 	return &OAuthHandler{
@@ -138,7 +140,7 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		// User not authenticated — render login page with CSRF token.
-		h.templateService.RenderLogin(w, service.LoginPageData{
+		_ = h.templateService.RenderLogin(w, service.LoginPageData{
 			AppName:             app.Name,
 			ClientID:            req.ClientID,
 			RedirectURI:         req.RedirectURI,
@@ -254,7 +256,7 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 	// renderLoginError re-renders the login page with a fresh CSRF token.
 	renderLoginError := func(errorMsg string) {
 		csrfToken, _ := auth.GenerateCSRFToken(w, h.httpsRequired)
-		h.templateService.RenderLogin(w, service.LoginPageData{
+		_ = h.templateService.RenderLogin(w, service.LoginPageData{
 			AppName:             app.Name,
 			ClientID:            req.ClientID,
 			RedirectURI:         req.RedirectURI,
@@ -381,7 +383,7 @@ func (h *OAuthHandler) renderConsentPage(w http.ResponseWriter, req dto.Authoriz
 		return
 	}
 
-	h.templateService.RenderConsent(w, service.ConsentPageData{
+	_ = h.templateService.RenderConsent(w, service.ConsentPageData{
 		AppName:             appName,
 		ClientID:            req.ClientID,
 		RedirectURI:         req.RedirectURI,
@@ -399,7 +401,7 @@ func (h *OAuthHandler) renderConsentPage(w http.ResponseWriter, req dto.Authoriz
 
 // renderOAuthError renders the error page
 func (h *OAuthHandler) renderOAuthError(w http.ResponseWriter, errorCode, message, returnURL string) {
-	h.templateService.RenderError(w, service.ErrorPageData{
+	_ = h.templateService.RenderError(w, service.ErrorPageData{
 		Title:     "Authorization Error",
 		Message:   message,
 		ErrorCode: errorCode,

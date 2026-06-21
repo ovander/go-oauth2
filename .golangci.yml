@@ -1,0 +1,29 @@
+# golangci-lint configuration (v2). RFC-014 / EPIC-6.
+#
+# A curated, deterministic linter set so CI results don't drift with tool
+# defaults across versions. errcheck is excluded in *_test.go because unchecked
+# cleanup calls (Close/Setenv/RemoveAll) there are noise, not defects.
+version: "2"
+
+linters:
+  # staticcheck is intentionally deferred to a follow-up: its SA9003
+  # (empty-branch) findings live in the security-critical auth path and several
+  # carry "log error but continue" comments that should add real logging — a
+  # change that warrants careful per-site review rather than a mechanical sweep.
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - unused
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+
+# Report every finding (the defaults cap same/total issues, which would hide
+# duplicates and make the gate unstable as fixes reveal the next batch).
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

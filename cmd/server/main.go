@@ -154,7 +154,7 @@ func waitForShutdown(srv1, srv2 *http.Server, app *App) {
 	// Close database connection
 	sqlDB, err := app.DB.DB()
 	if err == nil {
-		sqlDB.Close()
+		_ = sqlDB.Close()
 	}
 
 	logger.Info("👋 Servers stopped")

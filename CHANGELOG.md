@@ -11,6 +11,11 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Audit / Observability:** Security audit events now record a `correlation_id`,
+  linking each audit row to the request that produced it (derived from the
+  request context, or an explicit `SecurityEvent.CorrelationID`). Adds the
+  `security_audit_logs.correlation_id` column via migration `0006` (additive,
+  nullable, indexed). _Traceability: C5 → EPIC-5 → RFC-007 → #16._
 - **Observability:** Request logs now include a `correlation_id` field when a
   correlation ID is present in the request context, so a request can be traced
   end-to-end across log lines. `middleware.CorrelationID()` now runs before the

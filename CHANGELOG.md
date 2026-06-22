@@ -11,6 +11,17 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Tests / Adversarial (Phase 2):** Added a **JWT/OAuth adversarial suite**
+  (docs/program/TEST-STRATEGY.md) mapping the OAuth 2.0 Security BCP (RFC 9700) /
+  OWASP ASVS attack classes to failing-by-design tests against access-token
+  verification: **`alg=none`**, **RS256→HS256 algorithm confusion** (public key
+  as HMAC secret), **foreign-key signature**, **tampered signature**, **expired**,
+  **wrong issuer** (mix-up), **token-type confusion** (refresh-as-access), and
+  malformed input — each asserted **rejected**. Test-only; guards the
+  highest-blast-radius verification path. _Traceability: C6 → EPIC-6 → RFC-014 /
+  RFC 9700 → #150._
+
+### Added
 - **CI / Test strategy:** Added `docs/program/TEST-STRATEGY.md` — the
   identity-server test-assurance plan (risk-tiered coverage, adversarial / fuzz /
   mutation / conformance layers, phased roadmap, and the eventual blocking CI

@@ -44,12 +44,22 @@ type OAuthHandler struct {
 	// jwksCacheMaxAge is the Cache-Control max-age (seconds) advertised on the
 	// JWKS endpoint. <= 0 disables caching (no-store). RFC-002.
 	jwksCacheMaxAge int
+	// extraGrantTypes are additional grant types advertised in OIDC discovery
+	// beyond the always-supported set (e.g. the RFC 8693 token-exchange URN when
+	// TOKEN_EXCHANGE_MODE=enforce). Empty when none are enabled.
+	extraGrantTypes []string
 }
 
 // SetJWKSCacheMaxAge configures the Cache-Control max-age (in seconds) for the
 // JWKS endpoint. A value <= 0 disables caching.
 func (h *OAuthHandler) SetJWKSCacheMaxAge(seconds int) {
 	h.jwksCacheMaxAge = seconds
+}
+
+// SetExtraGrantTypes configures additional grant types to advertise in OIDC
+// discovery (appended to grant_types_supported).
+func (h *OAuthHandler) SetExtraGrantTypes(grantTypes []string) {
+	h.extraGrantTypes = grantTypes
 }
 
 // SetDPoPSigningAlgs configures the DPoP proof signing algorithms advertised in
@@ -926,6 +936,9 @@ func (h *OAuthHandler) OpenIDConfiguration(w http.ResponseWriter, r *http.Reques
 	config := h.oauthService.GetOpenIDConfiguration(h.issuer)
 	if len(h.dpopAlgs) > 0 {
 		config.DPoPSigningAlgValuesSupported = h.dpopAlgs
+	}
+	if len(h.extraGrantTypes) > 0 {
+		config.GrantTypesSupported = append(config.GrantTypesSupported, h.extraGrantTypes...)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	writeJSON(w, config)

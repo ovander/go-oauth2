@@ -257,6 +257,36 @@ func (ts *TokenService) GenerateBoundAccessToken(user *model.User, app *model.Ap
 	return ts.signToken(claims)
 }
 
+// GenerateExchangedToken mints an access token for an RFC 8693 token-exchange
+// result. The subject, audience, scope and token version are supplied explicitly
+// (recovered from the verified subject token, so the token version still drives
+// revocation), and the act (actor) claim records who is acting — preserving
+// dual-principal visibility downstream. It uses the standard short access-token
+// TTL. This is purely the issuance primitive; the caller owns authorization.
+func (ts *TokenService) GenerateExchangedToken(subject string, audience []string, scope string, tokenVersion int, actor *ActClaim) (token string, expiresIn int, err error) {
+	now := time.Now()
+	claims := AccessTokenClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    ts.issuer,
+			Subject:   subject,
+			Audience:  jwt.ClaimStrings(audience),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(ts.accessTokenTTL)),
+			ID:        uuid.New().String(),
+		},
+		Scope:        scope,
+		Type:         "access",
+		TokenVersion: tokenVersion,
+		Act:          actor,
+	}
+	signed, serr := ts.signToken(claims)
+	if serr != nil {
+		return "", 0, serr
+	}
+	return signed, int(ts.accessTokenTTL.Seconds()), nil
+}
+
 // generateRefreshToken generates a refresh token, optionally sender-constrained
 // to a DPoP key thumbprint (cnf.jkt) when jkt is non-empty.
 func (ts *TokenService) generateRefreshToken(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, now time.Time, authTime int64, jkt string) (string, error) {

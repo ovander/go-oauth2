@@ -11,6 +11,23 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / Delegation:** OAuth 2.0 **Token Exchange is now live** (RFC 8693 /
+  EPIC-16) under `TOKEN_EXCHANGE_MODE=enforce`. A flagged client
+  (`allow_token_exchange`, plus `allow_impersonation` for the actor-absent case)
+  may exchange a verified subject token for a new access token. The issued token
+  is **downscoped** (scope ⊆ the subject's), **audience-bound** (a target
+  `audience`/`resource` is required), **short-lived** (access-token TTL), carries
+  the subject's `token_version` so revocation still applies, and stamps the `act`
+  (actor) claim — the actor token's subject for delegation, `client:<id>` for
+  impersonation — keeping **both principals visible** downstream. Confidential
+  clients are authenticated; every exchange is audited (`token_exchange`,
+  `outcome=issued`). Policy denials surface as the proper RFC 8693 errors
+  (`unauthorized_client` / `invalid_scope` / `invalid_target` / `invalid_client`
+  / `invalid_grant`). `off`/`shadow` are unchanged (no issuance). Adds
+  `issued_token_type` to the token response. _Traceability: C16 → EPIC-16 →
+  RFC-019 → #97._
+
+### Added
 - **Identity / Delegation:** Token-exchange shadow mode now performs **full
   validation** (RFC 8693 / EPIC-16). `ExchangeToken` verifies the presented
   subject (and, for delegation, actor) tokens, recovers the subject's scope, and

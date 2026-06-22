@@ -61,6 +61,9 @@ var (
 	// ErrDPoPKeyMismatch indicates a DPoP-bound refresh token was presented with
 	// a proof for a different key (RFC 9449 §5).
 	ErrDPoPKeyMismatch = errors.New("DPoP proof key does not match the refresh token binding")
+	// ErrInvalidExchangeRequest indicates a malformed RFC 8693 token-exchange
+	// request (maps to invalid_request).
+	ErrInvalidExchangeRequest = errors.New("invalid token-exchange request")
 )
 
 var validScopes = map[string]bool{
@@ -862,6 +865,7 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 	if s.tokenExchangeMode != TokenExchangeModeShadow && s.tokenExchangeMode != TokenExchangeModeEnforce {
 		return nil, ErrInvalidGrantType
 	}
+	enforce := s.tokenExchangeMode == TokenExchangeModeEnforce
 
 	// Resolve the requesting client for the policy + telemetry.
 	var app *model.App
@@ -878,85 +882,121 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 		"allow_token_exchange": allowTE,
 		"allow_impersonation":  allowImp,
 	}
-	// Audit the (would-be) decision exactly once, on every return path.
+	// Audit the decision exactly once, on every return path.
 	defer func() {
 		s.logSecurityEvent(ctx, model.SecurityEventTokenExchange, nil, appID, false, details)
 	}()
 
+	// fail records the outcome and returns the right error per mode: in shadow
+	// every failure is invisible (unsupported_grant_type); in enforce the
+	// specific RFC 8693 error is surfaced.
+	fail := func(outcome string, enforceErr error) (*dto.TokenResponse, error) {
+		details["outcome"] = outcome
+		if enforce {
+			return nil, enforceErr
+		}
+		return nil, ErrInvalidGrantType
+	}
+
 	req, perr := tokenexchange.Parse(form)
 	if perr != nil {
-		details["outcome"] = "parse_error"
 		details["error"] = perr.Error()
-		return nil, ErrInvalidGrantType
+		return fail("parse_error", ErrInvalidExchangeRequest)
 	}
 	details["is_delegation"] = req.IsDelegation()
 	details["subject_token_type"] = req.SubjectTokenType
 	details["requested_token_type"] = req.RequestedTokenType
 
-	// Verify the subject token and recover its subject + scope.
-	subjectSub, subjectScope, sverr := s.verifyExchangeToken(req.SubjectToken, req.SubjectTokenType)
+	// Verify the subject token and recover its subject, scope, and version.
+	subjectSub, subjectScope, subjectVer, sverr := s.verifyExchangeToken(req.SubjectToken, req.SubjectTokenType)
 	if sverr != nil {
-		details["outcome"] = "invalid_subject_token"
-		return nil, ErrInvalidGrantType
+		return fail("invalid_subject_token", ErrInvalidToken)
 	}
 	details["subject_sub"] = subjectSub
 
 	// For delegation, verify the actor token too.
+	actorSub := ""
 	if req.IsDelegation() {
-		actorSub, _, averr := s.verifyExchangeToken(req.ActorToken, req.ActorTokenType)
+		as, _, _, averr := s.verifyExchangeToken(req.ActorToken, req.ActorTokenType)
 		if averr != nil {
-			details["outcome"] = "invalid_actor_token"
-			return nil, ErrInvalidGrantType
+			return fail("invalid_actor_token", ErrInvalidToken)
 		}
+		actorSub = as
 		details["actor_sub"] = actorSub
 	}
 
-	// Authorization policy (default-deny, downscope-only, audience-bound).
+	// Authenticate the requesting client (default-deny): an unknown client, or a
+	// confidential client with a bad secret, may not exchange.
 	if app == nil {
-		details["outcome"] = "denied"
 		details["deny_reason"] = "unknown_client"
-		return nil, ErrInvalidGrantType
+		return fail("denied", ErrInvalidCredentials)
 	}
-	decision, derr := authorizeExchange(app, req, subjectScope)
-	if derr != nil {
-		details["outcome"] = "denied"
-		details["deny_reason"] = derr.Error()
-		return nil, ErrInvalidGrantType
+	if app.ClientSecretHash != "" && !auth.CheckClientSecret(clientSecret, app.ClientSecretHash) {
+		details["deny_reason"] = "invalid_client"
+		return fail("denied", ErrInvalidCredentials)
 	}
 
-	details["outcome"] = "shadow_allow"
+	// Authorization policy (default-deny, downscope-only, audience-bound).
+	decision, derr := authorizeExchange(app, req, subjectScope)
+	if derr != nil {
+		details["deny_reason"] = derr.Error()
+		return fail("denied", derr)
+	}
 	details["granted_scope"] = decision.GrantedScope
 	if len(decision.Audience) > 0 {
 		details["audience"] = decision.Audience
 	}
-	// Shadow: never issue. The audit row records what would have been issued.
-	return nil, ErrInvalidGrantType
+
+	if !enforce {
+		details["outcome"] = "shadow_allow"
+		return nil, ErrInvalidGrantType
+	}
+
+	// Enforce: mint the exchanged token. The act (actor) claim records who is
+	// acting — the actor token's subject for delegation, the requesting client
+	// for impersonation — so both principals stay visible downstream.
+	actor := &auth.ActClaim{Sub: actorSub}
+	if !req.IsDelegation() {
+		actor = &auth.ActClaim{Sub: "client:" + clientID}
+	}
+	token, expiresIn, merr := s.tokenService.GenerateExchangedToken(subjectSub, decision.Audience, decision.GrantedScope, subjectVer, actor)
+	if merr != nil {
+		return fail("error", fmt.Errorf("failed to issue exchanged token: %w", merr))
+	}
+	details["outcome"] = "issued"
+	return &dto.TokenResponse{
+		AccessToken:     token,
+		TokenType:       "Bearer",
+		ExpiresIn:       expiresIn,
+		Scope:           decision.GrantedScope,
+		IssuedTokenType: tokenexchange.TokenTypeAccessToken,
+	}, nil
 }
 
 // verifyExchangeToken verifies a token presented to the exchange and returns its
-// subject and (where applicable) scope, dispatching on the RFC 8693 token type.
-func (s *oauthService) verifyExchangeToken(tokenStr, tokenType string) (sub, scope string, err error) {
+// subject, scope, and token version, dispatching on the RFC 8693 token type.
+func (s *oauthService) verifyExchangeToken(tokenStr, tokenType string) (sub, scope string, version int, err error) {
 	switch tokenType {
 	case tokenexchange.TokenTypeAccessToken, tokenexchange.TokenTypeJWT:
 		c, e := s.tokenService.VerifyAccessToken(tokenStr)
 		if e != nil {
-			return "", "", e
+			return "", "", 0, e
 		}
-		return c.Subject, c.Scope, nil
+		return c.Subject, c.Scope, c.TokenVersion, nil
 	case tokenexchange.TokenTypeRefreshToken:
 		c, e := s.tokenService.VerifyRefreshToken(tokenStr)
 		if e != nil {
-			return "", "", e
+			return "", "", 0, e
 		}
-		return c.Subject, c.Scope, nil
+		return c.Subject, c.Scope, c.Ver, nil
 	case tokenexchange.TokenTypeIDToken:
 		c, e := s.tokenService.VerifyIDToken(tokenStr)
 		if e != nil {
-			return "", "", e
+			return "", "", 0, e
 		}
-		return c.Subject, "", nil
+		return c.Subject, "", 0, nil
 	default:
-		return "", "", fmt.Errorf("unsupported token type %q", tokenType)
+		return "", "", 0, fmt.Errorf("unsupported token type %q", tokenType)
 	}
 }
 

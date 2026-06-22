@@ -53,6 +53,9 @@ type TokenResponse struct {
 	Scope        string            `json:"scope,omitempty"`
 	Roles        []string          `json:"roles,omitempty"`
 	AppRoles     map[string]string `json:"app_roles,omitempty"`
+	// IssuedTokenType is the RFC 8693 token-exchange response field identifying
+	// the type of the issued token (set only for token-exchange responses).
+	IssuedTokenType string `json:"issued_token_type,omitempty"`
 }
 
 type IntrospectResponse struct {

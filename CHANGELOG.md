@@ -11,6 +11,18 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / Delegation:** **Delegation step-up** (RFC 8693 / EPIC-17) — the
+  human-actor counterpart to impersonation step-up. A delegation token-exchange
+  carries an actor token whose `amr` evidences how that human authenticated, so
+  `DELEGATION_STEPUP_MODE` can require it to contain **`mfa`**: `off` (default,
+  no check), `observe` (audit a would-be denial but still issue), or `enforce`
+  (deny with `invalid_grant`). An actor token minted without `amr` (e.g. a
+  non-interactive flow) cannot satisfy enforce. Impersonation (actor-absent) is
+  unaffected; every decision is audited (`delegation_stepup`). Builds on the
+  `amr` claim from the previous slice. _Traceability: C17 → EPIC-17 → RFC-016 →
+  #125._
+
+### Added
 - **Identity / Authentication context:** Tokens from an **interactive login** now
   carry **`amr` and `acr`** (RFC 8176 / OIDC, part of the RFC-001 canonical claim
   set) on the access and ID tokens, and introspection surfaces them: `["pwd"]` /

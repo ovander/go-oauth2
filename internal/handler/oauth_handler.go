@@ -603,6 +603,8 @@ func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 				writeOAuthError(w, "unauthorized_client", "token exchange is not permitted for this client", http.StatusForbidden)
 			case errors.Is(err, service.ErrStepUpRequired):
 				writeOAuthError(w, "invalid_grant", "impersonation requires a more recent subject authentication", http.StatusBadRequest)
+			case errors.Is(err, service.ErrDelegationStepUpRequired):
+				writeOAuthError(w, "invalid_grant", "delegation requires the actor to have authenticated with MFA", http.StatusBadRequest)
 			case errors.Is(err, service.ErrInvalidExchangeRequest):
 				writeOAuthError(w, "invalid_request", "invalid token-exchange request", http.StatusBadRequest)
 			default:

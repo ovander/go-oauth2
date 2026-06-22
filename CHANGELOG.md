@@ -11,6 +11,14 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Docs / Revocation:** Added a **revocation & token-freshness SLA**
+  (`docs/REVOCATION-FRESHNESS-SLA.md`, RFC-012 / EPIC-14) stating the guaranteed
+  time-to-revoke per validation strategy — **immediate** for introspecting or
+  Socrate-authenticated resource servers, **≤ `ACCESS_TOKEN_TTL`** (default 900s)
+  for offline local JWT validators — plus how to tighten it and high-assurance
+  guidance. Linked from `API.md`. _Traceability: C14 → EPIC-14 → RFC-012 → #121._
+
+### Added
 - **Identity / Revocation hygiene:** A scheduled **used-token cleanup** now prunes
   expired rows from the `used_tokens` table (single-use refresh JTIs + the
   per-token revocation blacklist), which previously grew without bound — nothing

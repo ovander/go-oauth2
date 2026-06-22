@@ -79,6 +79,10 @@ Access-token claims include: `sub`, `iss`, `aud`, `exp`, `iat`, `nbf`, `email`,
 reset, or admin "revoke tokens" increments it, instantly invalidating all
 previously issued access/refresh tokens for that user.
 
+For the guaranteed time-to-revoke (the **freshness SLA**) per validation
+strategy — introspection vs. local JWT validation — and how to tune it, see
+[`REVOCATION-FRESHNESS-SLA.md`](REVOCATION-FRESHNESS-SLA.md).
+
 ### 2.4 Roles
 
 **Global roles** (on the user): `user`, `admin`, `superadmin`. `admin` and

@@ -878,7 +878,12 @@ func (s *oauthService) GetOpenIDConfiguration(issuer string) *dto.OpenIDConfigur
 		// acceptable, which misleads clients and relying parties.  Public clients
 		// using PKCE do not need "none" in this list — they simply omit credentials.
 		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic", "client_secret_post"},
-		ClaimsSupported:                   []string{"sub", "iss", "aud", "exp", "iat", "nbf", "email", "email_verified", "name", "preferred_username", "role", "app_roles", "token_version"},
+		// Claims the OP may assert. Beyond the core OIDC set this advertises the
+		// claims added by recent capabilities: auth_time (RFC 9068), acr/amr
+		// (RFC 8176), act (RFC 8693 delegation), and cnf (RFC 9449 DPoP). A claim
+		// being listed does not mean it is present on every token.
+		ClaimsSupported:    []string{"sub", "iss", "aud", "exp", "iat", "nbf", "email", "email_verified", "name", "preferred_username", "role", "app_roles", "token_version", "auth_time", "acr", "amr", "act", "cnf"},
+		AcrValuesSupported: []string{"pwd", "mfa"},
 	}
 }
 

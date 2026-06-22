@@ -1,4 +1,4 @@
-.PHONY: build run dev test test-coverage coverage-report clean deps fmt lint deploy
+.PHONY: build run dev test test-coverage coverage-report coverage-gate clean deps fmt lint deploy
 
 # Go parameters
 GOCMD=go
@@ -56,6 +56,11 @@ coverage-report:
 		-coverpkg=./internal/service/...,./internal/shared/auth/...,./internal/middleware/...,./config/... \
 		-coverprofile=tierA.out > /dev/null
 	@echo "Tier A (security-critical, target >=90%):"; $(GOCMD) tool cover -func=tierA.out | tail -1
+
+# Coverage gate: the blocking Tier A ratchet used by CI (Phase 8). Fails if Tier
+# A coverage drops below TIER_A_MIN. Override the floor: make coverage-gate TIER_A_MIN=60
+coverage-gate:
+	@TIER_A_MIN=$(or $(TIER_A_MIN),55.0) bash scripts/coverage-gate.sh
 
 # Clean build artifacts
 clean:
@@ -129,6 +134,7 @@ help:
 	@echo "  test           - Run tests"
 	@echo "  test-coverage  - Run tests with HTML coverage report"
 	@echo "  coverage-report - Overall + Tier A (security-critical) coverage"
+	@echo "  coverage-gate  - Blocking Tier A coverage ratchet (CI Phase 8)"
 	@echo "  clean          - Clean build artifacts"
 	@echo "  deps           - Download and tidy dependencies"
 	@echo "  fmt            - Format code"

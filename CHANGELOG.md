@@ -11,6 +11,18 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Observability / Logging:** Logs are now emitted as **structured JSON in
+  production** (clean ingestion by ELK/Loki/Datadog) and human-readable **text in
+  development/test**, chosen by `selectFormatter` — an explicit `LOG_FORMAT`
+  (`json`|`text`) wins, otherwise it derives from `ENV` (unset ⇒ production ⇒ JSON,
+  matching config's fail-safe default). The request logger now logs **by outcome
+  level** so error rates are queryable/alertable by level: **5xx → Error,
+  4xx → Warn, else Info** (previously every request handled at Info). Documented
+  `LOG_FORMAT` in `.env.example`. Completes the 3-slice RFC-008 logging track
+  (context correlation #158, DEBUG flow-tracing #160, this). _Traceability:
+  C4 → EPIC-4 → RFC-008 → #162._
+
+### Added
 - **Observability / Logging:** Added **DEBUG flow-tracing** at the OAuth decision
   points — token-endpoint grant dispatch, authorization-code validated/issuing,
   refresh validated/rotating, and introspection active/inactive — as structured,

@@ -44,18 +44,46 @@ func FromContext(ctx context.Context) *logrus.Entry {
 	return logrus.NewEntry(Logger)
 }
 
+// selectFormatter chooses the log output format. An explicit LOG_FORMAT
+// (json|text) wins; otherwise it derives from the environment — structured
+// **JSON in production** (clean ingestion by ELK/Loki/Datadog) and
+// human-readable **text in development/test**. ENV unset is treated as
+// production (matching config's fail-safe default).
+func selectFormatter(logFormat, env string) logrus.Formatter {
+	caller := func(f *runtime.Frame) (string, string) {
+		return "", f.File + ":" + strconv.Itoa(f.Line)
+	}
+	useJSON := true
+	switch strings.ToLower(strings.TrimSpace(logFormat)) {
+	case "json":
+		useJSON = true
+	case "text":
+		useJSON = false
+	default:
+		switch strings.ToLower(strings.TrimSpace(env)) {
+		case "development", "dev", "test", "local":
+			useJSON = false
+		}
+	}
+	if useJSON {
+		return &logrus.JSONFormatter{
+			TimestampFormat:  "2006-01-02T15:04:05.000Z07:00",
+			CallerPrettyfier: caller,
+		}
+	}
+	return &logrus.TextFormatter{
+		FullTimestamp:    true,
+		TimestampFormat:  "2006-01-02 15:04:05",
+		CallerPrettyfier: caller,
+	}
+}
+
 func init() {
 	Logger = logrus.New()
 	Logger.SetOutput(os.Stdout)
 	Logger.SetReportCaller(true)
 
-	Logger.SetFormatter(&logrus.TextFormatter{
-		FullTimestamp:   true,
-		TimestampFormat: "2006-01-02 15:04:05",
-		CallerPrettyfier: func(f *runtime.Frame) (string, string) {
-			return "", f.File + ":" + strconv.Itoa(f.Line)
-		},
-	})
+	Logger.SetFormatter(selectFormatter(os.Getenv("LOG_FORMAT"), os.Getenv("ENV")))
 
 	levelStr := strings.ToLower(os.Getenv("LOG_LEVEL"))
 

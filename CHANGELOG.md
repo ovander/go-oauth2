@@ -11,6 +11,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Tests / Crypto lifecycle (Phase 4):** Added key-lifecycle tests that connect
+  the signing-key ring to **token verification** (docs/program/TEST-STRATEGY.md):
+  after a rotation, JWKS exposes both the current and retired `kid` (so a resource
+  server can verify either token); and once a retired key is **pruned**, the token
+  it signed **no longer verifies** — proving retention must outlive the token TTL
+  (RFC-002 / EPIC-3). Complements the existing cross-rotation verification suite
+  (which already covers pre/post-rotation, multi-rotation, and after-restart).
+  Test-only. _Traceability: C3 → EPIC-3 → RFC-002 / RFC-014 → #154._
+
+### Added
 - **Tests / Fuzzing (Phase 3):** Added **Go native fuzz targets** for the
   untrusted-input parsers (docs/program/TEST-STRATEGY.md): PKCE verification
   (`FuzzVerifyPKCE` — never accepts a mismatched S256 challenge or the downgrade

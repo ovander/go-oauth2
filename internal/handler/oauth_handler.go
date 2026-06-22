@@ -34,6 +34,16 @@ type OAuthHandler struct {
 	// a single process lifetime.
 	secretKey     []byte
 	httpsRequired bool // sets Secure flag on CSRF cookies
+	// dpopAlgs lists the DPoP proof signing algorithms to advertise in OIDC
+	// discovery (dpop_signing_alg_values_supported, RFC 9449 §5.1). Empty when
+	// DPoP is disabled (DPOP_MODE=off), so discovery omits the parameter.
+	dpopAlgs []string
+}
+
+// SetDPoPSigningAlgs configures the DPoP proof signing algorithms advertised in
+// the OIDC discovery document. Pass nil/empty to advertise no DPoP support.
+func (h *OAuthHandler) SetDPoPSigningAlgs(algs []string) {
+	h.dpopAlgs = algs
 }
 
 func NewOAuthHandler(
@@ -871,6 +881,9 @@ func extractClientIDFromTokenHint(tokenHint string) string {
 // GET /.well-known/openid-configuration
 func (h *OAuthHandler) OpenIDConfiguration(w http.ResponseWriter, r *http.Request) {
 	config := h.oauthService.GetOpenIDConfiguration(h.issuer)
+	if len(h.dpopAlgs) > 0 {
+		config.DPoPSigningAlgValuesSupported = h.dpopAlgs
+	}
 	w.Header().Set("Content-Type", "application/json")
 	writeJSON(w, config)
 }

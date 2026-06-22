@@ -11,6 +11,15 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Tokens / DPoP / Discovery:** The OIDC discovery document
+  (`/.well-known/openid-configuration`) now advertises
+  `dpop_signing_alg_values_supported: ["ES256"]` (RFC 9449 §5.1) **when DPoP is
+  enabled** (`DPOP_MODE != off`), so clients can discover DPoP support and the
+  accepted proof algorithm. The parameter is omitted entirely when DPoP is off.
+  Completes the DPoP rollout's discoverability. _Traceability: C8 → EPIC-8 →
+  RFC-003 → #78._
+
+### Added
 - **Tokens / DPoP:** **Refresh tokens are now sender-constrained** too
   (RFC 9449 §5). When a token is issued for a DPoP request, the refresh token
   also carries `cnf.jkt`, and the `refresh_token` grant requires the refresh

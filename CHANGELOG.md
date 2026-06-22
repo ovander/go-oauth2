@@ -11,6 +11,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / Delegation:** Access tokens can now carry the RFC 8693 §4.1 `act`
+  (actor) claim — a new `auth.ActClaim` type (nestable, for delegation chains)
+  and an optional `Act` field on `AccessTokenClaims`. This keeps both principals
+  (the subject and the actor acting on their behalf) visible to downstream
+  services. The claim is `omitempty`, so ordinary tokens are byte-for-byte
+  unchanged, and **no issuance path sets it yet** — this is the claim-model
+  foundation for token exchange; enabling the grant is a later, policy-gated
+  slice. _Traceability: C16 → EPIC-16 → RFC-019 → #86._
+
+### Added
 - **Identity / Delegation:** New `internal/shared/auth/tokenexchange` package —
   a standalone parser/validator for OAuth 2.0 Token Exchange requests
   (RFC 8693), the foundation for delegation and impersonation (EPIC-16). It

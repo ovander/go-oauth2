@@ -11,6 +11,17 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Tests / Fuzzing (Phase 3):** Added **Go native fuzz targets** for the
+  untrusted-input parsers (docs/program/TEST-STRATEGY.md): PKCE verification
+  (`FuzzVerifyPKCE` — never accepts a mismatched S256 challenge or the downgrade
+  `plain` method), redirect-URI validation (`FuzzValidateRedirectURI` — the
+  **open-redirect invariant**: any accepted URI must use a safe scheme, carry no
+  fragment, and resolve to the registered host), and the RFC 8693 token-exchange
+  request parser (`FuzzParse` — no panic, no nil/nil). Seed corpora run as the CI
+  smoke; active fuzzing (≈0.5M execs) found no bypass or crash. Test-only.
+  _Traceability: C6 → EPIC-6 → RFC-014 / RFC 9700 → #152._
+
+### Added
 - **Tests / Adversarial (Phase 2):** Added a **JWT/OAuth adversarial suite**
   (docs/program/TEST-STRATEGY.md) mapping the OAuth 2.0 Security BCP (RFC 9700) /
   OWASP ASVS attack classes to failing-by-design tests against access-token

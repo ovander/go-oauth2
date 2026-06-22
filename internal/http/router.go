@@ -96,13 +96,14 @@ func NewRouters(
 	magicLinkHandler *handler.MagicLinkHandler,
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
+	usedTokenRepo repository.UsedTokenRepository,
 	userAppRoleRepo repository.UserAppRoleRepository,
 	appRepo repository.AppRepository,
 	config RouterConfig,
 ) *Routers {
 	return &Routers{
-		OAuth: newOAuthRouter(authHandler, oauthHandler, webHandler, profileHandler, mfaHandler, healthHandler, magicLinkHandler, tokenService, userRepo, config),
-		Admin: newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, adminLogsHandler, settingsHandler, healthHandler, magicLinkHandler, tokenService, userRepo, userAppRoleRepo, appRepo, config),
+		OAuth: newOAuthRouter(authHandler, oauthHandler, webHandler, profileHandler, mfaHandler, healthHandler, magicLinkHandler, tokenService, userRepo, usedTokenRepo, config),
+		Admin: newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, adminLogsHandler, settingsHandler, healthHandler, magicLinkHandler, tokenService, userRepo, usedTokenRepo, userAppRoleRepo, appRepo, config),
 	}
 }
 
@@ -118,6 +119,7 @@ func newOAuthRouter(
 	magicLinkHandler *handler.MagicLinkHandler, // nil-safe; only Verify is registered here
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
+	usedTokenRepo repository.UsedTokenRepository, // EPIC-14: per-token revocation check
 	config RouterConfig,
 ) http.Handler {
 	r := chi.NewRouter()
@@ -166,7 +168,7 @@ func newOAuthRouter(
 	// ==========================================
 	r.Route("/oauth", func(r chi.Router) {
 		// Authorization endpoint - returns HTML login page or redirects
-		r.With(middleware.OptionalAuthMiddleware(tokenService, userRepo)).
+		r.With(middleware.OptionalAuthMiddleware(tokenService, userRepo, usedTokenRepo)).
 			Get("/authorize", oauthHandler.Authorize)
 		// H-07 fix: POST /authorize processes credentials; rate-limit it the same
 		// way as the direct login endpoint to prevent credential-stuffing attacks.
@@ -186,19 +188,19 @@ func newOAuthRouter(
 				Post("/token", oauthHandler.Token)
 		}
 
-		r.With(middleware.JSONContentType(), middleware.AuthMiddleware(tokenService, userRepo)).
+		r.With(middleware.JSONContentType(), middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo)).
 			Get("/userinfo", oauthHandler.UserInfo)
-		r.With(middleware.JSONContentType(), middleware.AuthMiddleware(tokenService, userRepo)).
+		r.With(middleware.JSONContentType(), middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo)).
 			Post("/userinfo", oauthHandler.UserInfo)
 
 		r.With(middleware.JSONContentType()).Post("/introspect", oauthHandler.Introspect)
 
-		r.With(middleware.JSONContentType(), middleware.OptionalAuthMiddleware(tokenService, userRepo)).
+		r.With(middleware.JSONContentType(), middleware.OptionalAuthMiddleware(tokenService, userRepo, usedTokenRepo)).
 			Post("/revoke", oauthHandler.Revoke)
 
-		r.With(middleware.OptionalAuthMiddleware(tokenService, userRepo)).
+		r.With(middleware.OptionalAuthMiddleware(tokenService, userRepo, usedTokenRepo)).
 			Get("/logout", oauthHandler.EndSession)
-		r.With(middleware.OptionalAuthMiddleware(tokenService, userRepo)).
+		r.With(middleware.OptionalAuthMiddleware(tokenService, userRepo, usedTokenRepo)).
 			Post("/logout", oauthHandler.EndSession)
 	})
 
@@ -243,7 +245,7 @@ func newOAuthRouter(
 		r.Use(middleware.JSONContentType())
 
 		// UserInfo endpoint
-		r.With(middleware.AuthMiddleware(tokenService, userRepo)).
+		r.With(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo)).
 			Get("/userinfo", authHandler.GetUserInfo)
 
 		// Auth Routes (Public)
@@ -270,7 +272,7 @@ func newOAuthRouter(
 				r.Post("/refresh", authHandler.Refresh)
 			}
 
-			r.With(middleware.AuthMiddleware(tokenService, userRepo)).
+			r.With(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo)).
 				Post("/logout", authHandler.Logout)
 
 			// LOW-06 fix: request-password-reset triggers email sending; rate-limit
@@ -300,7 +302,7 @@ func newOAuthRouter(
 
 		// Profile Routes (Protected - user self-service)
 		r.Route("/profile", func(r chi.Router) {
-			r.Use(middleware.AuthMiddleware(tokenService, userRepo))
+			r.Use(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo))
 			r.Get("/", profileHandler.GetProfile)
 			r.Put("/", profileHandler.UpdateProfile)
 			r.Patch("/", profileHandler.UpdateProfile)
@@ -336,6 +338,7 @@ func newAdminRouter(
 	magicLinkHandler *handler.MagicLinkHandler, // nil-safe; Request endpoint registered here
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
+	usedTokenRepo repository.UsedTokenRepository, // EPIC-14: per-token revocation check
 	userAppRoleRepo repository.UserAppRoleRepository,
 	appRepo repository.AppRepository,
 	config RouterConfig,
@@ -382,7 +385,7 @@ func newAdminRouter(
 	// Admin API Routes (protected)
 	// ==========================================
 	r.Route("/api/admin", func(r chi.Router) {
-		r.Use(middleware.AuthMiddleware(tokenService, userRepo))
+		r.Use(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo))
 
 		// Current admin profile
 		r.Get("/profile", adminAuthHandler.GetProfile)
@@ -509,7 +512,7 @@ func newAdminRouter(
 	// App-Scoped User Management (for app admins)
 	// ==========================================
 	r.Route("/api/apps/{app_id}", func(r chi.Router) {
-		r.Use(middleware.AuthMiddleware(tokenService, userRepo))
+		r.Use(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo))
 		r.Use(middleware.RequireAppAccess(userAppRoleRepo))
 
 		r.Route("/users", func(r chi.Router) {
@@ -569,6 +572,7 @@ func NewRouter(
 	magicLinkHandler *handler.MagicLinkHandler,
 	tokenService *auth.TokenService,
 	userRepo repository.UserRepository,
+	usedTokenRepo repository.UsedTokenRepository,
 	userAppRoleRepo repository.UserAppRoleRepository,
 	appRepo repository.AppRepository,
 	config RouterConfig,
@@ -592,11 +596,11 @@ func NewRouter(
 	r.Use(middleware.JSONContentType())
 
 	// Mount OAuth router
-	oauthRouter := newOAuthRouter(authHandler, oauthHandler, webHandler, profileHandler, mfaHandler, healthHandler, magicLinkHandler, tokenService, userRepo, config)
+	oauthRouter := newOAuthRouter(authHandler, oauthHandler, webHandler, profileHandler, mfaHandler, healthHandler, magicLinkHandler, tokenService, userRepo, usedTokenRepo, config)
 	r.Mount("/", oauthRouter)
 
 	// Mount Admin router under /admin prefix (for single-port mode)
-	adminRouter := newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, adminLogsHandler, settingsHandler, healthHandler, magicLinkHandler, tokenService, userRepo, userAppRoleRepo, appRepo, config)
+	adminRouter := newAdminRouter(adminHandler, adminAuthHandler, dashboardHandler, appUsersHandler, appLogsHandler, monitoringHandler, adminLogsHandler, settingsHandler, healthHandler, magicLinkHandler, tokenService, userRepo, usedTokenRepo, userAppRoleRepo, appRepo, config)
 	r.Mount("/manage", adminRouter)
 
 	return r

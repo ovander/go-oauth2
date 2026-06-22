@@ -15,6 +15,10 @@ type CreateAppRequest struct {
 	// RequireDPoP mandates DPoP sender-constrained tokens (RFC 9449) for this
 	// client at the token endpoint. Requires DPoP enabled globally (DPOP_MODE).
 	RequireDPoP bool `json:"require_dpop"`
+	// AllowTokenExchange / AllowImpersonation gate the RFC 8693 grant for this
+	// client (delegation, and the higher-risk impersonation, respectively).
+	AllowTokenExchange bool `json:"allow_token_exchange"`
+	AllowImpersonation bool `json:"allow_impersonation"`
 }
 
 type UpdateAppRequest struct {
@@ -25,6 +29,10 @@ type UpdateAppRequest struct {
 	// RequireDPoP toggles the per-client DPoP requirement (RFC 9449). Omitted =
 	// unchanged.
 	RequireDPoP *bool `json:"require_dpop,omitempty"`
+	// AllowTokenExchange / AllowImpersonation toggle the RFC 8693 grant for this
+	// client. Omitted = unchanged.
+	AllowTokenExchange *bool `json:"allow_token_exchange,omitempty"`
+	AllowImpersonation *bool `json:"allow_impersonation,omitempty"`
 }
 
 type AddAppUserRequest struct {
@@ -40,17 +48,19 @@ type UpdateAppUserRoleRequest struct {
 // Response DTOs
 
 type AppResponse struct {
-	ID           uint      `json:"id"`
-	Name         string    `json:"name"`
-	ClientID     string    `json:"client_id"`
-	Active       bool      `json:"active"`
-	IsPublic     bool      `json:"is_public"`
-	RequirePKCE  bool      `json:"require_pkce"`
-	RequireDPoP  bool      `json:"require_dpop"`
-	URL          *string   `json:"url,omitempty"`
-	RedirectURIs []string  `json:"redirect_uris"`
-	OwnerID      *uint     `json:"owner_id,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID                 uint      `json:"id"`
+	Name               string    `json:"name"`
+	ClientID           string    `json:"client_id"`
+	Active             bool      `json:"active"`
+	IsPublic           bool      `json:"is_public"`
+	RequirePKCE        bool      `json:"require_pkce"`
+	RequireDPoP        bool      `json:"require_dpop"`
+	AllowTokenExchange bool      `json:"allow_token_exchange"`
+	AllowImpersonation bool      `json:"allow_impersonation"`
+	URL                *string   `json:"url,omitempty"`
+	RedirectURIs       []string  `json:"redirect_uris"`
+	OwnerID            *uint     `json:"owner_id,omitempty"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 type AppWithSecretResponse struct {

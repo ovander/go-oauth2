@@ -946,16 +946,18 @@ func (h *AdminHandler) DeleteSuperadmin(w http.ResponseWriter, r *http.Request) 
 // new columns are added to the model.
 func appToResponse(app model.App) dto.AppResponse {
 	return dto.AppResponse{
-		ID:           app.ID,
-		Name:         app.Name,
-		ClientID:     app.ClientID,
-		Active:       app.Active,
-		IsPublic:     app.IsPublic,
-		RequirePKCE:  app.RequirePKCE,
-		RequireDPoP:  app.RequireDPoP,
-		URL:          app.URL,
-		RedirectURIs: app.RedirectURIs,
-		OwnerID:      app.OwnerID,
-		CreatedAt:    app.CreatedAt,
+		ID:                 app.ID,
+		Name:               app.Name,
+		ClientID:           app.ClientID,
+		Active:             app.Active,
+		IsPublic:           app.IsPublic,
+		RequirePKCE:        app.RequirePKCE,
+		RequireDPoP:        app.RequireDPoP,
+		AllowTokenExchange: app.AllowTokenExchange,
+		AllowImpersonation: app.AllowImpersonation,
+		URL:                app.URL,
+		RedirectURIs:       app.RedirectURIs,
+		OwnerID:            app.OwnerID,
+		CreatedAt:          app.CreatedAt,
 	}
 }

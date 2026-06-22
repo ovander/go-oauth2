@@ -545,8 +545,7 @@ func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
 	// Set no-cache headers
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Pragma", "no-cache")
+	setNoStore(w)
 	w.Header().Set("Content-Type", "application/json")
 
 	var req dto.TokenRequest
@@ -657,7 +656,17 @@ func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET/POST /oauth/userinfo
+// setNoStore marks a response as non-cacheable. Token, introspection, userinfo,
+// and revocation responses carry sensitive material (tokens, token metadata,
+// PII) and MUST NOT be cached by browsers or intermediaries (RFC 6749 §5.1,
+// RFC 7662 §4, OIDC Core §5.3.2).
+func setNoStore(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+}
+
 func (h *OAuthHandler) UserInfo(w http.ResponseWriter, r *http.Request) {
+	setNoStore(w)
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		writeOAuthError(w, "invalid_token", "invalid or missing token", http.StatusUnauthorized)
@@ -686,6 +695,7 @@ func (h *OAuthHandler) UserInfo(w http.ResponseWriter, r *http.Request) {
 
 // POST /oauth/introspect
 func (h *OAuthHandler) Introspect(w http.ResponseWriter, r *http.Request) {
+	setNoStore(w)
 	// G120: cap the request body to 1 MB before any form or JSON decode.
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req dto.IntrospectRequest
@@ -747,6 +757,7 @@ func (h *OAuthHandler) Introspect(w http.ResponseWriter, r *http.Request) {
 
 // POST /oauth/revoke
 func (h *OAuthHandler) Revoke(w http.ResponseWriter, r *http.Request) {
+	setNoStore(w)
 	// G120: cap the request body to 1 MB before any form or JSON decode.
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req dto.RevokeRequest

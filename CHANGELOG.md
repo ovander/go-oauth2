@@ -10,6 +10,15 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Fixed
+- **Identity / Response caching:** The **userinfo, introspection, and revocation**
+  responses are now marked **`Cache-Control: no-store` / `Pragma: no-cache`**.
+  These carry sensitive material — PII (userinfo), token metadata (introspection,
+  RFC 7662 §4), and token state — and must not be cached by browsers or
+  intermediaries (RFC 6749 §5.1 / OIDC Core §5.3.2). Previously only the token
+  endpoint set no-store. Added a shared `setNoStore` helper (the token endpoint
+  now uses it too). _Traceability: C7 → EPIC-7 → RFC 6749 / RFC 7662 → #142._
+
 ### Added
 - **Observability / Audit completeness:** Confidential-client **authentication
   failures at the token endpoint are now audited** (RFC-007 / RFC 6749 §3.2.1).

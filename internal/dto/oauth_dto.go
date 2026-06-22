@@ -132,6 +132,10 @@ type OpenIDConfiguration struct {
 	// DPoPSigningAlgValuesSupported advertises DPoP support (RFC 9449 §5.1).
 	// Omitted when the server does not have DPoP enabled.
 	DPoPSigningAlgValuesSupported []string `json:"dpop_signing_alg_values_supported,omitempty"`
+	// AuthorizationResponseIssParameterSupported advertises that the
+	// authorization response carries the `iss` parameter (RFC 9207), so clients
+	// can detect IdP mix-up attacks.
+	AuthorizationResponseIssParameterSupported bool `json:"authorization_response_iss_parameter_supported"`
 }
 
 type JWKS struct {

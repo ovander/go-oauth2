@@ -306,6 +306,29 @@ var migrations = []Migration{
 			return db.Exec("ALTER TABLE apps ADD COLUMN require_dpop BOOLEAN NOT NULL DEFAULT FALSE").Error
 		},
 	},
+	{
+		// RFC 8693 / EPIC-16: per-client token-exchange capability. Both columns
+		// are additive and default false, so existing clients cannot use the
+		// grant until explicitly enabled.
+		ID:   "0013",
+		Name: "add_apps.token_exchange_flags",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("apps") {
+				return nil
+			}
+			if !db.Migrator().HasColumn(&model.App{}, "allow_token_exchange") {
+				if err := db.Exec("ALTER TABLE apps ADD COLUMN allow_token_exchange BOOLEAN NOT NULL DEFAULT FALSE").Error; err != nil {
+					return err
+				}
+			}
+			if !db.Migrator().HasColumn(&model.App{}, "allow_impersonation") {
+				if err := db.Exec("ALTER TABLE apps ADD COLUMN allow_impersonation BOOLEAN NOT NULL DEFAULT FALSE").Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

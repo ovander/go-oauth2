@@ -111,14 +111,16 @@ func (s *appService) Create(ctx context.Context, req dto.CreateAppRequest, owner
 		IsPublic:         req.IsPublic,
 		// Public clients always require PKCE — enforce it even if the caller
 		// did not explicitly set require_pkce in the request.
-		RequirePKCE:  req.IsPublic || req.RequirePKCE,
-		RequireDPoP:  req.RequireDPoP,
-		Active:       true,
-		URL:          req.URL,
-		RedirectURIs: model.StringArray(req.RedirectURIs),
-		OwnerID:      &ownerID,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		RequirePKCE:        req.IsPublic || req.RequirePKCE,
+		RequireDPoP:        req.RequireDPoP,
+		AllowTokenExchange: req.AllowTokenExchange,
+		AllowImpersonation: req.AllowImpersonation,
+		Active:             true,
+		URL:                req.URL,
+		RedirectURIs:       model.StringArray(req.RedirectURIs),
+		OwnerID:            &ownerID,
+		CreatedAt:          time.Now(),
+		UpdatedAt:          time.Now(),
 	}
 
 	if err := s.repo.Create(ctx, app); err != nil {
@@ -148,6 +150,12 @@ func (s *appService) Update(ctx context.Context, id uint, req dto.UpdateAppReque
 	}
 	if req.RequireDPoP != nil {
 		app.RequireDPoP = *req.RequireDPoP
+	}
+	if req.AllowTokenExchange != nil {
+		app.AllowTokenExchange = *req.AllowTokenExchange
+	}
+	if req.AllowImpersonation != nil {
+		app.AllowImpersonation = *req.AllowImpersonation
 	}
 
 	app.UpdatedAt = time.Now()

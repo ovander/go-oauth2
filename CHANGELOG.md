@@ -11,6 +11,17 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / Delegation:** Per-client token-exchange capability flags
+  (RFC 8693 / EPIC-16). New `apps.allow_token_exchange` and
+  `apps.allow_impersonation` columns (migration `0013`, both default false),
+  settable via the admin app API (create / update / response), mirroring
+  `require_dpop`. `allow_token_exchange` gates the grant (delegation);
+  `allow_impersonation` gates the higher-risk impersonation case. These are the
+  default-deny **authorization gate** — they do not by themselves enable the
+  grant (nothing reads them yet); wiring + the downscope/audience policy are
+  later, observe-first slices. _Traceability: C16 → EPIC-16 → RFC-019 → #88._
+
+### Added
 - **Identity / Delegation:** Access tokens can now carry the RFC 8693 §4.1 `act`
   (actor) claim — a new `auth.ActClaim` type (nestable, for delegation chains)
   and an optional `Act` field on `AccessTokenClaims`. This keeps both principals

@@ -37,6 +37,18 @@ type App struct {
 	// proof to be verified; with DPoP disabled, a require_dpop client cannot
 	// obtain tokens.
 	RequireDPoP bool `gorm:"column:require_dpop;default:false" json:"require_dpop"`
+
+	// AllowTokenExchange permits this client to use the RFC 8693 token-exchange
+	// grant (delegation). Default false (the grant is denied). Even when true,
+	// every exchange is still subject to the downscope/audience policy and is
+	// audited. EPIC-16 / RFC-019.
+	AllowTokenExchange bool `gorm:"column:allow_token_exchange;default:false" json:"allow_token_exchange"`
+
+	// AllowImpersonation permits this client to perform impersonation (a token
+	// exchange with no actor_token, where the actor assumes the subject's
+	// identity) — the higher-risk case. Default false. Requires
+	// AllowTokenExchange; delegation (actor present) does not need this flag.
+	AllowImpersonation bool `gorm:"column:allow_impersonation;default:false" json:"allow_impersonation"`
 }
 
 // IsConfidential returns true when the client has a stored secret hash,

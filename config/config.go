@@ -57,6 +57,11 @@ type Config struct {
 	// telemetry without affecting responses), or "enforce" (reserved for a later
 	// slice; currently behaves as observe). RFC-003.
 	DPoPMode string
+	// TokenExchangeMode controls OAuth 2.0 Token Exchange (RFC 8693): "off"
+	// (default — the grant is unsupported), "shadow" (validate + audit attempts
+	// but never issue an exchanged token), or "enforce" (reserved; actually
+	// issue). RFC-019.
+	TokenExchangeMode string
 	// SecretKeyBase is a cryptographic secret (≥32 bytes in production) used
 	// for two purposes:
 	//   1. CSRF cookie signing in the OAuth authorization handler (CRIT-03):
@@ -178,6 +183,7 @@ func Load() *Config {
 		SecretKeyBase:       getEnv("SECRET_KEY_BASE", ""),
 		AdminMFAPolicy:      normalizeAdminMFAPolicy(getEnv("ADMIN_MFA_POLICY", "off")),
 		DPoPMode:            normalizeDPoPMode(getEnv("DPOP_MODE", "off")),
+		TokenExchangeMode:   normalizeTokenExchangeMode(getEnv("TOKEN_EXCHANGE_MODE", "off")),
 
 		// Rate Limiting
 		// LOW-03 fix: window env vars now have an explicit _MS suffix so
@@ -311,6 +317,20 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// normalizeTokenExchangeMode lower-cases and validates the token-exchange mode,
+// falling back to "off" for any unrecognized value (fail safe — the sensitive
+// grant is never enabled from a typo).
+func normalizeTokenExchangeMode(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "shadow":
+		return "shadow"
+	case "enforce":
+		return "enforce"
+	default:
+		return "off"
+	}
 }
 
 // normalizeDPoPMode lower-cases and validates the DPoP mode, falling back to

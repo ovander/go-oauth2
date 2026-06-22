@@ -91,6 +91,9 @@ func (m *new04OAuthService) Authorize(_ context.Context, _ dto.AuthorizeRequest,
 func (m *new04OAuthService) Token(_ context.Context, _ dto.TokenRequest, _, _ string) (*dto.TokenResponse, error) {
 	panic("Token called unexpectedly")
 }
+func (m *new04OAuthService) ExchangeToken(_ context.Context, _ url.Values, _, _ string) (*dto.TokenResponse, error) {
+	panic("ExchangeToken called unexpectedly")
+}
 func (m *new04OAuthService) Introspect(_ context.Context, _ string) (*dto.IntrospectResponse, error) {
 	panic("Introspect called unexpectedly")
 }

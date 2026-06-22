@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/internal/shared/auth/tokenexchange"
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
@@ -73,6 +75,10 @@ var validScopes = map[string]bool{
 type OAuthService interface {
 	Authorize(ctx context.Context, req dto.AuthorizeRequest, userID uint) (string, error)
 	Token(ctx context.Context, req dto.TokenRequest, clientID, clientSecret string) (*dto.TokenResponse, error)
+	// ExchangeToken handles an RFC 8693 token-exchange request. In "shadow" mode
+	// it validates and audits the attempt but never issues a token; in "off" it
+	// reports the grant as unsupported.
+	ExchangeToken(ctx context.Context, form url.Values, clientID, clientSecret string) (*dto.TokenResponse, error)
 	Introspect(ctx context.Context, token string) (*dto.IntrospectResponse, error)
 	Revoke(ctx context.Context, token string, userID uint) error
 	GetUserInfo(ctx context.Context, userID uint, clientID string) (*dto.UserInfoResponse, error)
@@ -95,7 +101,17 @@ type oauthService struct {
 	usedTokenRepo repository.UsedTokenRepository
 	issuer        string
 	requireHTTPS  bool
+	// tokenExchangeMode is "off" (default), "shadow", or "enforce" (RFC 8693 /
+	// EPIC-16). Empty is treated as off.
+	tokenExchangeMode string
 }
+
+// Token-exchange rollout modes (RFC 8693 / EPIC-16).
+const (
+	TokenExchangeModeOff     = "off"
+	TokenExchangeModeShadow  = "shadow"
+	TokenExchangeModeEnforce = "enforce"
+)
 
 // OAuthServiceConfig holds OAuth service configuration
 type OAuthServiceConfig struct {
@@ -113,26 +129,29 @@ func NewOAuthService(
 	issuer string,
 	auditRepo repository.SecurityAuditLogRepository,
 	usedTokenRepo repository.UsedTokenRepository,
+	tokenExchangeMode string,
 ) OAuthService {
 	requireHTTPS := strings.HasPrefix(issuer, "https://")
 
 	logger.WithFields(logger.Fields{
-		"service":       "oauth",
-		"issuer":        issuer,
-		"require_https": requireHTTPS,
+		"service":             "oauth",
+		"issuer":              issuer,
+		"require_https":       requireHTTPS,
+		"token_exchange_mode": tokenExchangeMode,
 	}).Info("✅ OAuth service initialized")
 
 	return &oauthService{
-		userRepo:        userRepo,
-		appRepo:         appRepo,
-		userAppRoleRepo: userAppRoleRepo,
-		codeStore:       codeStore,
-		tokenService:    tokenService,
-		keyManager:      keyManager,
-		auditRepo:       auditRepo,
-		usedTokenRepo:   usedTokenRepo,
-		issuer:          issuer,
-		requireHTTPS:    requireHTTPS,
+		userRepo:          userRepo,
+		appRepo:           appRepo,
+		userAppRoleRepo:   userAppRoleRepo,
+		codeStore:         codeStore,
+		tokenService:      tokenService,
+		keyManager:        keyManager,
+		auditRepo:         auditRepo,
+		usedTokenRepo:     usedTokenRepo,
+		issuer:            issuer,
+		requireHTTPS:      requireHTTPS,
+		tokenExchangeMode: tokenExchangeMode,
 	}
 }
 
@@ -835,6 +854,50 @@ func validateScope(scope string) error {
 }
 
 // logSecurityEvent logs a security event to the audit log
+// ExchangeToken implements the RFC 8693 token-exchange grant. This slice wires
+// the grant in "shadow" mode only: it parses and classifies the request, audits
+// the attempt (delegation vs impersonation, the requesting client, and whether
+// that client is authorized), and then reports the grant as unsupported — no
+// token is verified or issued. Subject/actor verification + the downscope
+// policy, and actual issuance, are later slices. In "off" mode the grant is
+// unsupported and nothing is audited.
+func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clientID, clientSecret string) (*dto.TokenResponse, error) {
+	if s.tokenExchangeMode != TokenExchangeModeShadow && s.tokenExchangeMode != TokenExchangeModeEnforce {
+		return nil, ErrInvalidGrantType
+	}
+
+	// Resolve the requesting client for telemetry (its capability flags).
+	var appID *uint
+	allowTE, allowImp := false, false
+	if app, aerr := s.appRepo.FindByClientID(ctx, clientID); aerr == nil {
+		appID = &app.ID
+		allowTE, allowImp = app.AllowTokenExchange, app.AllowImpersonation
+	}
+
+	details := map[string]interface{}{
+		"client_id":            clientID,
+		"mode":                 s.tokenExchangeMode,
+		"allow_token_exchange": allowTE,
+		"allow_impersonation":  allowImp,
+	}
+
+	req, perr := tokenexchange.Parse(form)
+	if perr != nil {
+		details["outcome"] = "parse_error"
+		details["error"] = perr.Error()
+	} else {
+		details["outcome"] = "shadow_not_issued"
+		details["is_delegation"] = req.IsDelegation()
+		details["subject_token_type"] = req.SubjectTokenType
+		details["requested_token_type"] = req.RequestedTokenType
+	}
+	s.logSecurityEvent(ctx, model.SecurityEventTokenExchange, nil, appID, false, details)
+
+	// Shadow: never issue. Report the grant as unsupported so the capability is
+	// not yet exposed to clients.
+	return nil, ErrInvalidGrantType
+}
+
 func (s *oauthService) logSecurityEvent(ctx context.Context, eventType model.SecurityEventType, userID *uint, appID *uint, success bool, details map[string]interface{}) {
 	if s.auditRepo == nil {
 		return

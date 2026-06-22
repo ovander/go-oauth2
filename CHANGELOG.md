@@ -10,6 +10,20 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Added
+- **Identity / Delegation:** Token-exchange grant **dispatch + shadow telemetry**
+  (RFC 8693 / EPIC-16). `POST /oauth/token` now recognizes the token-exchange
+  grant and routes it to `OAuthService.ExchangeToken`, gated by
+  `TOKEN_EXCHANGE_MODE` (`off` default | `shadow` | `enforce`-reserved). In
+  `shadow` it parses and classifies the request (delegation vs impersonation),
+  audits the attempt with the requesting client and its capability flags
+  (`token_exchange` event), and then reports the grant as **unsupported** — no
+  token is verified or issued. In `off` the grant is unsupported and nothing is
+  audited. This is the observe step: subject/actor verification + the downscope
+  policy, and actual issuance, are later slices. No client-visible behaviour
+  change (the grant remains unsupported). _Traceability: C16 → EPIC-16 → RFC-019
+  → #93._
+
 ## [0.3.0] - 2026-06-22
 
 ### Added

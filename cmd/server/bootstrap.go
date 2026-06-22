@@ -336,6 +336,7 @@ func Bootstrap(cfg *config.Config) *App {
 		cfg.OAuthIssuer,
 		securityAuditRepo,
 		usedTokenRepo, // HIGH-04: single-use refresh token JTI tracking
+		cfg.TokenExchangeMode,
 	)
 
 	// ==========================================

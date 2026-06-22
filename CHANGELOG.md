@@ -11,6 +11,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **CI / Test strategy:** Added `docs/program/TEST-STRATEGY.md` — the
+  identity-server test-assurance plan (risk-tiered coverage, adversarial / fuzz /
+  mutation / conformance layers, phased roadmap, and the eventual blocking CI
+  gates). **Phase 0:** a **report-only** `coverage` CI job now publishes overall
+  and **Tier A** (security-critical) coverage and uploads the profile, plus a
+  `make coverage-report` helper. Non-blocking — visibility first; Tier-A
+  thresholds become required checks in a later phase. Baseline: Tier A ~55%
+  (target ≥90%). _Traceability: C6 → EPIC-6 → RFC-014 → #146._
+
+### Added
 - **Observability / Audience binding:** Token-issuance audit rows now carry
   **audience-coverage telemetry** (RFC-001 / EPIC-7, Phase 1): `audience_registered`
   (does the client have registered audiences), `audience_count`, and the active

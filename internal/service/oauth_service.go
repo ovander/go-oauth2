@@ -107,6 +107,12 @@ type oauthService struct {
 	// tokenExchangeMode is "off" (default), "shadow", or "enforce" (RFC 8693 /
 	// EPIC-16). Empty is treated as off.
 	tokenExchangeMode string
+	// impersonationTokenTTL time-boxes tokens minted via impersonation (the
+	// actor-absent token-exchange case, EPIC-17), independently of the standard
+	// access-token TTL. Impersonation is sensitive, so its tokens auto-expire
+	// quickly. Zero falls back to the access-token TTL; the effective lifetime is
+	// always capped at the access-token TTL (a time-box only ever shortens).
+	impersonationTokenTTL time.Duration
 }
 
 // Token-exchange rollout modes (RFC 8693 / EPIC-16).
@@ -133,28 +139,31 @@ func NewOAuthService(
 	auditRepo repository.SecurityAuditLogRepository,
 	usedTokenRepo repository.UsedTokenRepository,
 	tokenExchangeMode string,
+	impersonationTokenTTL time.Duration,
 ) OAuthService {
 	requireHTTPS := strings.HasPrefix(issuer, "https://")
 
 	logger.WithFields(logger.Fields{
-		"service":             "oauth",
-		"issuer":              issuer,
-		"require_https":       requireHTTPS,
-		"token_exchange_mode": tokenExchangeMode,
+		"service":                 "oauth",
+		"issuer":                  issuer,
+		"require_https":           requireHTTPS,
+		"token_exchange_mode":     tokenExchangeMode,
+		"impersonation_token_ttl": impersonationTokenTTL.String(),
 	}).Info("✅ OAuth service initialized")
 
 	return &oauthService{
-		userRepo:          userRepo,
-		appRepo:           appRepo,
-		userAppRoleRepo:   userAppRoleRepo,
-		codeStore:         codeStore,
-		tokenService:      tokenService,
-		keyManager:        keyManager,
-		auditRepo:         auditRepo,
-		usedTokenRepo:     usedTokenRepo,
-		issuer:            issuer,
-		requireHTTPS:      requireHTTPS,
-		tokenExchangeMode: tokenExchangeMode,
+		userRepo:              userRepo,
+		appRepo:               appRepo,
+		userAppRoleRepo:       userAppRoleRepo,
+		codeStore:             codeStore,
+		tokenService:          tokenService,
+		keyManager:            keyManager,
+		auditRepo:             auditRepo,
+		usedTokenRepo:         usedTokenRepo,
+		issuer:                issuer,
+		requireHTTPS:          requireHTTPS,
+		tokenExchangeMode:     tokenExchangeMode,
+		impersonationTokenTTL: impersonationTokenTTL,
 	}
 }
 
@@ -970,11 +979,20 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 	if !req.IsDelegation() {
 		actor = &auth.ActClaim{Sub: "client:" + clientID}
 	}
+	// Time-box impersonation (EPIC-17): an impersonated token auto-expires on a
+	// short, bounded lifetime — never longer than a normal access token — so a
+	// leaked impersonation token is usable only briefly. Delegation keeps the
+	// standard access-token TTL.
+	ttl := s.impersonationExchangeTTL(decision.IsImpersonation)
+	if decision.IsImpersonation {
+		details["impersonation"] = true
+		details["token_ttl_seconds"] = int(ttl.Seconds())
+	}
 	// Sender-constrain the exchanged token to the client's DPoP key when the
 	// exchange request carried a valid proof (verified by the token-endpoint
 	// middleware and stashed on the context). Opportunistic — RFC 9449.
 	jkt := dpopJKTFromContext(ctx)
-	token, expiresIn, merr := s.tokenService.GenerateExchangedToken(subjectSub, decision.Audience, decision.GrantedScope, subjectVer, actor, jkt)
+	token, expiresIn, merr := s.tokenService.GenerateExchangedTokenWithTTL(subjectSub, decision.Audience, decision.GrantedScope, subjectVer, actor, jkt, ttl)
 	if merr != nil {
 		return fail("error", fmt.Errorf("failed to issue exchanged token: %w", merr))
 	}
@@ -987,6 +1005,22 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 		Scope:           decision.GrantedScope,
 		IssuedTokenType: tokenexchange.TokenTypeAccessToken,
 	}, nil
+}
+
+// impersonationExchangeTTL returns the lifetime for an exchanged token. For
+// delegation it returns 0 (the issuance primitive then uses the standard
+// access-token TTL). For impersonation it returns the configured time-box,
+// capped at the access-token TTL so an impersonated token is never longer-lived
+// than a normal one. A zero/unset impersonation TTL also falls back to the
+// access-token TTL (no time-box configured). EPIC-17.
+func (s *oauthService) impersonationExchangeTTL(isImpersonation bool) time.Duration {
+	if !isImpersonation || s.impersonationTokenTTL <= 0 {
+		return 0
+	}
+	if access := s.tokenService.GetAccessTokenTTL(); access > 0 && s.impersonationTokenTTL > access {
+		return access
+	}
+	return s.impersonationTokenTTL
 }
 
 // verifyExchangeToken verifies a token presented to the exchange and returns its

@@ -11,6 +11,17 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / Impersonation:** Impersonated tokens are now **time-boxed**
+  (RFC 8693 / EPIC-17). An access token minted via impersonation (the
+  actor-absent token-exchange case) auto-expires on a short, bounded lifetime —
+  `IMPERSONATION_TOKEN_TTL` (default **300s**), always capped at the access-token
+  TTL — so a leaked impersonation token is usable only briefly. The audit row
+  records `impersonation` + `token_ttl_seconds`. Delegation is unaffected (keeps
+  the standard access-token TTL), and an unset/zero time-box falls back to the
+  access-token TTL (no behaviour change). _Traceability: C17 → EPIC-17 →
+  RFC-016 → #105._
+
+### Added
 - **Identity / Delegation / Introspection:** Token introspection now **surfaces the
   `act` (actor) claim** (RFC 7662 / RFC 8693 §4.1). When an introspected access
   token was minted via token exchange (delegation/impersonation), the response

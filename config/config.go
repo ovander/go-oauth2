@@ -62,6 +62,13 @@ type Config struct {
 	// but never issue an exchanged token), or "enforce" (reserved; actually
 	// issue). RFC-019.
 	TokenExchangeMode string
+	// ImpersonationTokenTTL time-boxes access tokens minted via impersonation
+	// (the actor-absent token-exchange case, EPIC-17). Impersonation is
+	// sensitive, so its tokens auto-expire quickly and are never longer-lived
+	// than a normal access token (the value is capped at AccessTokenTTL at
+	// issuance). Configured via IMPERSONATION_TOKEN_TTL (seconds); defaults to
+	// 300s (5 minutes). Delegation is unaffected. RFC-016.
+	ImpersonationTokenTTL time.Duration
 	// SecretKeyBase is a cryptographic secret (≥32 bytes in production) used
 	// for two purposes:
 	//   1. CSRF cookie signing in the OAuth authorization handler (CRIT-03):
@@ -178,12 +185,13 @@ func Load() *Config {
 		InviteTokenTTL:  time.Duration(getEnvInt("INVITE_TOKEN_TTL", 86400)) * time.Second,
 
 		// Security
-		MaxFailedAttempts:   getEnvInt("MAX_FAILED_ATTEMPTS", 5),
-		LockoutDurationSecs: getEnvInt("LOCKOUT_DURATION_SECONDS", 900),
-		SecretKeyBase:       getEnv("SECRET_KEY_BASE", ""),
-		AdminMFAPolicy:      normalizeAdminMFAPolicy(getEnv("ADMIN_MFA_POLICY", "off")),
-		DPoPMode:            normalizeDPoPMode(getEnv("DPOP_MODE", "off")),
-		TokenExchangeMode:   normalizeTokenExchangeMode(getEnv("TOKEN_EXCHANGE_MODE", "off")),
+		MaxFailedAttempts:     getEnvInt("MAX_FAILED_ATTEMPTS", 5),
+		LockoutDurationSecs:   getEnvInt("LOCKOUT_DURATION_SECONDS", 900),
+		SecretKeyBase:         getEnv("SECRET_KEY_BASE", ""),
+		AdminMFAPolicy:        normalizeAdminMFAPolicy(getEnv("ADMIN_MFA_POLICY", "off")),
+		DPoPMode:              normalizeDPoPMode(getEnv("DPOP_MODE", "off")),
+		TokenExchangeMode:     normalizeTokenExchangeMode(getEnv("TOKEN_EXCHANGE_MODE", "off")),
+		ImpersonationTokenTTL: time.Duration(getEnvInt("IMPERSONATION_TOKEN_TTL", 300)) * time.Second,
 
 		// Rate Limiting
 		// LOW-03 fix: window env vars now have an explicit _MS suffix so

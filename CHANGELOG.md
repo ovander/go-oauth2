@@ -11,6 +11,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / Authentication context:** Tokens from an **interactive login** now
+  carry **`amr` and `acr`** (RFC 8176 / OIDC, part of the RFC-001 canonical claim
+  set) on the access and ID tokens, and introspection surfaces them: `["pwd"]` /
+  `pwd` for a password login, `["pwd","otp","mfa"]` / `mfa` when a second factor
+  was used. Resource servers can now gate on **authentication strength** (e.g.
+  require `mfa`) without a separate channel. Purely additive (`omitempty`) — only
+  the interactive `Login`/`AdminLogin` paths populate it; refresh, token-exchange,
+  and other flows omit it. _Traceability: C9 → EPIC-9 → RFC-011 / RFC-001 → #123._
+
+### Added
 - **Docs / Revocation:** Added a **revocation & token-freshness SLA**
   (`docs/REVOCATION-FRESHNESS-SLA.md`, RFC-012 / EPIC-14) stating the guaranteed
   time-to-revoke per validation strategy — **immediate** for introspecting or

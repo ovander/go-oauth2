@@ -77,6 +77,11 @@ type IntrospectResponse struct {
 	// make freshness/step-up decisions. Omitted when the token carries no
 	// auth_time (e.g. client-credentials or token-exchange results).
 	AuthTime int64 `json:"auth_time,omitempty"`
+	// Amr / Acr are the authentication methods / context class (RFC 8176),
+	// surfaced so a resource server can gate on authentication strength (e.g.
+	// require `mfa`). Present when the issuing flow recorded them.
+	Amr []string `json:"amr,omitempty"`
+	Acr string   `json:"acr,omitempty"`
 	// Cnf is the RFC 7662 §2.2 / RFC 9449 §7 confirmation claim, present when the
 	// token is sender-constrained (DPoP). It lets a resource server learn the
 	// `jkt` it must match against the request's DPoP proof.

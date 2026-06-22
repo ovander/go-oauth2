@@ -145,6 +145,13 @@ type AccessTokenClaims struct {
 	// the ID token. Zero/omitted on tokens with no associated user
 	// authentication (e.g. client-credentials or token-exchange results).
 	AuthTime int64 `json:"auth_time,omitempty"`
+	// Amr / Acr are the OIDC / RFC 8176 authentication-methods-references and
+	// authentication-context-class-reference (also part of the RFC-001 canonical
+	// claim set / RFC 9068 access-token claims). Present when the issuing flow
+	// knows how the user authenticated (e.g. interactive login: `pwd`, plus
+	// `otp`/`mfa` when a second factor was used); omitted otherwise.
+	Amr []string `json:"amr,omitempty"`
+	Acr string   `json:"acr,omitempty"`
 	// Cnf is the optional DPoP/RFC 7800 confirmation claim (sender-constraint).
 	// Absent (nil) for ordinary bearer tokens.
 	Cnf *Confirmation `json:"cnf,omitempty"`
@@ -182,6 +189,10 @@ type IDTokenClaims struct {
 	Type              string            `json:"type"`
 	Nonce             string            `json:"nonce,omitempty"`
 	AtHash            string            `json:"at_hash,omitempty"`
+	// Amr / Acr — OIDC authentication-methods-references / context-class-reference
+	// (RFC 8176). Present when the issuing flow knows how the user authenticated.
+	Amr []string `json:"amr,omitempty"`
+	Acr string   `json:"acr,omitempty"`
 }
 
 // EmailTokenClaims represents email verification/reset token claims
@@ -213,9 +224,25 @@ type TokenSet struct {
 	ExpiresIn    int
 }
 
+// authnContext carries the authentication evidence (RFC 8176 amr / acr) stamped
+// on the access and ID tokens. The zero value omits both claims, so flows that
+// don't know how the user authenticated produce tokens identical to before.
+type authnContext struct {
+	amr []string
+	acr string
+}
+
 // GenerateTokenSet generates a complete token set for a user.
 func (ts *TokenService) GenerateTokenSet(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, nonce string, authTime int64) (*TokenSet, error) {
-	return ts.generateTokenSet(user, app, role, scope, appRoles, nonce, authTime, "")
+	return ts.generateTokenSet(user, app, role, scope, appRoles, nonce, authTime, "", authnContext{})
+}
+
+// GenerateTokenSetWithAuth is GenerateTokenSet with authentication evidence
+// (RFC 8176 amr / acr) stamped on the access and ID tokens. Callers that know
+// how the user authenticated (e.g. interactive login) supply the methods here;
+// an empty amr/acr behaves exactly like GenerateTokenSet.
+func (ts *TokenService) GenerateTokenSetWithAuth(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, nonce string, authTime int64, amr []string, acr string) (*TokenSet, error) {
+	return ts.generateTokenSet(user, app, role, scope, appRoles, nonce, authTime, "", authnContext{amr: amr, acr: acr})
 }
 
 // GenerateTokenSetWithDPoP generates a complete token set whose access token is
@@ -225,10 +252,10 @@ func (ts *TokenService) GenerateTokenSet(user *model.User, app *model.App, role 
 // a valid DPoP proof accompanied the request. The refresh and ID tokens are
 // unchanged (refresh-token binding is a later slice).
 func (ts *TokenService) GenerateTokenSetWithDPoP(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, nonce string, authTime int64, jkt string) (*TokenSet, error) {
-	return ts.generateTokenSet(user, app, role, scope, appRoles, nonce, authTime, jkt)
+	return ts.generateTokenSet(user, app, role, scope, appRoles, nonce, authTime, jkt, authnContext{})
 }
 
-func (ts *TokenService) generateTokenSet(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, nonce string, authTime int64, jkt string) (*TokenSet, error) {
+func (ts *TokenService) generateTokenSet(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, nonce string, authTime int64, jkt string, ac authnContext) (*TokenSet, error) {
 	now := time.Now()
 	if authTime == 0 {
 		authTime = now.Unix()
@@ -237,7 +264,7 @@ func (ts *TokenService) generateTokenSet(user *model.User, app *model.App, role 
 	// Generate access token (bound to the DPoP key when jkt is non-empty),
 	// carrying the same auth_time as the refresh/ID tokens so a resource server
 	// can make freshness/step-up decisions from the access token alone.
-	accessToken, err := ts.generateBoundAccessTokenAt(user, app, role, scope, appRoles, jkt, now, authTime)
+	accessToken, err := ts.generateBoundAccessTokenAt(user, app, role, scope, appRoles, jkt, now, authTime, ac)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
@@ -249,7 +276,7 @@ func (ts *TokenService) generateTokenSet(user *model.User, app *model.App, role 
 	}
 
 	// Generate ID token with app-scoped role (not global user.Role)
-	idToken, err := ts.generateIDToken(user, app, role, appRoles, nonce, now, authTime, accessToken)
+	idToken, err := ts.generateIDToken(user, app, role, appRoles, nonce, now, authTime, accessToken, ac)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate ID token: %w", err)
 	}
@@ -264,7 +291,7 @@ func (ts *TokenService) generateTokenSet(user *model.User, app *model.App, role 
 
 // newAccessClaims builds the access-token claims (shared by the ordinary and
 // DPoP-bound token generators).
-func (ts *TokenService) newAccessClaims(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, now time.Time, authTime int64) AccessTokenClaims {
+func (ts *TokenService) newAccessClaims(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, now time.Time, authTime int64, ac authnContext) AccessTokenClaims {
 	roles := []string{}
 	if role != "" {
 		roles = append(roles, role)
@@ -287,6 +314,8 @@ func (ts *TokenService) newAccessClaims(user *model.User, app *model.App, role s
 		AppRoles:     appRoles,
 		Roles:        roles,
 		AuthTime:     authTime,
+		Amr:          ac.amr,
+		Acr:          ac.acr,
 	}
 }
 
@@ -295,14 +324,14 @@ func (ts *TokenService) newAccessClaims(user *model.User, app *model.App, role s
 // an ordinary (unbound) access token identical to generateAccessToken, so this
 // is safe to call unconditionally once DPoP wiring lands.
 func (ts *TokenService) GenerateBoundAccessToken(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, jkt string) (string, error) {
-	return ts.generateBoundAccessTokenAt(user, app, role, scope, appRoles, jkt, time.Now(), 0)
+	return ts.generateBoundAccessTokenAt(user, app, role, scope, appRoles, jkt, time.Now(), 0, authnContext{})
 }
 
 // generateBoundAccessTokenAt is GenerateBoundAccessToken with an explicit issue
 // time and end-user authentication time (auth_time, RFC 9068 §2.2.1). authTime
 // of zero omits the claim, so GenerateBoundAccessToken stays byte-compatible.
-func (ts *TokenService) generateBoundAccessTokenAt(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, jkt string, now time.Time, authTime int64) (string, error) {
-	claims := ts.newAccessClaims(user, app, role, scope, appRoles, now, authTime)
+func (ts *TokenService) generateBoundAccessTokenAt(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, jkt string, now time.Time, authTime int64, ac authnContext) (string, error) {
+	claims := ts.newAccessClaims(user, app, role, scope, appRoles, now, authTime, ac)
 	if jkt != "" {
 		claims.Cnf = &Confirmation{JKT: jkt}
 	}
@@ -390,7 +419,7 @@ func (ts *TokenService) generateRefreshToken(user *model.User, app *model.App, r
 }
 
 // generateIDToken generates an OpenID Connect ID token
-func (ts *TokenService) generateIDToken(user *model.User, app *model.App, role string, appRoles map[string]string, nonce string, now time.Time, authTime int64, accessToken string) (string, error) {
+func (ts *TokenService) generateIDToken(user *model.User, app *model.App, role string, appRoles map[string]string, nonce string, now time.Time, authTime int64, accessToken string, ac authnContext) (string, error) {
 	// Calculate at_hash (access token hash)
 	atHash := ts.calculateAtHash(accessToken)
 
@@ -414,6 +443,8 @@ func (ts *TokenService) generateIDToken(user *model.User, app *model.App, role s
 		Type:              "id_token",
 		Nonce:             nonce,
 		AtHash:            atHash,
+		Amr:               ac.amr,
+		Acr:               ac.acr,
 	}
 
 	return ts.signToken(claims)

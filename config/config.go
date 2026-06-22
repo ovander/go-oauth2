@@ -69,6 +69,17 @@ type Config struct {
 	// issuance). Configured via IMPERSONATION_TOKEN_TTL (seconds); defaults to
 	// 300s (5 minutes). Delegation is unaffected. RFC-016.
 	ImpersonationTokenTTL time.Duration
+	// ImpersonationStepUpMode governs the impersonation step-up check (EPIC-17):
+	// "off" (default — no check), "observe" (audit a would-be denial but still
+	// issue), or "enforce" (deny when the subject's authentication is older than
+	// ImpersonationMaxAuthAge). There is no interactive user in the back-channel
+	// token-exchange flow, so freshness of the impersonated subject's session is
+	// the step-up control. RFC-016.
+	ImpersonationStepUpMode string
+	// ImpersonationMaxAuthAge is the freshness window for the step-up check
+	// (IMPERSONATION_MAX_AUTH_AGE seconds; default 900s / 15 min). Zero disables
+	// the check regardless of mode.
+	ImpersonationMaxAuthAge time.Duration
 	// SecretKeyBase is a cryptographic secret (≥32 bytes in production) used
 	// for two purposes:
 	//   1. CSRF cookie signing in the OAuth authorization handler (CRIT-03):
@@ -185,13 +196,15 @@ func Load() *Config {
 		InviteTokenTTL:  time.Duration(getEnvInt("INVITE_TOKEN_TTL", 86400)) * time.Second,
 
 		// Security
-		MaxFailedAttempts:     getEnvInt("MAX_FAILED_ATTEMPTS", 5),
-		LockoutDurationSecs:   getEnvInt("LOCKOUT_DURATION_SECONDS", 900),
-		SecretKeyBase:         getEnv("SECRET_KEY_BASE", ""),
-		AdminMFAPolicy:        normalizeAdminMFAPolicy(getEnv("ADMIN_MFA_POLICY", "off")),
-		DPoPMode:              normalizeDPoPMode(getEnv("DPOP_MODE", "off")),
-		TokenExchangeMode:     normalizeTokenExchangeMode(getEnv("TOKEN_EXCHANGE_MODE", "off")),
-		ImpersonationTokenTTL: time.Duration(getEnvInt("IMPERSONATION_TOKEN_TTL", 300)) * time.Second,
+		MaxFailedAttempts:       getEnvInt("MAX_FAILED_ATTEMPTS", 5),
+		LockoutDurationSecs:     getEnvInt("LOCKOUT_DURATION_SECONDS", 900),
+		SecretKeyBase:           getEnv("SECRET_KEY_BASE", ""),
+		AdminMFAPolicy:          normalizeAdminMFAPolicy(getEnv("ADMIN_MFA_POLICY", "off")),
+		DPoPMode:                normalizeDPoPMode(getEnv("DPOP_MODE", "off")),
+		TokenExchangeMode:       normalizeTokenExchangeMode(getEnv("TOKEN_EXCHANGE_MODE", "off")),
+		ImpersonationTokenTTL:   time.Duration(getEnvInt("IMPERSONATION_TOKEN_TTL", 300)) * time.Second,
+		ImpersonationStepUpMode: normalizeStepUpMode(getEnv("IMPERSONATION_STEPUP_MODE", "off")),
+		ImpersonationMaxAuthAge: time.Duration(getEnvInt("IMPERSONATION_MAX_AUTH_AGE", 900)) * time.Second,
 
 		// Rate Limiting
 		// LOW-03 fix: window env vars now have an explicit _MS suffix so
@@ -334,6 +347,20 @@ func normalizeTokenExchangeMode(v string) string {
 	switch strings.ToLower(strings.TrimSpace(v)) {
 	case "shadow":
 		return "shadow"
+	case "enforce":
+		return "enforce"
+	default:
+		return "off"
+	}
+}
+
+// normalizeStepUpMode lower-cases and validates the impersonation step-up mode,
+// falling back to "off" for any unrecognized value (fail safe — never enforce
+// or observe from a typo).
+func normalizeStepUpMode(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "observe":
+		return "observe"
 	case "enforce":
 		return "enforce"
 	default:

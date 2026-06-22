@@ -11,6 +11,20 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / Impersonation:** Impersonation **step-up** (RFC 8693 / EPIC-17).
+  Because a back-channel token exchange has no interactive user, the control is
+  the **freshness of the impersonated subject's session**: an impersonation
+  exchange now requires the subject to have authenticated within
+  `IMPERSONATION_MAX_AUTH_AGE` (default **900s**), enforced via
+  `IMPERSONATION_STEPUP_MODE` — `off` (default, no check), `observe` (audit a
+  would-be denial but still issue), or `enforce` (deny with `invalid_grant`). A
+  subject token without `auth_time` can't prove freshness and is treated as
+  stale (secure default). Delegation is unaffected, and every decision is
+  audited (`stepup`, `subject_auth_age_seconds`). The `amr`-based step-up for the
+  human-in-the-loop delegation case is a documented future layer. _Traceability:
+  C17 → EPIC-17 → RFC-016 → #109._
+
+### Added
 - **Identity / Tokens:** Access tokens now carry **`auth_time`** (RFC 9068
   §2.2.1 / OIDC), and token **introspection surfaces it** (RFC 7662), so a
   resource server can make its own **freshness / step-up** decisions from the

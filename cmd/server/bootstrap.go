@@ -338,7 +338,9 @@ func Bootstrap(cfg *config.Config) *App {
 		securityAuditRepo,
 		usedTokenRepo, // HIGH-04: single-use refresh token JTI tracking
 		cfg.TokenExchangeMode,
-		cfg.ImpersonationTokenTTL, // EPIC-17: time-box impersonated tokens
+		cfg.ImpersonationTokenTTL,   // EPIC-17: time-box impersonated tokens
+		cfg.ImpersonationStepUpMode, // EPIC-17: impersonation step-up (subject freshness)
+		cfg.ImpersonationMaxAuthAge,
 	)
 
 	// ==========================================

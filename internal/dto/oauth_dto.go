@@ -125,6 +125,10 @@ type OpenIDConfiguration struct {
 	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported"`
 	ClaimsSupported                   []string `json:"claims_supported"`
 	CodeChallengeMethodsSupported     []string `json:"code_challenge_methods_supported"`
+	// AcrValuesSupported advertises the authentication context class values the
+	// OP can assert (RFC 8176 / OIDC Discovery): "pwd" (password) and "mfa"
+	// (multi-factor). Omitted when empty.
+	AcrValuesSupported []string `json:"acr_values_supported,omitempty"`
 	// DPoPSigningAlgValuesSupported advertises DPoP support (RFC 9449 §5.1).
 	// Omitted when the server does not have DPoP enabled.
 	DPoPSigningAlgValuesSupported []string `json:"dpop_signing_alg_values_supported,omitempty"`

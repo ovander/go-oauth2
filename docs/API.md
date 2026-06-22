@@ -323,7 +323,9 @@ app encoded in the token, so an app can never act on another app's resources.
   (`authorization_endpoint`, `token_endpoint`, `userinfo_endpoint`, `jwks_uri`,
   `introspection_endpoint`, `revocation_endpoint`, supported response types
   `["code"]`, grants `["authorization_code","refresh_token","client_credentials"]`,
-  scopes, claims, `code_challenge_methods_supported: ["S256"]`, …).
+  scopes, `code_challenge_methods_supported: ["S256"]`, …). `claims_supported`
+  lists the assertable claims including `auth_time`, `acr`, `amr`, `act`, and
+  `cnf`; `acr_values_supported` advertises `["pwd","mfa"]` (RFC 8176).
 - `GET /.well-known/jwks.json` — RSA public keys (JWKS) for verifying RS256
   tokens. Cache and key off the `kid` header; keys rotate automatically.
 

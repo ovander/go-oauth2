@@ -11,6 +11,15 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Discovery:** OIDC discovery now advertises the claims added by recent
+  capabilities — `claims_supported` includes `auth_time` (RFC 9068), `acr`/`amr`
+  (RFC 8176), `act` (RFC 8693), and `cnf` (RFC 9449) — and a new
+  `acr_values_supported: ["pwd","mfa"]`. Relying parties can now discover the
+  authentication-context and delegation/DPoP claims the OP may assert. Metadata
+  only (a listed claim is not present on every token). _Traceability: C9 →
+  EPIC-9 → RFC-001 → #127._
+
+### Added
 - **Identity / Delegation:** **Delegation step-up** (RFC 8693 / EPIC-17) — the
   human-actor counterpart to impersonation step-up. A delegation token-exchange
   carries an actor token whose `amr` evidences how that human authenticated, so

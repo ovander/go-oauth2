@@ -11,6 +11,13 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Tokens / DPoP / Admin:** The per-client `require_dpop` flag (#72) is now
+  manageable through the admin app API. `POST /api/admin/apps` accepts
+  `require_dpop` on creation, `PATCH`/`PUT` toggles it (omitted = unchanged), and
+  every app response includes `require_dpop`. Mirrors the existing `require_pkce`
+  handling. _Traceability: C8 → EPIC-8 → RFC-003 → #74._
+
+### Added
 - **Tokens / DPoP:** Per-client **require-DPoP** policy (RFC 9449). A new
   `apps.require_dpop` flag (migration `0012`, default false) makes the token
   endpoint reject an `authorization_code` or `refresh_token` request from that

@@ -12,6 +12,9 @@ type CreateAppRequest struct {
 	// No client_secret is generated; PKCE is automatically enforced.
 	IsPublic    bool `json:"is_public"`
 	RequirePKCE bool `json:"require_pkce"`
+	// RequireDPoP mandates DPoP sender-constrained tokens (RFC 9449) for this
+	// client at the token endpoint. Requires DPoP enabled globally (DPOP_MODE).
+	RequireDPoP bool `json:"require_dpop"`
 }
 
 type UpdateAppRequest struct {
@@ -19,6 +22,9 @@ type UpdateAppRequest struct {
 	URL          *string  `json:"url,omitempty"`
 	RedirectURIs []string `json:"redirect_uris,omitempty"`
 	Active       *bool    `json:"active,omitempty"`
+	// RequireDPoP toggles the per-client DPoP requirement (RFC 9449). Omitted =
+	// unchanged.
+	RequireDPoP *bool `json:"require_dpop,omitempty"`
 }
 
 type AddAppUserRequest struct {
@@ -40,6 +46,7 @@ type AppResponse struct {
 	Active       bool      `json:"active"`
 	IsPublic     bool      `json:"is_public"`
 	RequirePKCE  bool      `json:"require_pkce"`
+	RequireDPoP  bool      `json:"require_dpop"`
 	URL          *string   `json:"url,omitempty"`
 	RedirectURIs []string  `json:"redirect_uris"`
 	OwnerID      *uint     `json:"owner_id,omitempty"`

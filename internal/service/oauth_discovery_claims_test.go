@@ -18,6 +18,11 @@ func TestDiscovery_AdvertisesAuthContextClaims(t *testing.T) {
 	if !sliceHas(cfg.AcrValuesSupported, "pwd") || !sliceHas(cfg.AcrValuesSupported, "mfa") {
 		t.Errorf("acr_values_supported = %v, want pwd + mfa", cfg.AcrValuesSupported)
 	}
+
+	// RFC 9207: discovery advertises the iss authorization-response parameter.
+	if !cfg.AuthorizationResponseIssParameterSupported {
+		t.Error("authorization_response_iss_parameter_supported must be true (RFC 9207)")
+	}
 }
 
 func sliceHas(xs []string, want string) bool {

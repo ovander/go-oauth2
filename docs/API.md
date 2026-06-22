@@ -144,8 +144,13 @@ The server renders a login page (if the user has no session) followed by a
 **consent page**. On approval it redirects to:
 
 ```
-https://app.example.com/callback?code=AUTH_CODE&state=RANDOM_OPAQUE_VALUE
+https://app.example.com/callback?code=AUTH_CODE&state=RANDOM_OPAQUE_VALUE&iss=https%3A%2F%2Fauth.example.com
 ```
+
+The response includes the **`iss`** parameter (RFC 9207): the issuer identifier
+of this authorization server. A client that talks to more than one AS should
+verify `iss` matches the AS it sent the request to, defending against IdP
+mix-up attacks.
 
 On failure it redirects with `?error=...&error_description=...&state=...`
 (e.g. `access_denied` if the user clicks "Deny").
@@ -325,7 +330,8 @@ app encoded in the token, so an app can never act on another app's resources.
   `["code"]`, grants `["authorization_code","refresh_token","client_credentials"]`,
   scopes, `code_challenge_methods_supported: ["S256"]`, …). `claims_supported`
   lists the assertable claims including `auth_time`, `acr`, `amr`, `act`, and
-  `cnf`; `acr_values_supported` advertises `["pwd","mfa"]` (RFC 8176).
+  `cnf`; `acr_values_supported` advertises `["pwd","mfa"]` (RFC 8176);
+  `authorization_response_iss_parameter_supported: true` (RFC 9207).
 - `GET /.well-known/jwks.json` — RSA public keys (JWKS) for verifying RS256
   tokens. Cache and key off the `kid` header; keys rotate automatically.
 

@@ -11,6 +11,15 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / Mix-up defense:** The **authorization response now carries the
+  `iss` parameter** (RFC 9207), and discovery advertises
+  `authorization_response_iss_parameter_supported: true`. A client that talks to
+  more than one authorization server can verify `iss` matches the AS it sent the
+  request to, defending against **IdP mix-up attacks**. Additive — clients that
+  ignore `iss` are unaffected. _Traceability: C7 → EPIC-7 → RFC-001 / RFC 9207 →
+  #132._
+
+### Added
 - **Identity / Refresh-token theft detection:** Refresh-token **reuse detection**
   (OAuth 2.0 Security BCP / RFC 9700 §4.14.2). A reused (already-rotated)
   single-use refresh token is still rejected as before, but `REFRESH_REUSE_MODE`

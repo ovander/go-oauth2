@@ -395,14 +395,25 @@ func (h *OAuthHandler) handleConsentPost(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
+	renderRedirectPage(w, buildAuthzRedirect(redirectURL, code, req.State, h.issuer))
+}
+
+// buildAuthzRedirect builds the authorization-response redirect URL, appending
+// the authorization code, the optional state, and the issuer identifier (`iss`,
+// RFC 9207). The `iss` parameter lets the client confirm which authorization
+// server issued the code, defending against IdP mix-up attacks. Existing query
+// parameters on the redirect URI are preserved.
+func buildAuthzRedirect(redirectURL *url.URL, code, state, issuer string) string {
 	query := redirectURL.Query()
 	query.Set("code", code)
-	if req.State != "" {
-		query.Set("state", req.State)
+	if state != "" {
+		query.Set("state", state)
+	}
+	if issuer != "" {
+		query.Set("iss", issuer)
 	}
 	redirectURL.RawQuery = query.Encode()
-
-	renderRedirectPage(w, redirectURL.String())
+	return redirectURL.String()
 }
 
 // renderConsentPage issues a consent token for userID/clientID, then renders

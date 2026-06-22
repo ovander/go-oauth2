@@ -1,4 +1,4 @@
-.PHONY: build run dev test clean deps fmt lint deploy
+.PHONY: build run dev test test-coverage coverage-report clean deps fmt lint deploy
 
 # Go parameters
 GOCMD=go
@@ -46,6 +46,16 @@ test:
 test-coverage:
 	$(GOTEST) -v -coverprofile=coverage.out ./...
 	$(GOCMD) tool cover -html=coverage.out -o coverage.html
+
+# Coverage report: overall total + Tier A (security-critical) coverage.
+# Mirrors the CI coverage job (docs/program/TEST-STRATEGY.md). Report-only.
+coverage-report:
+	@$(GOTEST) ./... -coverprofile=coverage.out -covermode=atomic > /dev/null
+	@echo "Overall:"; $(GOCMD) tool cover -func=coverage.out | tail -1
+	@$(GOTEST) ./internal/service/... ./internal/shared/auth/... ./internal/middleware/... ./config/... \
+		-coverpkg=./internal/service/...,./internal/shared/auth/...,./internal/middleware/...,./config/... \
+		-coverprofile=tierA.out > /dev/null
+	@echo "Tier A (security-critical, target >=90%):"; $(GOCMD) tool cover -func=tierA.out | tail -1
 
 # Clean build artifacts
 clean:
@@ -117,7 +127,8 @@ help:
 	@echo "  run            - Build and run the application"
 	@echo "  dev            - Run with hot reload (requires air)"
 	@echo "  test           - Run tests"
-	@echo "  test-coverage  - Run tests with coverage report"
+	@echo "  test-coverage  - Run tests with HTML coverage report"
+	@echo "  coverage-report - Overall + Tier A (security-critical) coverage"
 	@echo "  clean          - Clean build artifacts"
 	@echo "  deps           - Download and tidy dependencies"
 	@echo "  fmt            - Format code"

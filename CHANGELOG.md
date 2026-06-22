@@ -11,6 +11,14 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / Delegation / Discovery:** OIDC discovery advertises the RFC 8693
+  token-exchange grant (`urn:ietf:params:oauth:grant-type:token-exchange` in
+  `grant_types_supported`) **when it can actually be issued**
+  (`TOKEN_EXCHANGE_MODE=enforce`). It is omitted in `off`/`shadow` (where the
+  grant issues nothing), so the metadata never advertises a capability clients
+  can't use. _Traceability: C16 → EPIC-16 → RFC-019 → #99._
+
+### Added
 - **Identity / Delegation:** OAuth 2.0 **Token Exchange is now live** (RFC 8693 /
   EPIC-16) under `TOKEN_EXCHANGE_MODE=enforce`. A flagged client
   (`allow_token_exchange`, plus `allow_impersonation` for the actor-absent case)

@@ -16,6 +16,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/service"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth/dpop"
+	"github.com/ovandermoten/go-oauth2/internal/shared/auth/tokenexchange"
 	"github.com/ovandermoten/go-oauth2/internal/web"
 	"github.com/ovandermoten/go-oauth2/pkg/database"
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
@@ -370,6 +371,12 @@ func Bootstrap(cfg *config.Config) *App {
 		oauthHandler.SetDPoPSigningAlgs([]string{"ES256"})
 	}
 	oauthHandler.SetJWKSCacheMaxAge(int(cfg.JWKSCacheMaxAge.Seconds()))
+	// Advertise the RFC 8693 token-exchange grant in discovery only when it can
+	// actually be issued (enforce). In shadow it is non-issuing, so advertising
+	// would mislead clients.
+	if cfg.TokenExchangeMode == "enforce" {
+		oauthHandler.SetExtraGrantTypes([]string{tokenexchange.GrantType})
+	}
 	appUsersHandler := handler.NewAppUsersHandler(userService, userAppRoleService, appService, adminLogService, emailService, tokenService, cfg.OAuthIssuer)
 	profileHandler := handler.NewProfileHandler(userService)
 	mfaHandler := handler.NewMFAHandler(mfaService)

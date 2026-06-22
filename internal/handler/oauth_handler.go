@@ -576,14 +576,29 @@ func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 	// TOKEN_EXCHANGE_MODE and (off/shadow) reports the grant as unsupported.
 	if req.GrantType == tokenexchange.GrantType {
 		_ = r.ParseForm()
-		if _, err := h.oauthService.ExchangeToken(r.Context(), r.Form, clientID, clientSecret); err != nil {
-			if errors.Is(err, service.ErrInvalidGrantType) {
+		resp, err := h.oauthService.ExchangeToken(r.Context(), r.Form, clientID, clientSecret)
+		if err != nil {
+			switch {
+			case errors.Is(err, service.ErrInvalidGrantType):
 				writeOAuthError(w, "unsupported_grant_type", "unsupported grant type", http.StatusBadRequest)
-			} else {
+			case errors.Is(err, service.ErrInvalidCredentials):
+				writeOAuthError(w, "invalid_client", "client authentication failed", http.StatusUnauthorized)
+			case errors.Is(err, service.ErrInvalidToken):
+				writeOAuthError(w, "invalid_grant", "the subject or actor token is invalid", http.StatusBadRequest)
+			case errors.Is(err, service.ErrScopeNotSubset):
+				writeOAuthError(w, "invalid_scope", "requested scope exceeds the subject's scope", http.StatusBadRequest)
+			case errors.Is(err, service.ErrAudienceRequired):
+				writeOAuthError(w, "invalid_target", "a target audience or resource is required", http.StatusBadRequest)
+			case errors.Is(err, service.ErrExchangeNotAllowed), errors.Is(err, service.ErrImpersonationNotAllowed):
+				writeOAuthError(w, "unauthorized_client", "token exchange is not permitted for this client", http.StatusForbidden)
+			case errors.Is(err, service.ErrInvalidExchangeRequest):
 				writeOAuthError(w, "invalid_request", "invalid token-exchange request", http.StatusBadRequest)
+			default:
+				writeOAuthError(w, "server_error", "an internal error occurred", http.StatusInternalServerError)
 			}
 			return
 		}
+		writeJSON(w, resp)
 		return
 	}
 

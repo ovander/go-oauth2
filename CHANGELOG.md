@@ -11,6 +11,15 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / Delegation / Introspection:** Token introspection now **surfaces the
+  `act` (actor) claim** (RFC 7662 / RFC 8693 §4.1). When an introspected access
+  token was minted via token exchange (delegation/impersonation), the response
+  carries `act` — a nestable `{sub, act}` chain — so a resource server can see
+  **who is acting on the subject's behalf**, mirroring the existing `cnf`
+  surfacing. Ordinary tokens omit `act` (additive, no behaviour change).
+  _Traceability: C16 → EPIC-16 → RFC-019 → #103._
+
+### Added
 - **Identity / Delegation / DPoP:** Exchanged tokens are now **opportunistically
   DPoP-bound** (RFC 9449 / RFC 8693). When a token-exchange request carries a
   valid DPoP proof (verified by the token-endpoint middleware), the issued

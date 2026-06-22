@@ -266,6 +266,18 @@ func (ts *TokenService) GenerateBoundAccessToken(user *model.User, app *model.Ap
 // standard short access-token TTL. This is purely the issuance primitive; the
 // caller owns authorization.
 func (ts *TokenService) GenerateExchangedToken(subject string, audience []string, scope string, tokenVersion int, actor *ActClaim, jkt string) (token string, expiresIn int, err error) {
+	return ts.GenerateExchangedTokenWithTTL(subject, audience, scope, tokenVersion, actor, jkt, 0)
+}
+
+// GenerateExchangedTokenWithTTL is GenerateExchangedToken with an explicit
+// lifetime. It lets the caller tighten the time-box for sensitive exchanges
+// (e.g. impersonation, EPIC-17) below the standard access-token TTL. A ttl of
+// zero (or negative) falls back to the standard access-token TTL, so callers
+// that don't care about the lifetime keep the default behaviour.
+func (ts *TokenService) GenerateExchangedTokenWithTTL(subject string, audience []string, scope string, tokenVersion int, actor *ActClaim, jkt string, ttl time.Duration) (token string, expiresIn int, err error) {
+	if ttl <= 0 {
+		ttl = ts.accessTokenTTL
+	}
 	now := time.Now()
 	claims := AccessTokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -274,7 +286,7 @@ func (ts *TokenService) GenerateExchangedToken(subject string, audience []string
 			Audience:  jwt.ClaimStrings(audience),
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(ts.accessTokenTTL)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 			ID:        uuid.New().String(),
 		},
 		Scope:        scope,
@@ -289,7 +301,7 @@ func (ts *TokenService) GenerateExchangedToken(subject string, audience []string
 	if serr != nil {
 		return "", 0, serr
 	}
-	return signed, int(ts.accessTokenTTL.Seconds()), nil
+	return signed, int(ttl.Seconds()), nil
 }
 
 // generateRefreshToken generates a refresh token, optionally sender-constrained

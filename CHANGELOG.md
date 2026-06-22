@@ -11,6 +11,14 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / KMS / Ops:** The JWKS endpoint now supports conditional requests
+  (RFC 7232). It sends a strong `ETag` over the key set and returns `304 Not
+  Modified` (no body) when a verifier sends a matching `If-None-Match`, so an
+  unchanged key set revalidates cheaply and a rotation (which changes the ETag)
+  is fetched in full. Complements the `Cache-Control` added in the previous
+  slice. _Traceability: C3 → EPIC-3 → RFC-002 → #82._
+
+### Added
 - **Identity / KMS / Ops:** The JWKS endpoint (`/.well-known/jwks.json`) now
   sends a `Cache-Control` header so resource servers cache the key set instead
   of refetching it on every token verification (RFC-002). The max-age is

@@ -2,7 +2,9 @@ package handler
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -900,6 +902,12 @@ func (h *OAuthHandler) OpenIDConfiguration(w http.ResponseWriter, r *http.Reques
 // GET /.well-known/jwks.json
 func (h *OAuthHandler) JWKS(w http.ResponseWriter, r *http.Request) {
 	jwks := h.oauthService.GetJWKS()
+	body, err := json.Marshal(jwks)
+	if err != nil {
+		writeError(w, "could not serialize JWKS", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	// Let resource servers cache the key set instead of refetching on every
 	// token verification (RFC-002). The max-age is kept modest so a rotated key
@@ -909,7 +917,45 @@ func (h *OAuthHandler) JWKS(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.Header().Set("Cache-Control", "no-store")
 	}
-	writeJSON(w, jwks)
+
+	// A strong ETag over the key set lets a verifier revalidate cheaply: the
+	// ETag changes when keys rotate, and an unchanged set returns 304 with no
+	// body. RFC 7232.
+	etag := jwksETag(body)
+	w.Header().Set("ETag", etag)
+	if ifNoneMatchSatisfied(r.Header.Get("If-None-Match"), etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	if _, werr := w.Write(body); werr != nil {
+		logger.Warnf("JWKS: failed to write response: %v", werr)
+	}
+}
+
+// jwksETag returns a strong ETag (quoted) over the serialized key set.
+func jwksETag(body []byte) string {
+	sum := sha256.Sum256(body)
+	return `"` + hex.EncodeToString(sum[:16]) + `"`
+}
+
+// ifNoneMatchSatisfied reports whether an If-None-Match header matches the
+// current ETag (handles a comma-separated list and the "*" wildcard).
+func ifNoneMatchSatisfied(header, etag string) bool {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return false
+	}
+	if header == "*" {
+		return true
+	}
+	for _, candidate := range strings.Split(header, ",") {
+		c := strings.TrimSpace(candidate)
+		c = strings.TrimPrefix(c, "W/") // weak validators compare equal on value
+		if c == etag {
+			return true
+		}
+	}
+	return false
 }
 
 func extractClientCredentials(r *http.Request) (clientID, clientSecret string) {

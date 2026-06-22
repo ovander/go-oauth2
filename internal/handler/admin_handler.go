@@ -952,6 +952,7 @@ func appToResponse(app model.App) dto.AppResponse {
 		Active:       app.Active,
 		IsPublic:     app.IsPublic,
 		RequirePKCE:  app.RequirePKCE,
+		RequireDPoP:  app.RequireDPoP,
 		URL:          app.URL,
 		RedirectURIs: app.RedirectURIs,
 		OwnerID:      app.OwnerID,

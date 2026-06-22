@@ -112,6 +112,7 @@ func (s *appService) Create(ctx context.Context, req dto.CreateAppRequest, owner
 		// Public clients always require PKCE — enforce it even if the caller
 		// did not explicitly set require_pkce in the request.
 		RequirePKCE:  req.IsPublic || req.RequirePKCE,
+		RequireDPoP:  req.RequireDPoP,
 		Active:       true,
 		URL:          req.URL,
 		RedirectURIs: model.StringArray(req.RedirectURIs),
@@ -144,6 +145,9 @@ func (s *appService) Update(ctx context.Context, id uint, req dto.UpdateAppReque
 	}
 	if req.Active != nil {
 		app.Active = *req.Active
+	}
+	if req.RequireDPoP != nil {
+		app.RequireDPoP = *req.RequireDPoP
 	}
 
 	app.UpdatedAt = time.Now()

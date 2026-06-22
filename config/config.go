@@ -38,6 +38,12 @@ type Config struct {
 	EmailTokenTTL   time.Duration
 	ResetTokenTTL   time.Duration
 	InviteTokenTTL  time.Duration
+	// JWKSCacheMaxAge is the Cache-Control max-age advertised on the JWKS
+	// endpoint so resource servers cache the key set instead of refetching on
+	// every token verification. Kept modest so a rotated key is picked up
+	// promptly (a resource server should also refetch on an unknown kid). 0
+	// disables caching (Cache-Control: no-store). RFC-002.
+	JWKSCacheMaxAge time.Duration
 
 	// Security
 	MaxFailedAttempts   int
@@ -163,6 +169,7 @@ func Load() *Config {
 		RefreshTokenTTL: time.Duration(getEnvInt("REFRESH_TOKEN_TTL", 604800)) * time.Second,
 		EmailTokenTTL:   time.Duration(getEnvInt("EMAIL_TOKEN_TTL", 86400)) * time.Second,
 		ResetTokenTTL:   time.Duration(getEnvInt("RESET_TOKEN_TTL", 3600)) * time.Second,
+		JWKSCacheMaxAge: time.Duration(getEnvInt("JWKS_CACHE_MAX_AGE_SECONDS", 300)) * time.Second,
 		InviteTokenTTL:  time.Duration(getEnvInt("INVITE_TOKEN_TTL", 86400)) * time.Second,
 
 		// Security

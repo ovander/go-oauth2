@@ -11,6 +11,14 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / KMS / Ops:** The JWKS endpoint (`/.well-known/jwks.json`) now
+  sends a `Cache-Control` header so resource servers cache the key set instead
+  of refetching it on every token verification (RFC-002). The max-age is
+  configurable via `JWKS_CACHE_MAX_AGE_SECONDS` (default 300s) and kept modest so
+  a rotated key is picked up promptly; `0` disables caching (`no-store`).
+  _Traceability: C3 → EPIC-3 → RFC-002 → #80._
+
+### Added
 - **Tokens / DPoP / Discovery:** The OIDC discovery document
   (`/.well-known/openid-configuration`) now advertises
   `dpop_signing_alg_values_supported: ["ES256"]` (RFC 9449 §5.1) **when DPoP is

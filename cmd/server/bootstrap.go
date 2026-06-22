@@ -363,6 +363,11 @@ func Bootstrap(cfg *config.Config) *App {
 	// ==========================================
 	authHandler := handler.NewAuthHandler(authService, userService, emailService, cfg.Environment, cfg.OAuthIssuer)
 	oauthHandler := handler.NewOAuthHandler(oauthService, authService, appService, templateService, tokenService, cfg.OAuthIssuer, []byte(cfg.SecretKeyBase))
+	// Advertise DPoP support in OIDC discovery only when it is enabled
+	// (RFC 9449 §5.1). The dpop package supports ES256.
+	if cfg.DPoPMode != "off" && cfg.DPoPMode != "" {
+		oauthHandler.SetDPoPSigningAlgs([]string{"ES256"})
+	}
 	appUsersHandler := handler.NewAppUsersHandler(userService, userAppRoleService, appService, adminLogService, emailService, tokenService, cfg.OAuthIssuer)
 	profileHandler := handler.NewProfileHandler(userService)
 	mfaHandler := handler.NewMFAHandler(mfaService)

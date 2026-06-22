@@ -360,6 +360,7 @@ func Bootstrap(cfg *config.Config) *App {
 		cfg.ImpersonationStepUpMode, // EPIC-17: impersonation step-up (subject freshness)
 		cfg.ImpersonationMaxAuthAge,
 		cfg.DelegationStepUpMode, // EPIC-17: delegation step-up (actor MFA)
+		cfg.RefreshReuseMode,     // RFC 9700: refresh-token reuse detection
 	)
 
 	// ==========================================

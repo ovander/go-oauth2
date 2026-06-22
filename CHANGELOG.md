@@ -10,6 +10,18 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Added
+- **Identity / Refresh-token theft detection:** Refresh-token **reuse detection**
+  (OAuth 2.0 Security BCP / RFC 9700 §4.14.2). A reused (already-rotated)
+  single-use refresh token is still rejected as before, but `REFRESH_REUSE_MODE`
+  now adds a theft response: `off` (default — reject only, unchanged), `observe`
+  (also audit a `refresh_token_reuse` security event), or `enforce` (also revoke
+  the user's **token family** via a token-version bump, so neither the attacker's
+  nor the victim's outstanding tokens survive). The reused token's signature and
+  audience are verified before acting, so the subject is trustworthy. Default
+  `off` is byte-compatible. _Traceability: C14 → EPIC-14 → RFC-012 / RFC 9700 →
+  #130._
+
 ## [1.0.0] - 2026-06-22
 
 ### Added

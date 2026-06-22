@@ -133,6 +133,10 @@ type oauthService struct {
 	// evidence MFA (amr ⊇ {mfa}); observe audits the would-be denial, enforce
 	// denies it.
 	delegationStepUpMode string
+	// refreshReuseMode is "off" (default), "observe", or "enforce" (RFC 9700
+	// §4.14.2 refresh-token reuse detection). observe audits a detected reuse;
+	// enforce additionally revokes the user's token family.
+	refreshReuseMode string
 }
 
 // Token-exchange rollout modes (RFC 8693 / EPIC-16).
@@ -147,6 +151,15 @@ const (
 	stepUpModeOff     = "off"
 	stepUpModeObserve = "observe"
 	stepUpModeEnforce = "enforce"
+)
+
+// Refresh-token reuse-detection modes (RFC 9700 §4.14.2). off = reject the
+// reused token only (historical behaviour); observe = also audit the reuse;
+// enforce = also revoke the user's token family.
+const (
+	refreshReuseModeOff     = "off"
+	refreshReuseModeObserve = "observe"
+	refreshReuseModeEnforce = "enforce"
 )
 
 // OAuthServiceConfig holds OAuth service configuration
@@ -170,6 +183,7 @@ func NewOAuthService(
 	impersonationStepUpMode string,
 	impersonationMaxAuthAge time.Duration,
 	delegationStepUpMode string,
+	refreshReuseMode string,
 ) OAuthService {
 	requireHTTPS := strings.HasPrefix(issuer, "https://")
 
@@ -182,6 +196,7 @@ func NewOAuthService(
 		"impersonation_stepup_mode":  impersonationStepUpMode,
 		"impersonation_max_auth_age": impersonationMaxAuthAge.String(),
 		"delegation_stepup_mode":     delegationStepUpMode,
+		"refresh_reuse_mode":         refreshReuseMode,
 	}).Info("✅ OAuth service initialized")
 
 	return &oauthService{
@@ -200,6 +215,7 @@ func NewOAuthService(
 		impersonationStepUpMode: impersonationStepUpMode,
 		impersonationMaxAuthAge: impersonationMaxAuthAge,
 		delegationStepUpMode:    delegationStepUpMode,
+		refreshReuseMode:        refreshReuseMode,
 	}
 }
 
@@ -505,6 +521,30 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 			return nil, fmt.Errorf("%w: failed to verify token single-use", ErrInvalidToken)
 		}
 		if used {
+			// RFC 9700 §4.14.2: presenting an already-rotated refresh token is a
+			// token-theft signal. Beyond rejecting this request, optionally revoke
+			// the user's whole token family so neither the attacker's nor the
+			// victim's outstanding tokens survive. observe records the event;
+			// enforce additionally revokes. off keeps the historical behaviour
+			// (reject only). The token's signature + audience were already verified
+			// above, so the subject is trustworthy provenance for the revocation.
+			if s.refreshReuseMode != refreshReuseModeOff {
+				uid64, _ := strconv.ParseUint(claims.Subject, 10, 64)
+				uid := uint(uid64)
+				reuseDetails := map[string]interface{}{
+					"jti":       jti,
+					"client_id": clientID,
+					"mode":      s.refreshReuseMode,
+				}
+				if s.refreshReuseMode == refreshReuseModeEnforce {
+					if rerr := s.userRepo.IncrementTokenVersion(ctx, uid); rerr != nil {
+						logger.Errorf("RFC 9700: failed to revoke token family on refresh reuse for user %d: %v", uid, rerr)
+					} else {
+						reuseDetails["family_revoked"] = true
+					}
+				}
+				s.logSecurityEvent(ctx, model.SecurityEventRefreshTokenReuse, &uid, nil, false, reuseDetails)
+			}
 			return nil, fmt.Errorf("%w: refresh token has already been used", ErrInvalidToken)
 		}
 	}

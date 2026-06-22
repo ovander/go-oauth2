@@ -10,6 +10,8 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-06-22
+
 ### Added
 - **Discovery:** OIDC discovery now advertises the claims added by recent
   capabilities — `claims_supported` includes `auth_time` (RFC 9068), `acr`/`amr`

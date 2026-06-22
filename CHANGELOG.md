@@ -10,6 +10,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Fixed
+- **Identity / PKCE hardening:** PKCE is now enforced for **public clients at the
+  point of use**, not just via the create-time default (OAuth 2.1). The
+  authorization and token endpoints gate on a new `App.PKCERequired()`
+  (`RequirePKCE || IsPublic`), so a public client can never run an unprotected
+  authorization-code flow even if its `require_pkce` flag were cleared by a seed,
+  a direct DB row, or a future code path. Confidential clients and clients that
+  already set `require_pkce` are unaffected. _Traceability: C7 → EPIC-7 → RFC 7636
+  / OAuth 2.1 → #134._
+
 ### Added
 - **Identity / Mix-up defense:** The **authorization response now carries the
   `iss` parameter** (RFC 9207), and discovery advertises

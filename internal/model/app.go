@@ -64,6 +64,16 @@ func (a *App) IsConfidential() bool {
 	return !a.IsPublic && a.ClientSecretHash != ""
 }
 
+// PKCERequired reports whether PKCE (RFC 7636) must be used for this client.
+// It is true when the client opted in (RequirePKCE) OR is a public client —
+// OAuth 2.1 mandates PKCE for public clients, so this enforces that invariant at
+// the point of use rather than relying solely on the create-time default (so a
+// public client can never authorize without PKCE even if its RequirePKCE flag
+// were somehow cleared).
+func (a *App) PKCERequired() bool {
+	return a.RequirePKCE || a.IsPublic
+}
+
 func (App) TableName() string {
 	return "apps"
 }

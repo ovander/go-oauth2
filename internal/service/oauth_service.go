@@ -308,10 +308,11 @@ func (s *oauthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, 
 		}
 	}
 
-	// MED-02: if this client requires PKCE, reject authorization requests
-	// that arrive without a code_challenge.  This prevents public clients
-	// from accidentally starting an unprotected authorization flow.
-	if app.RequirePKCE && req.CodeChallenge == "" {
+	// MED-02: if this client requires PKCE (explicitly, or because it is a
+	// public client — OAuth 2.1), reject authorization requests that arrive
+	// without a code_challenge. This prevents public clients from accidentally
+	// starting an unprotected authorization flow.
+	if app.PKCERequired() && req.CodeChallenge == "" {
 		return "", fmt.Errorf("%w: this client requires PKCE — include code_challenge in the authorization request", ErrPKCERequired)
 	}
 
@@ -388,9 +389,10 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 		return nil, fmt.Errorf("%w: client_id=%s", ErrAppNotFound, clientID)
 	}
 
-	// If the app requires PKCE, the authorization request MUST have included
-	// a code_challenge.  Reject token requests that bypass PKCE entirely.
-	if app.RequirePKCE && authCode.CodeChallenge == "" {
+	// If the app requires PKCE (explicitly or as a public client), the
+	// authorization request MUST have included a code_challenge. Reject token
+	// requests that bypass PKCE entirely.
+	if app.PKCERequired() && authCode.CodeChallenge == "" {
 		return nil, fmt.Errorf("%w: PKCE required for this client but no code_challenge was supplied at authorization", ErrPKCERequired)
 	}
 

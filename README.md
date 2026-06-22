@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/socrate-logo.svg" alt="Socrate" width="96" height="112" />
+<img src="docs/assets/socrate-logo.png" alt="Socrate" width="200" />
 
 # Socrate
 

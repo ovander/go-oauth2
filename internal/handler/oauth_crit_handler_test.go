@@ -93,6 +93,9 @@ func (m *critOAuthService) Authorize(ctx context.Context, req dto.AuthorizeReque
 func (m *critOAuthService) Token(_ context.Context, _ dto.TokenRequest, _, _ string) (*dto.TokenResponse, error) {
 	panic("Token called unexpectedly")
 }
+func (m *critOAuthService) ExchangeToken(_ context.Context, _ url.Values, _, _ string) (*dto.TokenResponse, error) {
+	panic("ExchangeToken called unexpectedly")
+}
 func (m *critOAuthService) Introspect(ctx context.Context, token string) (*dto.IntrospectResponse, error) {
 	if m.introspect != nil {
 		return m.introspect(ctx, token)

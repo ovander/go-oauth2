@@ -54,6 +54,10 @@ const (
 	// MFA (RFC-011): a one-time recovery code was redeemed to satisfy login
 	// step-up (in place of a TOTP code).
 	SecurityEventMFARecoveryUsed SecurityEventType = "mfa_recovery_code_used"
+
+	// Delegation (RFC 8693 / EPIC-16): a token-exchange request was processed
+	// (in shadow, audited but not issued; in enforce, an exchanged token issued).
+	SecurityEventTokenExchange SecurityEventType = "token_exchange"
 )
 
 // SecuritySeverity indicates the severity level of the event

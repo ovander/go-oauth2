@@ -19,6 +19,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/middleware"
 	"github.com/ovandermoten/go-oauth2/internal/service"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovandermoten/go-oauth2/internal/shared/auth/tokenexchange"
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
@@ -567,6 +568,22 @@ func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 
 	if req.GrantType == "" {
 		writeOAuthError(w, "invalid_request", "grant_type is required", http.StatusBadRequest)
+		return
+	}
+
+	// RFC 8693 token exchange is dispatched separately: its parameters are not
+	// part of the standard TokenRequest. ExchangeToken is gated by
+	// TOKEN_EXCHANGE_MODE and (off/shadow) reports the grant as unsupported.
+	if req.GrantType == tokenexchange.GrantType {
+		_ = r.ParseForm()
+		if _, err := h.oauthService.ExchangeToken(r.Context(), r.Form, clientID, clientSecret); err != nil {
+			if errors.Is(err, service.ErrInvalidGrantType) {
+				writeOAuthError(w, "unsupported_grant_type", "unsupported grant type", http.StatusBadRequest)
+			} else {
+				writeOAuthError(w, "invalid_request", "invalid token-exchange request", http.StatusBadRequest)
+			}
+			return
+		}
 		return
 	}
 

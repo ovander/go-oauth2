@@ -87,6 +87,9 @@ func (m *mockOAuthService) GetUserInfo(_ context.Context, _ uint, _ string) (*dt
 func (m *mockOAuthService) GetOpenIDConfiguration(_ string) *dto.OpenIDConfiguration {
 	panic("not implemented")
 }
+func (m *mockOAuthService) ExchangeToken(_ context.Context, _ url.Values, _, _ string) (*dto.TokenResponse, error) {
+	panic("not implemented")
+}
 func (m *mockOAuthService) GetJWKS() dto.JWKS { panic("not implemented") }
 func (m *mockOAuthService) ValidatePasswordResetToken(_ context.Context, _ string) (string, bool) {
 	panic("not implemented")

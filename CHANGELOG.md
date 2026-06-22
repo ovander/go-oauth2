@@ -11,6 +11,19 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / Audience binding:** Access tokens can now carry the client's
+  **registered audiences** in `aud` (RFC-001 / EPIC-7), controlled by
+  `AUDIENCE_MODE`: `off` (default — `aud` is the `client_id`, unchanged) or
+  `dual` (the registered audiences are added **alongside** the `client_id`). Dual
+  is the safe warn/observe step: audience-aware resource servers can begin
+  verifying their resource identifier while existing `client_id` verifiers keep
+  working. Entries are de-duplicated; a client with no registered audiences is
+  unchanged. Only the **access token** is affected (ID/refresh tokens keep the
+  `client_id`); verification is unaffected (the server never validated `aud`).
+  Canonical-only enforcement is a later (Wave 2) step. _Traceability: C7 →
+  EPIC-7 → RFC-001 → #113._
+
+### Added
 - **Identity / Audience binding:** Clients can now **register audiences** —
   the resource identifiers (e.g. API URIs) their tokens are intended for, the
   canonical `aud` claim per RFC-001 / EPIC-7. New optional `audiences` field on

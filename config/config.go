@@ -80,6 +80,13 @@ type Config struct {
 	// (IMPERSONATION_MAX_AUTH_AGE seconds; default 900s / 15 min). Zero disables
 	// the check regardless of mode.
 	ImpersonationMaxAuthAge time.Duration
+	// AudienceMode controls how an access token's `aud` is built from the client
+	// and its registered audiences (RFC-001 / EPIC-7): "off" (default — aud is
+	// the client_id, unchanged) or "dual" (the client's registered audiences are
+	// added alongside the client_id, so audience-aware resource servers can begin
+	// verifying their resource identifier while client_id verifiers keep working).
+	// Canonical-only enforcement is a later (Wave 2) step. AUDIENCE_MODE.
+	AudienceMode string
 	// SecretKeyBase is a cryptographic secret (≥32 bytes in production) used
 	// for two purposes:
 	//   1. CSRF cookie signing in the OAuth authorization handler (CRIT-03):
@@ -205,6 +212,7 @@ func Load() *Config {
 		ImpersonationTokenTTL:   time.Duration(getEnvInt("IMPERSONATION_TOKEN_TTL", 300)) * time.Second,
 		ImpersonationStepUpMode: normalizeStepUpMode(getEnv("IMPERSONATION_STEPUP_MODE", "off")),
 		ImpersonationMaxAuthAge: time.Duration(getEnvInt("IMPERSONATION_MAX_AUTH_AGE", 900)) * time.Second,
+		AudienceMode:            normalizeAudienceMode(getEnv("AUDIENCE_MODE", "off")),
 
 		// Rate Limiting
 		// LOW-03 fix: window env vars now have an explicit _MS suffix so
@@ -352,6 +360,16 @@ func normalizeTokenExchangeMode(v string) string {
 	default:
 		return "off"
 	}
+}
+
+// normalizeAudienceMode lower-cases and validates the audience-binding mode,
+// falling back to "off" for any unrecognized value (fail safe — `aud` stays the
+// client_id from a typo rather than changing token contents unexpectedly).
+func normalizeAudienceMode(v string) string {
+	if strings.ToLower(strings.TrimSpace(v)) == "dual" {
+		return "dual"
+	}
+	return "off"
 }
 
 // normalizeStepUpMode lower-cases and validates the impersonation step-up mode,

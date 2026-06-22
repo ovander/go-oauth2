@@ -11,6 +11,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Observability / Logging:** Added **DEBUG flow-tracing** at the OAuth decision
+  points — token-endpoint grant dispatch, authorization-code validated/issuing,
+  refresh validated/rotating, and introspection active/inactive — as structured,
+  secret-free traces that carry the request `correlation_id` (via
+  `logger.FromContext`). Off at the default `LOG_LEVEL=info` (no prod noise);
+  invaluable for diagnosing a failing test or a production incident with
+  `LOG_LEVEL=debug`. No secrets/tokens/PII are logged (only ids, scope, and
+  decision flags). _Traceability: C4 → EPIC-4 → RFC-008 → #160._
+
+### Added
 - **Observability / Logging:** Service-layer logs can now be **traced to a single
   request end-to-end** (RFC-008). New `logger.FromContext(ctx)` stamps the
   `correlation_id` (the same id the request logger and audit log already carry)

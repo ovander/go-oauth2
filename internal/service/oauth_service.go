@@ -351,6 +351,10 @@ func (s *oauthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, 
 
 // Token handles the OAuth 2.0 token request
 func (s *oauthService) Token(ctx context.Context, req dto.TokenRequest, clientID, clientSecret string) (*dto.TokenResponse, error) {
+	logger.FromContext(ctx).WithFields(logger.Fields{
+		"grant_type": req.GrantType,
+		"client_id":  clientID,
+	}).Debug("token endpoint: grant dispatch")
 	switch req.GrantType {
 	case "authorization_code":
 		return s.handleAuthorizationCodeGrant(ctx, req, clientID, clientSecret)
@@ -462,6 +466,14 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 	if err != nil {
 		return nil, fmt.Errorf("%w: user_id=%d", ErrUserNotFound, authCode.UserID)
 	}
+
+	logger.FromContext(ctx).WithFields(logger.Fields{
+		"client_id": clientID,
+		"sub":       authCode.UserID,
+		"scope":     authCode.Scope,
+		"pkce":      authCode.CodeChallenge != "",
+		"dpop":      dpopJKTFromContext(ctx) != "",
+	}).Debug("authorization_code: validated, issuing tokens")
 
 	// Generate tokens
 	now := time.Now()
@@ -643,6 +655,12 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 	// Resource servers relying on auth_time for session-freshness enforcement
 	// should use max_age on the authorization request to force re-auth when
 	// needed (see LOW-02 / ErrReauthRequired).
+	logger.FromContext(ctx).WithFields(logger.Fields{
+		"client_id": clientID,
+		"sub":       user.ID,
+		"jti":       jti,
+		"scope":     claims.Scope,
+	}).Debug("refresh_token: validated, rotating")
 	tokenSet, err := s.tokenService.GenerateTokenSetWithDPoP(
 		user,
 		app,
@@ -746,6 +764,7 @@ func (s *oauthService) handleClientCredentialsGrant(ctx context.Context, req dto
 func (s *oauthService) Introspect(ctx context.Context, token string) (*dto.IntrospectResponse, error) {
 	claims, err := s.tokenService.VerifyAccessToken(token)
 	if err != nil {
+		logger.FromContext(ctx).WithField("reason", "invalid").Debug("introspect: inactive")
 		return &dto.IntrospectResponse{Active: false}, nil
 	}
 
@@ -754,6 +773,7 @@ func (s *oauthService) Introspect(ctx context.Context, token string) (*dto.Intro
 	// blacklisted via /oauth/revoke must return active:false.
 	if s.usedTokenRepo != nil && claims.ID != "" {
 		if revoked, rErr := s.usedTokenRepo.IsUsed(ctx, claims.ID); rErr == nil && revoked {
+			logger.FromContext(ctx).WithFields(logger.Fields{"reason": "revoked", "jti": claims.ID}).Debug("introspect: inactive")
 			return &dto.IntrospectResponse{Active: false}, nil
 		}
 	}
@@ -806,6 +826,10 @@ func (s *oauthService) Introspect(ctx context.Context, token string) (*dto.Intro
 	}
 	// Surface the actor chain for delegated/impersonated tokens (RFC 8693 §4.1).
 	resp.Act = mapActClaim(claims.Act)
+	logger.FromContext(ctx).WithFields(logger.Fields{
+		"sub":   claims.Subject,
+		"scope": claims.Scope,
+	}).Debug("introspect: active")
 	return resp, nil
 }
 

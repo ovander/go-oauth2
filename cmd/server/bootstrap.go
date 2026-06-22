@@ -368,6 +368,7 @@ func Bootstrap(cfg *config.Config) *App {
 	if cfg.DPoPMode != "off" && cfg.DPoPMode != "" {
 		oauthHandler.SetDPoPSigningAlgs([]string{"ES256"})
 	}
+	oauthHandler.SetJWKSCacheMaxAge(int(cfg.JWKSCacheMaxAge.Seconds()))
 	appUsersHandler := handler.NewAppUsersHandler(userService, userAppRoleService, appService, adminLogService, emailService, tokenService, cfg.OAuthIssuer)
 	profileHandler := handler.NewProfileHandler(userService)
 	mfaHandler := handler.NewMFAHandler(mfaService)

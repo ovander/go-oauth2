@@ -38,6 +38,15 @@ type OAuthHandler struct {
 	// discovery (dpop_signing_alg_values_supported, RFC 9449 §5.1). Empty when
 	// DPoP is disabled (DPOP_MODE=off), so discovery omits the parameter.
 	dpopAlgs []string
+	// jwksCacheMaxAge is the Cache-Control max-age (seconds) advertised on the
+	// JWKS endpoint. <= 0 disables caching (no-store). RFC-002.
+	jwksCacheMaxAge int
+}
+
+// SetJWKSCacheMaxAge configures the Cache-Control max-age (in seconds) for the
+// JWKS endpoint. A value <= 0 disables caching.
+func (h *OAuthHandler) SetJWKSCacheMaxAge(seconds int) {
+	h.jwksCacheMaxAge = seconds
 }
 
 // SetDPoPSigningAlgs configures the DPoP proof signing algorithms advertised in
@@ -892,6 +901,14 @@ func (h *OAuthHandler) OpenIDConfiguration(w http.ResponseWriter, r *http.Reques
 func (h *OAuthHandler) JWKS(w http.ResponseWriter, r *http.Request) {
 	jwks := h.oauthService.GetJWKS()
 	w.Header().Set("Content-Type", "application/json")
+	// Let resource servers cache the key set instead of refetching on every
+	// token verification (RFC-002). The max-age is kept modest so a rotated key
+	// is picked up promptly; a verifier should also refetch on an unknown kid.
+	if h.jwksCacheMaxAge > 0 {
+		w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", h.jwksCacheMaxAge))
+	} else {
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	writeJSON(w, jwks)
 }
 

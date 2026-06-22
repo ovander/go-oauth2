@@ -86,6 +86,11 @@ type Config struct {
 	// `amr` does not contain "mfa"). Unlike impersonation, delegation carries an
 	// actor token whose `amr` shows how the human actor authenticated. RFC-016.
 	DelegationStepUpMode string
+	// RefreshReuseMode governs refresh-token reuse detection (OAuth 2.0 Security
+	// BCP / RFC 9700 §4.14.2): "off" (default — a reused single-use refresh token
+	// is rejected, unchanged), "observe" (also audit the reuse), or "enforce"
+	// (also revoke the user's token family, since reuse signals token theft).
+	RefreshReuseMode string
 	// AudienceMode controls how an access token's `aud` is built from the client
 	// and its registered audiences (RFC-001 / EPIC-7): "off" (default — aud is
 	// the client_id, unchanged) or "dual" (the client's registered audiences are
@@ -226,6 +231,7 @@ func Load() *Config {
 		ImpersonationStepUpMode: normalizeStepUpMode(getEnv("IMPERSONATION_STEPUP_MODE", "off")),
 		ImpersonationMaxAuthAge: time.Duration(getEnvInt("IMPERSONATION_MAX_AUTH_AGE", 900)) * time.Second,
 		DelegationStepUpMode:    normalizeStepUpMode(getEnv("DELEGATION_STEPUP_MODE", "off")),
+		RefreshReuseMode:        normalizeStepUpMode(getEnv("REFRESH_REUSE_MODE", "off")),
 		AudienceMode:            normalizeAudienceMode(getEnv("AUDIENCE_MODE", "off")),
 
 		// Rate Limiting

@@ -33,6 +33,10 @@ const (
 	SecurityEventInvalidTokenUsed SecurityEventType = "invalid_token_used"
 	SecurityEventExpiredTokenUsed SecurityEventType = "expired_token_used"
 	SecurityEventRevokedTokenUsed SecurityEventType = "revoked_token_used"
+	// SecurityEventRefreshTokenReuse: an already-rotated (single-use) refresh
+	// token was presented again — a token-theft signal (OAuth 2.0 Security BCP /
+	// RFC 9700 §4.14.2). In enforce mode the user's token family is revoked.
+	SecurityEventRefreshTokenReuse SecurityEventType = "refresh_token_reuse"
 
 	// OAuth events
 	SecurityEventAuthCodeIssued     SecurityEventType = "auth_code_issued"

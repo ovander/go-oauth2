@@ -50,6 +50,9 @@ type App struct {
 	// auditIntegrityStop stops the scheduled audit-integrity scan on shutdown.
 	// Nil when the scan is disabled (AuditIntegrityScanInterval == 0).
 	auditIntegrityStop func()
+	// usedTokenCleanupStop stops the scheduled used-token pruning on shutdown.
+	// Nil when cleanup is disabled (UsedTokenCleanupInterval == 0).
+	usedTokenCleanupStop func()
 	// dpopReplayCache backs DPoP observe-mode replay detection; nil when DPoP is
 	// off. Stopped on shutdown.
 	dpopReplayCache *dpop.MemoryReplayCache
@@ -129,6 +132,9 @@ func (a *App) Stop() {
 	}
 	if a.auditIntegrityStop != nil {
 		a.auditIntegrityStop()
+	}
+	if a.usedTokenCleanupStop != nil {
+		a.usedTokenCleanupStop()
 	}
 	if a.dpopReplayCache != nil {
 		a.dpopReplayCache.Stop()
@@ -259,6 +265,17 @@ func Bootstrap(cfg *config.Config) *App {
 			"interval": cfg.AuditIntegrityScanInterval.String(),
 			"lookback": cfg.AuditIntegrityScanLookback.String(),
 		}).Info("RFC-007: scheduled audit integrity scan enabled")
+	}
+
+	// EPIC-14: prune expired rows from used_tokens (single-use JTIs + revocation
+	// blacklist) on a timer so the table does not grow without bound. Enabled by
+	// default (1h); disabled when UsedTokenCleanupInterval == 0.
+	var usedTokenCleanupStop func()
+	if cfg.UsedTokenCleanupInterval > 0 {
+		usedTokenCleanupStop = service.NewUsedTokenCleaner(usedTokenRepo).StartSchedule(cfg.UsedTokenCleanupInterval)
+		logger.WithFields(logger.Fields{
+			"interval": cfg.UsedTokenCleanupInterval.String(),
+		}).Info("EPIC-14: scheduled used-token cleanup enabled")
 	}
 
 	magicLinkRepo := repository.NewMagicLinkRepository(db)
@@ -540,18 +557,19 @@ func Bootstrap(cfg *config.Config) *App {
 			routerConfig,
 		)
 		return &App{
-			OAuthRouter:        routers.OAuth,
-			AdminRouter:        routers.Admin,
-			DB:                 db,
-			codeStore:          codeStore,
-			loginRateLimiter:   loginRateLimiter,
-			signupRateLimiter:  signupRateLimiter,
-			tokenRateLimiter:   tokenRateLimiter, // MED-05
-			autoDefense:        autoDefense,
-			ipBlockChecker:     ipBlockChecker,
-			keyRotationStop:    keyRotationStop,
-			auditIntegrityStop: auditIntegrityStop,
-			dpopReplayCache:    dpopReplayCache,
+			OAuthRouter:          routers.OAuth,
+			AdminRouter:          routers.Admin,
+			DB:                   db,
+			codeStore:            codeStore,
+			loginRateLimiter:     loginRateLimiter,
+			signupRateLimiter:    signupRateLimiter,
+			tokenRateLimiter:     tokenRateLimiter, // MED-05
+			autoDefense:          autoDefense,
+			ipBlockChecker:       ipBlockChecker,
+			keyRotationStop:      keyRotationStop,
+			auditIntegrityStop:   auditIntegrityStop,
+			usedTokenCleanupStop: usedTokenCleanupStop,
+			dpopReplayCache:      dpopReplayCache,
 		}
 	}
 
@@ -580,16 +598,17 @@ func Bootstrap(cfg *config.Config) *App {
 		routerConfig,
 	)
 	return &App{
-		Router:             combinedRouter,
-		DB:                 db,
-		codeStore:          codeStore,
-		loginRateLimiter:   loginRateLimiter,
-		signupRateLimiter:  signupRateLimiter,
-		tokenRateLimiter:   tokenRateLimiter, // MED-05
-		autoDefense:        autoDefense,
-		ipBlockChecker:     ipBlockChecker,
-		keyRotationStop:    keyRotationStop,
-		auditIntegrityStop: auditIntegrityStop,
-		dpopReplayCache:    dpopReplayCache,
+		Router:               combinedRouter,
+		DB:                   db,
+		codeStore:            codeStore,
+		loginRateLimiter:     loginRateLimiter,
+		signupRateLimiter:    signupRateLimiter,
+		tokenRateLimiter:     tokenRateLimiter, // MED-05
+		autoDefense:          autoDefense,
+		ipBlockChecker:       ipBlockChecker,
+		keyRotationStop:      keyRotationStop,
+		auditIntegrityStop:   auditIntegrityStop,
+		usedTokenCleanupStop: usedTokenCleanupStop,
+		dpopReplayCache:      dpopReplayCache,
 	}
 }

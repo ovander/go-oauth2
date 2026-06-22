@@ -10,6 +10,15 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Added
+- **Identity / Revocation hygiene:** A scheduled **used-token cleanup** now prunes
+  expired rows from the `used_tokens` table (single-use refresh JTIs + the
+  per-token revocation blacklist), which previously grew without bound — nothing
+  ever pruned it. Runs every `USED_TOKEN_CLEANUP_INTERVAL_SECONDS` (default
+  **3600s / 1h**; `0` disables), with deterministic shutdown like the other
+  scheduled jobs. Expired rows are safe to drop — the underlying token no longer
+  verifies. _Traceability: C14 → EPIC-14 → RFC-012 → #119._
+
 ### Fixed
 - **Identity / Revocation propagation:** A token **individually revoked** via
   `/oauth/revoke` (its `jti` blacklisted) is now rejected on the **direct-auth

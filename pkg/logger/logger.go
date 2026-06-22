@@ -12,11 +12,13 @@
 package logger
 
 import (
+	"context"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
 
+	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
 	"github.com/sirupsen/logrus"
 )
 
@@ -25,6 +27,22 @@ type Fields = logrus.Fields
 type Entry = logrus.Entry
 
 var Logger *logrus.Logger
+
+// FromContext returns a log entry pre-populated with request-scoped fields from
+// ctx — currently the correlation_id (RFC-008) when present — so service-layer
+// logs can be traced to a single request end-to-end, the same way the request
+// logger and the audit log already are. Safe with a nil context.
+//
+// Usage: logger.FromContext(ctx).WithError(err).Error("...") or
+// logger.FromContext(ctx).Warnf("...", a).
+func FromContext(ctx context.Context) *logrus.Entry {
+	if ctx != nil {
+		if cid, ok := ctx.Value(contextkeys.RequestIDKey).(string); ok && cid != "" {
+			return Logger.WithField("correlation_id", cid)
+		}
+	}
+	return logrus.NewEntry(Logger)
+}
 
 func init() {
 	Logger = logrus.New()

@@ -11,6 +11,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **CI / Test gates (Phase 8):** The **Tier A (security-critical) coverage check
+  is now blocking** (docs/program/TEST-STRATEGY.md) — a **ratchet**
+  (`scripts/coverage-gate.sh`, `make coverage-gate`) that fails the build if
+  coverage drops below `TIER_A_MIN` (floor **55%**, raised toward the ≥90% target
+  as the suites grow, so coverage can only go up). The adversarial (Phase 2) and
+  fuzz seed-corpus (Phase 3) suites are already enforced via the blocking
+  `go test ./...` job. This turns the test work of Phases 1–4 into an enforced
+  guarantee against regressions. _Traceability: C6 → EPIC-6 → RFC-014 → #156._
+
+### Added
 - **Tests / Crypto lifecycle (Phase 4):** Added key-lifecycle tests that connect
   the signing-key ring to **token verification** (docs/program/TEST-STRATEGY.md):
   after a rotation, JWKS exposes both the current and retired `kid` (so a resource

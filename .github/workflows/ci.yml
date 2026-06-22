@@ -88,13 +88,16 @@ jobs:
       - name: Run govulncheck
         run: govulncheck ./...
 
-  # Coverage reporting — Phase 0 of docs/program/TEST-STRATEGY.md.
-  # Report-only (never fails the build); Tier A thresholds become blocking in a
-  # later phase. Prints the overall total and the Tier A (security-critical)
-  # coverage, and uploads the profile as an artifact.
+  # Coverage gate — Phase 8 of docs/program/TEST-STRATEGY.md.
+  # The Tier A (security-critical) coverage check is now BLOCKING: a ratchet that
+  # fails if coverage drops below TIER_A_MIN. The floor starts at the baseline and
+  # is raised toward the >=90% target as the suites grow (so coverage can only go
+  # up). Overall coverage is reported (non-blocking) and the profile uploaded.
   coverage:
-    name: coverage (report-only)
+    name: coverage gate (Tier A)
     runs-on: ubuntu-latest
+    env:
+      TIER_A_MIN: "55.0"
     steps:
       - uses: actions/checkout@v4
 
@@ -107,21 +110,19 @@ jobs:
       - name: Download modules
         run: go mod download
 
-      - name: Overall coverage
+      - name: Overall coverage (report)
         run: |
           go test ./... -coverprofile=coverage.out -covermode=atomic > /dev/null
           echo "## Overall coverage" >> "$GITHUB_STEP_SUMMARY"
           go tool cover -func=coverage.out | tail -1 | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - name: Tier A coverage (security-critical, target >=90%)
+      - name: Tier A coverage gate (blocking)
         run: |
-          TIERA="./internal/service/...,./internal/shared/auth/...,./internal/middleware/...,./config/..."
-          go test ./internal/service/... ./internal/shared/auth/... ./internal/middleware/... ./config/... \
-            -coverpkg="$TIERA" -coverprofile=tierA.out > /dev/null
-          echo "## Tier A coverage (security-critical, target >=90%, report-only)" >> "$GITHUB_STEP_SUMMARY"
-          go tool cover -func=tierA.out | tail -1 | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "## Tier A coverage gate (floor ${TIER_A_MIN}%, target 90%)" >> "$GITHUB_STEP_SUMMARY"
+          bash scripts/coverage-gate.sh | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload coverage profile
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage

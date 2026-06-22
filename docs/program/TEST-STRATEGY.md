@@ -77,25 +77,30 @@ revocation, audience binding, authN/authZ middleware, security config.
 
 | Phase | Deliverable | Status |
 |---|---|---|
-| **0** | Strategy doc + **non-blocking** coverage reporting in CI; tier map | ← this PR |
-| **1** | Integration harness: real router, all OAuth endpoints end-to-end | planned |
-| **2** | Adversarial suite vs RFC 9700 / ASVS; consolidate regression tests | planned |
-| **3** | Fuzz targets + seed corpus (parsers); CI smoke + nightly long-run | planned |
-| **4** | Crypto & key-rotation/JWKS verification tests | planned |
+| **0** | Strategy doc + non-blocking coverage reporting in CI; tier map | ✅ done (#147) |
+| **1** | Integration harness: real router, OAuth endpoints end-to-end | ✅ done (#149) |
+| **2** | Adversarial suite vs RFC 9700 / ASVS | ✅ done (#151) |
+| **3** | Fuzz targets + seed corpus (parsers) | ✅ done (#153) |
+| **4** | Crypto & key-lifecycle/JWKS verification tests | ✅ done (#155) |
 | **5** | Migration apply test + repository integration (ephemeral Postgres) | planned |
 | **6** | Mutation testing (gremlins) on Tier A; mutation-score floor (nightly) | planned |
 | **7** | OIDC conformance profile (external/ongoing) | planned |
-| **8** | Flip coverage / adversarial / fuzz gates to **blocking** | planned |
+| **8** | Flip Tier A coverage gate to **blocking** (ratchet) | ✅ done |
 
-Phases 1–2 buy the most confidence per unit of work and are pure test additions.
+The adversarial (Phase 2) and fuzz seed-corpus (Phase 3) suites already run inside
+the blocking `go test ./...` CI job, so they are enforced. Phases 1–4 are pure
+test additions.
 
 ## 6. CI gating
 
-- **Now (Phase 0):** a `coverage` job reports the total, per-package, and **Tier A**
-  coverage, and uploads the profile as an artifact. **Non-blocking** — visibility
-  first.
-- **Later (Phase 8):** the same measurements become **required checks** with the
-  Tier A/B thresholds above, plus a per-PR coverage-diff gate and the adversarial
-  + fuzz-smoke suites as required.
-
-Run locally: `make coverage-report`.
+- **Tier A coverage gate (Phase 8, blocking):** `scripts/coverage-gate.sh` fails
+  the build if Tier A (security-critical) coverage drops below `TIER_A_MIN`. It is
+  a **ratchet** — the floor starts at the baseline (**55%**) and is raised toward
+  the **≥90%** target as the suites grow, so coverage can only go up. Run locally:
+  `make coverage-gate`.
+- **Adversarial + fuzz (Phases 2–3):** enforced via the blocking `go test ./...`
+  job (their seed corpora run as ordinary tests).
+- **Reported (non-blocking):** overall coverage + the uploaded profile artifact
+  (`make coverage-report`).
+- **Future:** raise the ratchet floor each time coverage improves; add a per-PR
+  coverage-diff gate, a nightly long-run fuzz job, and a Tier B floor.

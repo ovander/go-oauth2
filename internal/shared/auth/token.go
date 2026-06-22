@@ -109,6 +109,10 @@ type RefreshTokenClaims struct {
 	Type     string            `json:"type"`
 	AppRoles map[string]string `json:"app_roles,omitempty"`
 	Roles    []string          `json:"roles,omitempty"`
+	// Cnf is the optional DPoP/RFC 7800 confirmation claim. When set, the refresh
+	// token is sender-constrained: a refresh request must present a DPoP proof
+	// for the same key (RFC 9449 §5). Absent for ordinary bearer refresh tokens.
+	Cnf *Confirmation `json:"cnf,omitempty"`
 }
 
 // IDTokenClaims represents ID token claims (OpenID Connect)
@@ -182,8 +186,8 @@ func (ts *TokenService) generateTokenSet(user *model.User, app *model.App, role 
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
 
-	// Generate refresh token
-	refreshToken, err := ts.generateRefreshToken(user, app, role, scope, appRoles, now, authTime)
+	// Generate refresh token (sender-constrained to the DPoP key when jkt is set).
+	refreshToken, err := ts.generateRefreshToken(user, app, role, scope, appRoles, now, authTime, jkt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
@@ -241,8 +245,9 @@ func (ts *TokenService) GenerateBoundAccessToken(user *model.User, app *model.Ap
 	return ts.signToken(claims)
 }
 
-// generateRefreshToken generates a refresh token
-func (ts *TokenService) generateRefreshToken(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, now time.Time, authTime int64) (string, error) {
+// generateRefreshToken generates a refresh token, optionally sender-constrained
+// to a DPoP key thumbprint (cnf.jkt) when jkt is non-empty.
+func (ts *TokenService) generateRefreshToken(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, now time.Time, authTime int64, jkt string) (string, error) {
 	roles := []string{}
 	if role != "" {
 		roles = append(roles, role)
@@ -265,6 +270,9 @@ func (ts *TokenService) generateRefreshToken(user *model.User, app *model.App, r
 		Type:     "refresh",
 		AppRoles: appRoles,
 		Roles:    roles,
+	}
+	if jkt != "" {
+		claims.Cnf = &Confirmation{JKT: jkt}
 	}
 
 	return ts.signToken(claims)

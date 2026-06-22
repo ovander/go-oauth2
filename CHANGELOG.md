@@ -11,6 +11,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Tokens / DPoP:** **Refresh tokens are now sender-constrained** too
+  (RFC 9449 §5). When a token is issued for a DPoP request, the refresh token
+  also carries `cnf.jkt`, and the `refresh_token` grant requires the refresh
+  request to present a DPoP proof for the **same** key — a mismatched or missing
+  proof is rejected with `400 invalid_dpop_proof` (`ErrDPoPKeyMismatch`). A
+  stolen DPoP-bound refresh token is therefore unusable without the client's
+  key. Unbound (ordinary) refresh tokens are unaffected.
+  _Traceability: C8 → EPIC-8 → RFC-003 → #76._
+
+### Added
 - **Tokens / DPoP / Admin:** The per-client `require_dpop` flag (#72) is now
   manageable through the admin app API. `POST /api/admin/apps` accepts
   `require_dpop` on creation, `PATCH`/`PUT` toggles it (omitted = unchanged), and

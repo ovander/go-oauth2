@@ -11,6 +11,17 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / Delegation:** New `internal/shared/auth/tokenexchange` package —
+  a standalone parser/validator for OAuth 2.0 Token Exchange requests
+  (RFC 8693), the foundation for delegation and impersonation (EPIC-16). It
+  validates the protocol parameters (`subject_token`/`subject_token_type`,
+  optional `actor_token`/`actor_token_type`, `requested_token_type`, audience,
+  scope) and classifies a request as delegation (actor present) vs impersonation,
+  with a typed error per violation. **Not** wired into the token endpoint — it
+  neither verifies tokens nor authorizes an exchange; enabling the grant is a
+  later, policy-gated slice. _Traceability: C16 → EPIC-16 → RFC-019 → #84._
+
+### Added
 - **Identity / KMS / Ops:** The JWKS endpoint now supports conditional requests
   (RFC 7232). It sends a strong `ETag` over the key set and returns `304 Not
   Modified` (no body) when a verifier sends a matching `If-None-Match`, so an

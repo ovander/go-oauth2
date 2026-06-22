@@ -23,6 +23,18 @@ var (
 	ErrTokenClaimsInvalid = errors.New("invalid token claims")
 )
 
+// Audience-binding rollout modes (RFC-001 / EPIC-7) controlling how an access
+// token's `aud` is built from the client and its registered audiences.
+const (
+	// AudienceModeOff: aud = client_id (the historical behaviour).
+	AudienceModeOff = "off"
+	// AudienceModeDual: aud = client_id + the client's registered audiences.
+	// Additive — resource servers still verifying client_id keep passing, while
+	// audience-aware ones can begin checking their resource identifier. This is
+	// the safe warn/observe step before canonical-only enforcement (Wave 2).
+	AudienceModeDual = "dual"
+)
+
 // TokenService handles JWT token generation and verification
 type TokenService struct {
 	keyManager      *KeyManager
@@ -33,6 +45,7 @@ type TokenService struct {
 	emailTokenTTL   time.Duration
 	resetTokenTTL   time.Duration
 	inviteTokenTTL  time.Duration
+	audienceMode    string
 }
 
 // TokenConfig holds token configuration
@@ -43,6 +56,8 @@ type TokenConfig struct {
 	EmailTokenTTL   time.Duration
 	ResetTokenTTL   time.Duration
 	InviteTokenTTL  time.Duration
+	// AudienceMode is "off" (default) or "dual" (RFC-001 / EPIC-7). Empty is off.
+	AudienceMode string
 }
 
 // NewTokenService creates a new token service backed by the default local
@@ -70,7 +85,28 @@ func NewTokenServiceWithSigner(keyManager *KeyManager, signer Signer, config Tok
 		emailTokenTTL:   config.EmailTokenTTL,
 		resetTokenTTL:   config.ResetTokenTTL,
 		inviteTokenTTL:  config.InviteTokenTTL,
+		audienceMode:    config.AudienceMode,
 	}
+}
+
+// accessAudience builds the access token's `aud` per the audience-binding mode
+// (RFC-001 / EPIC-7). In "dual" mode the client's registered audiences are
+// appended to the client_id (deduplicated, order-stable). In "off" mode — or
+// when the client has no registered audiences — it is just the client_id, so
+// behaviour is unchanged.
+func (ts *TokenService) accessAudience(app *model.App) []string {
+	aud := []string{app.ClientID}
+	if ts.audienceMode != AudienceModeDual || len(app.Audiences) == 0 {
+		return aud
+	}
+	seen := map[string]bool{app.ClientID: true}
+	for _, a := range app.Audiences {
+		if a != "" && !seen[a] {
+			seen[a] = true
+			aud = append(aud, a)
+		}
+	}
+	return aud
 }
 
 // GetIssuer returns the configured issuer URL
@@ -238,7 +274,7 @@ func (ts *TokenService) newAccessClaims(user *model.User, app *model.App, role s
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    ts.issuer,
 			Subject:   strconv.FormatUint(uint64(user.ID), 10),
-			Audience:  jwt.ClaimStrings{app.ClientID},
+			Audience:  jwt.ClaimStrings(ts.accessAudience(app)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now), // Token valid immediately (nbf claim)
 			ExpiresAt: jwt.NewNumericDate(now.Add(ts.accessTokenTTL)),

@@ -232,6 +232,7 @@ func Bootstrap(cfg *config.Config) *App {
 		EmailTokenTTL:   cfg.EmailTokenTTL,
 		ResetTokenTTL:   cfg.ResetTokenTTL,
 		InviteTokenTTL:  cfg.InviteTokenTTL,
+		AudienceMode:    cfg.AudienceMode, // RFC-001 / EPIC-7
 	})
 
 	// ==========================================

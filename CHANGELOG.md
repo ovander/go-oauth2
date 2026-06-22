@@ -11,6 +11,18 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / Tokens:** Access tokens now carry **`auth_time`** (RFC 9068
+  §2.2.1 / OIDC), and token **introspection surfaces it** (RFC 7662), so a
+  resource server can make its own **freshness / step-up** decisions from the
+  access token — whether it verifies the JWT locally or introspects — without a
+  round-trip to the ID token. The login/refresh flow stamps the session's
+  `auth_time` (matching the refresh/ID tokens); tokens with no associated user
+  authentication (client-credentials, token-exchange results) omit it. Purely
+  additive (`omitempty`); the standalone `GenerateBoundAccessToken` helper stays
+  byte-compatible. This is the freshness signal the impersonation **step-up**
+  control will build on. _Traceability: C17 → EPIC-17 → RFC-016._
+
+### Added
 - **Identity / Impersonation:** Impersonated tokens are now **time-boxed**
   (RFC 8693 / EPIC-17). An access token minted via impersonation (the
   actor-absent token-exchange case) auto-expires on a short, bounded lifetime —

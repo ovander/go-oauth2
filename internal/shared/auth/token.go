@@ -103,6 +103,12 @@ type AccessTokenClaims struct {
 	TokenVersion int               `json:"token_version,omitempty"`
 	AppRoles     map[string]string `json:"app_roles,omitempty"`
 	Roles        []string          `json:"roles,omitempty"`
+	// AuthTime is the time of the end-user's last authentication, as seconds
+	// since the epoch (RFC 9068 §2.2.1 / OIDC auth_time). It lets a resource
+	// server make its own freshness/step-up decisions without a round-trip to
+	// the ID token. Zero/omitted on tokens with no associated user
+	// authentication (e.g. client-credentials or token-exchange results).
+	AuthTime int64 `json:"auth_time,omitempty"`
 	// Cnf is the optional DPoP/RFC 7800 confirmation claim (sender-constraint).
 	// Absent (nil) for ordinary bearer tokens.
 	Cnf *Confirmation `json:"cnf,omitempty"`
@@ -192,8 +198,10 @@ func (ts *TokenService) generateTokenSet(user *model.User, app *model.App, role 
 		authTime = now.Unix()
 	}
 
-	// Generate access token (bound to the DPoP key when jkt is non-empty).
-	accessToken, err := ts.GenerateBoundAccessToken(user, app, role, scope, appRoles, jkt)
+	// Generate access token (bound to the DPoP key when jkt is non-empty),
+	// carrying the same auth_time as the refresh/ID tokens so a resource server
+	// can make freshness/step-up decisions from the access token alone.
+	accessToken, err := ts.generateBoundAccessTokenAt(user, app, role, scope, appRoles, jkt, now, authTime)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
@@ -220,7 +228,7 @@ func (ts *TokenService) generateTokenSet(user *model.User, app *model.App, role 
 
 // newAccessClaims builds the access-token claims (shared by the ordinary and
 // DPoP-bound token generators).
-func (ts *TokenService) newAccessClaims(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, now time.Time) AccessTokenClaims {
+func (ts *TokenService) newAccessClaims(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, now time.Time, authTime int64) AccessTokenClaims {
 	roles := []string{}
 	if role != "" {
 		roles = append(roles, role)
@@ -242,6 +250,7 @@ func (ts *TokenService) newAccessClaims(user *model.User, app *model.App, role s
 		TokenVersion: user.TokenVersion, // Include token version for revocation check
 		AppRoles:     appRoles,
 		Roles:        roles,
+		AuthTime:     authTime,
 	}
 }
 
@@ -250,7 +259,14 @@ func (ts *TokenService) newAccessClaims(user *model.User, app *model.App, role s
 // an ordinary (unbound) access token identical to generateAccessToken, so this
 // is safe to call unconditionally once DPoP wiring lands.
 func (ts *TokenService) GenerateBoundAccessToken(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, jkt string) (string, error) {
-	claims := ts.newAccessClaims(user, app, role, scope, appRoles, time.Now())
+	return ts.generateBoundAccessTokenAt(user, app, role, scope, appRoles, jkt, time.Now(), 0)
+}
+
+// generateBoundAccessTokenAt is GenerateBoundAccessToken with an explicit issue
+// time and end-user authentication time (auth_time, RFC 9068 §2.2.1). authTime
+// of zero omits the claim, so GenerateBoundAccessToken stays byte-compatible.
+func (ts *TokenService) generateBoundAccessTokenAt(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, jkt string, now time.Time, authTime int64) (string, error) {
+	claims := ts.newAccessClaims(user, app, role, scope, appRoles, now, authTime)
 	if jkt != "" {
 		claims.Cnf = &Confirmation{JKT: jkt}
 	}

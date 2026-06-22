@@ -687,6 +687,7 @@ func (s *oauthService) Introspect(ctx context.Context, token string) (*dto.Intro
 		Exp:       claims.ExpiresAt.Unix(),
 		Iat:       claims.IssuedAt.Unix(),
 		Sub:       claims.Subject,
+		AuthTime:  claims.AuthTime,
 	}
 	// Surface DPoP sender-constraint so resource servers can enforce it
 	// (RFC 7662 §2.2 / RFC 9449 §7).

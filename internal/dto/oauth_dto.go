@@ -67,6 +67,11 @@ type IntrospectResponse struct {
 	Exp       int64  `json:"exp,omitempty"`
 	Iat       int64  `json:"iat,omitempty"`
 	Sub       string `json:"sub,omitempty"`
+	// AuthTime is the end-user's last authentication time (RFC 9068 §2.2.1 /
+	// OIDC auth_time), surfaced so a resource server introspecting a token can
+	// make freshness/step-up decisions. Omitted when the token carries no
+	// auth_time (e.g. client-credentials or token-exchange results).
+	AuthTime int64 `json:"auth_time,omitempty"`
 	// Cnf is the RFC 7662 §2.2 / RFC 9449 §7 confirmation claim, present when the
 	// token is sender-constrained (DPoP). It lets a resource server learn the
 	// `jkt` it must match against the request's DPoP proof.

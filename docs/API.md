@@ -332,8 +332,16 @@ Requires `Authorization: Bearer <access_token>`:
 
 ### Introspection — `POST /oauth/introspect` (RFC 7662)
 Requires client authentication (Basic or body credentials). Returns
-`{ "active": true, "scope": "...", "client_id": "...", "username": "...", "exp": ..., "iat": ..., "sub": "..." }`
-or `{ "active": false }` for invalid/revoked/expired tokens.
+`{ "active": true, "scope": "...", "client_id": "...", "username": "...", "exp": ..., "iat": ..., "sub": "...", "auth_time": ... }`
+or `{ "active": false }` for invalid/revoked/expired tokens. Additional fields
+surface security metadata so a resource server can act on it without locally
+parsing the JWT:
+- `auth_time` — the end-user's last authentication time (RFC 9068 §2.2.1) for
+  freshness/step-up decisions. Omitted when the token has no associated user
+  authentication (client-credentials / token-exchange results).
+- `cnf` `{ "jkt": "..." }` — DPoP sender-constraint (RFC 9449 §7), when present.
+- `act` `{ "sub": "...", "act": {...} }` — the actor (delegation/impersonation)
+  chain (RFC 8693 §4.1), when the token was minted via token exchange.
 
 ### Revocation — `POST /oauth/revoke` (RFC 7009)
 Body `{ "token": "...", "token_type_hint": "access_token|refresh_token" }`.

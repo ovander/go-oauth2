@@ -64,6 +64,9 @@ var (
 	// ErrInvalidExchangeRequest indicates a malformed RFC 8693 token-exchange
 	// request (maps to invalid_request).
 	ErrInvalidExchangeRequest = errors.New("invalid token-exchange request")
+	// ErrStepUpRequired indicates an impersonation exchange was denied because the
+	// subject's authentication is too old (EPIC-17 step-up). Maps to invalid_grant.
+	ErrStepUpRequired = errors.New("impersonation requires a more recent subject authentication")
 )
 
 var validScopes = map[string]bool{
@@ -113,6 +116,14 @@ type oauthService struct {
 	// quickly. Zero falls back to the access-token TTL; the effective lifetime is
 	// always capped at the access-token TTL (a time-box only ever shortens).
 	impersonationTokenTTL time.Duration
+	// impersonationStepUpMode is "off" (default), "observe", or "enforce"
+	// (EPIC-17 step-up). When not off and impersonationMaxAuthAge > 0, an
+	// impersonation exchange requires the subject to have authenticated within
+	// that window; observe audits the would-be denial, enforce denies it.
+	impersonationStepUpMode string
+	// impersonationMaxAuthAge is the freshness window for impersonation step-up.
+	// Zero disables the check.
+	impersonationMaxAuthAge time.Duration
 }
 
 // Token-exchange rollout modes (RFC 8693 / EPIC-16).
@@ -120,6 +131,13 @@ const (
 	TokenExchangeModeOff     = "off"
 	TokenExchangeModeShadow  = "shadow"
 	TokenExchangeModeEnforce = "enforce"
+)
+
+// Impersonation step-up rollout modes (EPIC-17).
+const (
+	stepUpModeOff     = "off"
+	stepUpModeObserve = "observe"
+	stepUpModeEnforce = "enforce"
 )
 
 // OAuthServiceConfig holds OAuth service configuration
@@ -140,30 +158,36 @@ func NewOAuthService(
 	usedTokenRepo repository.UsedTokenRepository,
 	tokenExchangeMode string,
 	impersonationTokenTTL time.Duration,
+	impersonationStepUpMode string,
+	impersonationMaxAuthAge time.Duration,
 ) OAuthService {
 	requireHTTPS := strings.HasPrefix(issuer, "https://")
 
 	logger.WithFields(logger.Fields{
-		"service":                 "oauth",
-		"issuer":                  issuer,
-		"require_https":           requireHTTPS,
-		"token_exchange_mode":     tokenExchangeMode,
-		"impersonation_token_ttl": impersonationTokenTTL.String(),
+		"service":                    "oauth",
+		"issuer":                     issuer,
+		"require_https":              requireHTTPS,
+		"token_exchange_mode":        tokenExchangeMode,
+		"impersonation_token_ttl":    impersonationTokenTTL.String(),
+		"impersonation_stepup_mode":  impersonationStepUpMode,
+		"impersonation_max_auth_age": impersonationMaxAuthAge.String(),
 	}).Info("✅ OAuth service initialized")
 
 	return &oauthService{
-		userRepo:              userRepo,
-		appRepo:               appRepo,
-		userAppRoleRepo:       userAppRoleRepo,
-		codeStore:             codeStore,
-		tokenService:          tokenService,
-		keyManager:            keyManager,
-		auditRepo:             auditRepo,
-		usedTokenRepo:         usedTokenRepo,
-		issuer:                issuer,
-		requireHTTPS:          requireHTTPS,
-		tokenExchangeMode:     tokenExchangeMode,
-		impersonationTokenTTL: impersonationTokenTTL,
+		userRepo:                userRepo,
+		appRepo:                 appRepo,
+		userAppRoleRepo:         userAppRoleRepo,
+		codeStore:               codeStore,
+		tokenService:            tokenService,
+		keyManager:              keyManager,
+		auditRepo:               auditRepo,
+		usedTokenRepo:           usedTokenRepo,
+		issuer:                  issuer,
+		requireHTTPS:            requireHTTPS,
+		tokenExchangeMode:       tokenExchangeMode,
+		impersonationTokenTTL:   impersonationTokenTTL,
+		impersonationStepUpMode: impersonationStepUpMode,
+		impersonationMaxAuthAge: impersonationMaxAuthAge,
 	}
 }
 
@@ -928,8 +952,9 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 	details["subject_token_type"] = req.SubjectTokenType
 	details["requested_token_type"] = req.RequestedTokenType
 
-	// Verify the subject token and recover its subject, scope, and version.
-	subjectSub, subjectScope, subjectVer, sverr := s.verifyExchangeToken(req.SubjectToken, req.SubjectTokenType)
+	// Verify the subject token and recover its subject, scope, version, and the
+	// end-user's authentication time (for the impersonation step-up check).
+	subjectSub, subjectScope, subjectVer, subjectAuthTime, sverr := s.verifyExchangeToken(req.SubjectToken, req.SubjectTokenType)
 	if sverr != nil {
 		return fail("invalid_subject_token", ErrInvalidToken)
 	}
@@ -938,7 +963,7 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 	// For delegation, verify the actor token too.
 	actorSub := ""
 	if req.IsDelegation() {
-		as, _, _, averr := s.verifyExchangeToken(req.ActorToken, req.ActorTokenType)
+		as, _, _, _, averr := s.verifyExchangeToken(req.ActorToken, req.ActorTokenType)
 		if averr != nil {
 			return fail("invalid_actor_token", ErrInvalidToken)
 		}
@@ -971,6 +996,31 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 	if !enforce {
 		details["outcome"] = "shadow_allow"
 		return nil, ErrInvalidGrantType
+	}
+
+	// Impersonation step-up (EPIC-17): the subject (the user being impersonated)
+	// must have authenticated recently. There is no interactive user at this
+	// back-channel exchange, so freshness of the subject's session (auth_time,
+	// OIDC max_age semantics) is the control that bounds an impersonation grant's
+	// reach. A missing auth_time can't prove freshness and is treated as stale.
+	// observe audits the would-be denial but still issues; enforce denies.
+	if decision.IsImpersonation && s.impersonationStepUpMode != stepUpModeOff && s.impersonationMaxAuthAge > 0 {
+		details["stepup_mode"] = s.impersonationStepUpMode
+		fresh := subjectAuthTime > 0 && time.Since(time.Unix(subjectAuthTime, 0)) <= s.impersonationMaxAuthAge
+		if subjectAuthTime > 0 {
+			details["subject_auth_age_seconds"] = int(time.Since(time.Unix(subjectAuthTime, 0)).Seconds())
+		}
+		if !fresh {
+			switch s.impersonationStepUpMode {
+			case stepUpModeEnforce:
+				details["deny_reason"] = ErrStepUpRequired.Error()
+				return fail("denied", ErrStepUpRequired)
+			case stepUpModeObserve:
+				details["stepup"] = "would_deny" // record but still issue
+			}
+		} else {
+			details["stepup"] = "fresh"
+		}
 	}
 
 	// Enforce: mint the exchanged token. The act (actor) claim records who is
@@ -1025,29 +1075,31 @@ func (s *oauthService) impersonationExchangeTTL(isImpersonation bool) time.Durat
 }
 
 // verifyExchangeToken verifies a token presented to the exchange and returns its
-// subject, scope, and token version, dispatching on the RFC 8693 token type.
-func (s *oauthService) verifyExchangeToken(tokenStr, tokenType string) (sub, scope string, version int, err error) {
+// subject, scope, token version, and the end-user authentication time
+// (auth_time, 0 when the token carries none), dispatching on the RFC 8693 token
+// type.
+func (s *oauthService) verifyExchangeToken(tokenStr, tokenType string) (sub, scope string, version int, authTime int64, err error) {
 	switch tokenType {
 	case tokenexchange.TokenTypeAccessToken, tokenexchange.TokenTypeJWT:
 		c, e := s.tokenService.VerifyAccessToken(tokenStr)
 		if e != nil {
-			return "", "", 0, e
+			return "", "", 0, 0, e
 		}
-		return c.Subject, c.Scope, c.TokenVersion, nil
+		return c.Subject, c.Scope, c.TokenVersion, c.AuthTime, nil
 	case tokenexchange.TokenTypeRefreshToken:
 		c, e := s.tokenService.VerifyRefreshToken(tokenStr)
 		if e != nil {
-			return "", "", 0, e
+			return "", "", 0, 0, e
 		}
-		return c.Subject, c.Scope, c.Ver, nil
+		return c.Subject, c.Scope, c.Ver, c.AuthTime, nil
 	case tokenexchange.TokenTypeIDToken:
 		c, e := s.tokenService.VerifyIDToken(tokenStr)
 		if e != nil {
-			return "", "", 0, e
+			return "", "", 0, 0, e
 		}
-		return c.Subject, "", 0, nil
+		return c.Subject, "", 0, c.AuthTime, nil
 	default:
-		return "", "", 0, fmt.Errorf("unsupported token type %q", tokenType)
+		return "", "", 0, 0, fmt.Errorf("unsupported token type %q", tokenType)
 	}
 }
 

@@ -565,7 +565,7 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 				}
 				if s.refreshReuseMode == refreshReuseModeEnforce {
 					if rerr := s.userRepo.IncrementTokenVersion(ctx, uid); rerr != nil {
-						logger.Errorf("RFC 9700: failed to revoke token family on refresh reuse for user %d: %v", uid, rerr)
+						logger.FromContext(ctx).Errorf("RFC 9700: failed to revoke token family on refresh reuse for user %d: %v", uid, rerr)
 					} else {
 						reuseDetails["family_revoked"] = true
 					}
@@ -670,7 +670,7 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 			}
 			// Any other DB error is non-fatal: log it but don't break the
 			// user's session; the IsUsed pre-check provides the main guard.
-			logger.Errorf("HIGH-04: failed to mark refresh token JTI as used: %v", markErr)
+			logger.FromContext(ctx).Errorf("HIGH-04: failed to mark refresh token JTI as used: %v", markErr)
 		}
 	}
 
@@ -858,7 +858,7 @@ func (s *oauthService) Revoke(ctx context.Context, token string, userID uint) er
 				!errors.Is(markErr, repository.ErrTokenAlreadyUsed) {
 				// A real DB error — log and continue; still return success to
 				// caller per RFC 7009 (revocation always returns 200).
-				logger.Errorf("MED-01: failed to blacklist token JTI %s: %v", claims.ID, markErr)
+				logger.FromContext(ctx).Errorf("MED-01: failed to blacklist token JTI %s: %v", claims.ID, markErr)
 			}
 			s.logSecurityEvent(ctx, model.SecurityEventTokenRevoked, &userID, nil, true, map[string]interface{}{
 				"action": "revoke_token",
@@ -872,7 +872,7 @@ func (s *oauthService) Revoke(ctx context.Context, token string, userID uint) er
 			exp := rClaims.ExpiresAt.Time
 			if markErr := s.usedTokenRepo.MarkAsUsed(ctx, rClaims.ID, "revoked", userID, exp); markErr != nil &&
 				!errors.Is(markErr, repository.ErrTokenAlreadyUsed) {
-				logger.Errorf("MED-01: failed to blacklist refresh token JTI %s: %v", rClaims.ID, markErr)
+				logger.FromContext(ctx).Errorf("MED-01: failed to blacklist refresh token JTI %s: %v", rClaims.ID, markErr)
 			}
 			s.logSecurityEvent(ctx, model.SecurityEventTokenRevoked, &userID, nil, true, map[string]interface{}{
 				"action": "revoke_refresh_token",

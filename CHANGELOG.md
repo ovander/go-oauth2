@@ -11,6 +11,14 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Observability / Logging:** Service-layer logs can now be **traced to a single
+  request end-to-end** (RFC-008). New `logger.FromContext(ctx)` stamps the
+  `correlation_id` (the same id the request logger and audit log already carry)
+  onto operational logs; the OAuth/auth flows' error/warn logs now use it, so a
+  failed token-family revocation, JTI-blacklist, or login persistence warning can
+  be tied to its request. Nil-safe. _Traceability: C4 → EPIC-4 → RFC-008 → #158._
+
+### Added
 - **CI / Test gates (Phase 8):** The **Tier A (security-critical) coverage check
   is now blocking** (docs/program/TEST-STRATEGY.md) — a **ratchet**
   (`scripts/coverage-gate.sh`, `make coverage-gate`) that fails the build if

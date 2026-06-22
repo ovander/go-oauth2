@@ -103,7 +103,7 @@ func (s *authService) stepUpMFA(ctx context.Context, user *model.User, code stri
 	// Otherwise fall back to a one-time recovery code.
 	used, err := s.mfa.RedeemRecoveryCode(ctx, user.ID, code)
 	if err != nil {
-		logger.Warnf("auth: recovery-code redemption error for user %d: %v", user.ID, err)
+		logger.FromContext(ctx).Warnf("auth: recovery-code redemption error for user %d: %v", user.ID, err)
 		return ErrMFAInvalidCode
 	}
 	if used {
@@ -389,13 +389,13 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 
 	if !auth.CheckPassword(req.Password, user.HashedPassword) {
 		if err := s.userRepo.IncrementFailedLoginAttempts(ctx, user.ID); err != nil {
-			logger.Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
+			logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 		}
 		user, _ = s.userRepo.FindByID(ctx, user.ID)
 		if user.FailedLoginAttempts >= s.maxFailedAttempts {
 			lockUntil := time.Now().Add(s.lockoutDuration)
 			if err := s.userRepo.LockAccount(ctx, user.ID, &lockUntil); err != nil {
-				logger.Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
+				logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 			}
 			// Log account lockout
 			s.logSecurityEvent(ctx, model.SecurityEventAccountLocked, &user.ID, nil, false, map[string]interface{}{
@@ -445,14 +445,14 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 
 	// Reset failed attempts and update last login
 	if err := s.userRepo.ResetFailedLoginAttempts(ctx, user.ID); err != nil {
-		logger.Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
+		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 	now := time.Now()
 	user.LastLogin = &now
 	user.LastLoginAttempt = &now
 	user.UpdatedAt = now
 	if err := s.userRepo.Update(ctx, user); err != nil {
-		logger.Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
+		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 
 	amr, acr := loginAuthnContext(user.MFAEnabled)
@@ -497,13 +497,13 @@ func (s *authService) AdminLogin(ctx context.Context, req dto.AdminLoginRequest)
 
 	if !auth.CheckPassword(req.Password, user.HashedPassword) {
 		if err := s.userRepo.IncrementFailedLoginAttempts(ctx, user.ID); err != nil {
-			logger.Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
+			logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 		}
 		user, _ = s.userRepo.FindByID(ctx, user.ID)
 		if user.FailedLoginAttempts >= s.maxFailedAttempts {
 			lockUntil := time.Now().Add(s.lockoutDuration)
 			if err := s.userRepo.LockAccount(ctx, user.ID, &lockUntil); err != nil {
-				logger.Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
+				logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 			}
 			s.logSecurityEvent(ctx, model.SecurityEventAccountLocked, &user.ID, nil, false, map[string]interface{}{
 				"email":           user.Email,
@@ -555,14 +555,14 @@ func (s *authService) AdminLogin(ctx context.Context, req dto.AdminLoginRequest)
 
 	// Reset failed attempts and update last login
 	if err := s.userRepo.ResetFailedLoginAttempts(ctx, user.ID); err != nil {
-		logger.Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
+		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 	now := time.Now()
 	user.LastLogin = &now
 	user.LastLoginAttempt = &now
 	user.UpdatedAt = now
 	if err := s.userRepo.Update(ctx, user); err != nil {
-		logger.Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
+		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 
 	// Create a virtual "admin-portal" app for token generation
@@ -937,7 +937,7 @@ func (s *authService) AcceptInvite(ctx context.Context, token, name, password st
 
 	user.LastLogin = &now
 	if err := s.userRepo.Update(ctx, user); err != nil {
-		logger.Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
+		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 
 	tokenSet, err := s.tokenService.GenerateTokenSet(

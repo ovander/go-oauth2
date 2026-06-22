@@ -33,6 +33,16 @@ func requireDPoP(ctx context.Context, app *model.App) error {
 	return nil
 }
 
+// verifyRefreshDPoPBinding enforces that a DPoP-bound refresh token (cnf.jkt set)
+// is presented with a DPoP proof for the same key (RFC 9449 §5). Unbound refresh
+// tokens are unaffected.
+func verifyRefreshDPoPBinding(ctx context.Context, cnfJKT string) error {
+	if cnfJKT != "" && dpopJKTFromContext(ctx) != cnfJKT {
+		return ErrDPoPKeyMismatch
+	}
+	return nil
+}
+
 // OAuth service errors
 var (
 	ErrInvalidGrantType     = errors.New("invalid grant type")
@@ -46,6 +56,9 @@ var (
 	// ErrDPoPRequired indicates the client requires DPoP (RFC 9449) but the token
 	// request carried no valid DPoP proof.
 	ErrDPoPRequired = errors.New("DPoP proof required for this client")
+	// ErrDPoPKeyMismatch indicates a DPoP-bound refresh token was presented with
+	// a proof for a different key (RFC 9449 §5).
+	ErrDPoPKeyMismatch = errors.New("DPoP proof key does not match the refresh token binding")
 )
 
 var validScopes = map[string]bool{
@@ -399,6 +412,16 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 	// binding between a refresh token and its issuing client.
 	if len(claims.Audience) == 0 || claims.Audience[0] != clientID {
 		return nil, fmt.Errorf("%w: audience mismatch", ErrInvalidToken)
+	}
+
+	// RFC 9449 §5: a sender-constrained refresh token must be presented with a
+	// DPoP proof for the same key.
+	cnfJKT := ""
+	if claims.Cnf != nil {
+		cnfJKT = claims.Cnf.JKT
+	}
+	if err := verifyRefreshDPoPBinding(ctx, cnfJKT); err != nil {
+		return nil, err
 	}
 
 	// HIGH-04 fix: enforce single-use on refresh tokens by checking whether

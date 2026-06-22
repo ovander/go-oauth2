@@ -11,8 +11,9 @@ func newDPoPTokenService(t *testing.T) *TokenService {
 	t.Helper()
 	km := newTestKeyManager(t)
 	return NewTokenServiceWithSigner(km, NewLocalSigner(km), TokenConfig{
-		Issuer:         "https://test.example.com",
-		AccessTokenTTL: time.Hour,
+		Issuer:          "https://test.example.com",
+		AccessTokenTTL:  time.Hour,
+		RefreshTokenTTL: 24 * time.Hour,
 	})
 }
 
@@ -88,6 +89,42 @@ func TestGenerateTokenSetWithDPoP_EmptyJKTMatchesPlainSet(t *testing.T) {
 	}
 	if claims.Cnf != nil {
 		t.Fatalf("empty jkt must yield an unbound token, got %+v", claims.Cnf)
+	}
+}
+
+func TestGenerateTokenSetWithDPoP_BindsRefreshToken(t *testing.T) {
+	ts := newDPoPTokenService(t)
+	user := &model.User{ID: 5, TokenVersion: 1}
+	app := &model.App{ClientID: "client-dpop"}
+
+	set, err := ts.GenerateTokenSetWithDPoP(user, app, "user", "openid", nil, "", time.Now().Unix(), "jkt-rt")
+	if err != nil {
+		t.Fatalf("GenerateTokenSetWithDPoP: %v", err)
+	}
+	rc, err := ts.VerifyRefreshToken(set.RefreshToken)
+	if err != nil {
+		t.Fatalf("VerifyRefreshToken: %v", err)
+	}
+	if rc.Cnf == nil || rc.Cnf.JKT != "jkt-rt" {
+		t.Fatalf("expected refresh token bound to jkt, got %+v", rc.Cnf)
+	}
+}
+
+func TestGenerateTokenSet_RefreshHasNoCnf(t *testing.T) {
+	ts := newDPoPTokenService(t)
+	user := &model.User{ID: 5, TokenVersion: 1}
+	app := &model.App{ClientID: "client-dpop"}
+
+	set, err := ts.GenerateTokenSet(user, app, "user", "openid", nil, "", time.Now().Unix())
+	if err != nil {
+		t.Fatalf("GenerateTokenSet: %v", err)
+	}
+	rc, err := ts.VerifyRefreshToken(set.RefreshToken)
+	if err != nil {
+		t.Fatalf("VerifyRefreshToken: %v", err)
+	}
+	if rc.Cnf != nil {
+		t.Fatalf("ordinary refresh token must not carry cnf, got %+v", rc.Cnf)
 	}
 }
 

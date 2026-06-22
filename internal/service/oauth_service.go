@@ -959,11 +959,16 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 	if !req.IsDelegation() {
 		actor = &auth.ActClaim{Sub: "client:" + clientID}
 	}
-	token, expiresIn, merr := s.tokenService.GenerateExchangedToken(subjectSub, decision.Audience, decision.GrantedScope, subjectVer, actor)
+	// Sender-constrain the exchanged token to the client's DPoP key when the
+	// exchange request carried a valid proof (verified by the token-endpoint
+	// middleware and stashed on the context). Opportunistic — RFC 9449.
+	jkt := dpopJKTFromContext(ctx)
+	token, expiresIn, merr := s.tokenService.GenerateExchangedToken(subjectSub, decision.Audience, decision.GrantedScope, subjectVer, actor, jkt)
 	if merr != nil {
 		return fail("error", fmt.Errorf("failed to issue exchanged token: %w", merr))
 	}
 	details["outcome"] = "issued"
+	details["dpop_bound"] = jkt != ""
 	return &dto.TokenResponse{
 		AccessToken:     token,
 		TokenType:       "Bearer",

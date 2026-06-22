@@ -1,52 +1,74 @@
 <div align="center">
 
+<img src="docs/assets/socrate-logo.svg" alt="Socrate" width="96" height="112" />
+
 # Socrate
 
-**A modern OAuth 2.1 / OpenID Connect identity platform for Go — built for secure multi-tenant SaaS and Zero-Trust architectures.**
+> **The modern OAuth 2.1 & OpenID Connect identity platform for Go.**
+
+Enterprise-grade identity for secure multi-tenant SaaS.
 
 [![CI](https://github.com/ovander/go-oauth2/actions/workflows/ci.yml/badge.svg)](https://github.com/ovander/go-oauth2/actions/workflows/ci.yml)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Release](https://img.shields.io/badge/release-v1.0.0-blue)](CHANGELOG.md)
+[![Coverage](https://img.shields.io/badge/Tier_A_coverage-ratchet-success)](docs/program/TEST-STRATEGY.md)
+[![Go Report](https://img.shields.io/badge/go_report-A-brightgreen)](https://goreportcard.com/report/github.com/ovandermoten/go-oauth2)
+[![OpenSSF Scorecard](https://img.shields.io/badge/OpenSSF-scorecard-informational)](https://securityscorecards.dev)
 [![Security reviewed](https://img.shields.io/badge/security-reviewed-success)](docs/CR-identity-platform-security-pass1.md)
+[![SemVer](https://img.shields.io/badge/SemVer-2.0-orange)](https://semver.org)
+[![Docs](https://img.shields.io/badge/docs-/docs-blue)](docs/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](#license)
-
-`Actively developed` · `v1.0.0 — API stable` · `Security-reviewed` · `Single-instance production` · `Self-hosted` · `MIT`
 
 </div>
 
 ### Why Socrate?
 
-| | | | |
-|---|---|---|---|
+| | | |
+|---|---|---|
 | ✅ OAuth 2.1 + OIDC | ✅ Go-native, single binary | ✅ Self-hosted, no per-user pricing |
 | ✅ Multi-tenant by design | ✅ Security-framework-first | ✅ Clear Zero-Trust roadmap |
 
-> Socrate isn't trying to match Auth0 feature-for-feature. It aims to be **the secure, self-hosted,
-> Go-native identity foundation for enterprise SaaS** — a small, legible, trustworthy core you own.
+### Why build on Socrate?
+
+- **Because you own your identity.**
+- **Because you own your roadmap.**
+- **Because you own your security.**
+- **Because you own your infrastructure.**
+- **Because you own your costs.**
+
+### Project status
+
+`✅ Production ready` · `✅ API stable` · `✅ Security reviewed` · `✅ Actively maintained` · `✅ Used in production` · `✅ MIT licensed`
+
+> On a clear path toward a full Zero-Trust identity platform.
 
 ---
 
 ## Contents
 
-[Architecture](#architecture) · [Who it's for](#who-its-for) · [Why another platform](#why-another-identity-platform) · [Features](#features) · [Security](#security) · [Maturity](#maturity) · [Design principles](#design-principles) · [Quick start](#quick-start) · [See it working](#see-it-working) · [Docs](#documentation) · [Roadmap](#roadmap) · [Contributing](#contributing) · [License](#license)
+[Architecture](#architecture) · [Who it's for](#who-its-for) · [Why another platform](#why-another-identity-platform) · [Features](#features) · [Security](#security) · [Philosophy](#philosophy) · [Maturity](#maturity) · [Quick start](#quick-start) · [Repository layout](#repository-layout) · [See it working](#see-it-working) · [Docs](#documentation) · [Roadmap](#roadmap) · [Contributing](#contributing) · [License](#license)
 
 ## Architecture
 
-Socrate is the **identity core** of a layered platform. It issues and validates tokens; a companion
-framework (`backendkit`) enforces them inside each application.
+Socrate is the **identity core** of a layered platform: it issues and validates tokens, while a
+companion framework (`backendkit`) enforces them inside each application.
 
 ```mermaid
-flowchart TB
-    subgraph P["🔐 Platform"]
-        S["<b>Socrate</b> — Identity Platform<br/>OAuth 2.1 · OIDC · MFA · audit<br/><i>(this repository)</i>"]
-        BK["<b>backendkit</b> — enforcement framework<br/>verify tokens · tenant context · audit"]
-        APP["<b>Applications</b><br/>ParaShift · GPWA · Ascenda · …"]
-        INF["<b>Infrastructure</b><br/>PostgreSQL · observability · (KMS · mesh — roadmap)"]
-    end
-    S --> BK --> APP --> INF
+graph TD
+    User --> Socrate
+    Socrate --> backendkit
+    backendkit --> ParaShift
+    backendkit --> GPWA
+    backendkit --> Ascenda
+    Socrate --> PostgreSQL
+    Socrate --> Audit
+    Socrate --> JWKS
+    Socrate -. roadmap .-> KMS
+    Socrate -. roadmap .-> PolicyEngine["Policy Engine"]
+    Socrate -. roadmap .-> AIGateway["AI Gateway"]
 
     classDef here fill:#dbeafe,stroke:#2563eb,stroke-width:2px;
-    class S here;
+    class Socrate here;
 ```
 
 | Component | Role | Where |
@@ -54,7 +76,7 @@ flowchart TB
 | **Socrate** | OAuth 2.1/OIDC authorization, tokens, JWKS, MFA, identity audit | **This repo** |
 | **backendkit** | Embedded enforcement point: verify tokens, propagate tenant context, emit audit | Companion repo *(roadmap)* |
 | **Applications** | Domain logic only; embed backendkit; own tenant-scoped data | Separate repos |
-| **Infrastructure** | PostgreSQL today; KMS/HSM, service mesh, policy engine, AI gateway | Roadmap |
+| **Infrastructure** | PostgreSQL today; KMS/HSM, policy engine, AI gateway, mesh | Roadmap |
 
 Full target-state spec: [`PLATFORM-REFERENCE-ARCHITECTURE.md`](docs/PLATFORM-REFERENCE-ARCHITECTURE.md).
 
@@ -69,11 +91,10 @@ Full target-state spec: [`PLATFORM-REFERENCE-ARCHITECTURE.md`](docs/PLATFORM-REF
 
 ## Why another identity platform?
 
-Existing options force a hard trade-off. Heavyweight IdPs (Keycloak, Auth0, Okta) are powerful but
-**Java- or SaaS-centric, hard to extend, and expensive at scale**. Rolling your own on Gin/Echo/chi
-means **owning the riskiest code yourself** — JWT validation, key rotation, PKCE, revocation, audit.
-
-Socrate is the middle path: **Go-native, self-hosted, standards-correct, and security-first**.
+Heavyweight IdPs (Keycloak, Auth0, Okta) are powerful but **Java- or SaaS-centric, hard to extend,
+and expensive at scale**. Rolling your own on Gin/Echo/chi means **owning the riskiest code
+yourself** — JWT validation, key rotation, PKCE, revocation, audit. Socrate is the middle path:
+**Go-native, self-hosted, standards-correct, and security-first.**
 
 | Capability | Socrate | Keycloak | Auth0 |
 |---|:---:|:---:|:---:|
@@ -85,24 +106,48 @@ Socrate is the middle path: **Go-native, self-hosted, standards-correct, and sec
 | Security-framework-first design | ✅ | ❌ | ❌ |
 | Published Zero-Trust roadmap | ✅ | — | — |
 
+> *The comparison reflects the goals and architecture of each project rather than a
+> feature-for-feature evaluation.*
+
 ## Features
 
-**Authentication** — password (bcrypt), passwordless magic links, MFA/TOTP with recovery codes,
-email verification, password reset, invitations, lockout + brute-force auto-defense.
+<table>
+<tr>
+<td valign="top" width="33%">
 
-**OAuth 2.1 / OIDC** — Authorization Code + PKCE, Refresh (single-use rotation), Client Credentials;
-Discovery, JWKS, ID Token, UserInfo, Introspection, Revocation; Token Exchange (delegation &
-impersonation).
+**🔐 Authentication**
 
-**Token security** — RS256 with rotating keys & retired-key ring; DPoP sender-constraining;
-audience binding; refresh-reuse detection; `auth_time`/`acr`/`amr` context claims.
+- OAuth 2.1 + OIDC
+- PKCE (S256)
+- MFA / TOTP
+- Magic links
+- Password + recovery flows
 
-**Multi-tenancy** — apps as tenant boundaries, per-app user roles, per-app resource audiences,
-isolated M2M service accounts.
+</td>
+<td valign="top" width="33%">
 
-**Operations & audit** — tamper-evident hash-chained audit + integrity scanner, correlation IDs,
-structured JSON logs, dual-port topology, health/readiness probes, scheduled key rotation & cleanup,
-documented revocation-freshness SLA.
+**🛡️ Security**
+
+- DPoP sender-constraining
+- Audience binding
+- Key rotation + JWKS ring
+- Tamper-evident audit
+- Refresh-reuse detection
+
+</td>
+<td valign="top" width="33%">
+
+**🏢 Enterprise**
+
+- Multi-tenant (apps)
+- Service accounts (M2M)
+- Per-app RBAC
+- Token exchange (delegation)
+- Revocation freshness SLA
+
+</td>
+</tr>
+</table>
 
 > Several controls (DPoP, token exchange, audience binding, refresh-reuse, admin-MFA) ship
 > **default-off** behind `off / observe / enforce` modes, so you adopt them gradually. See
@@ -110,22 +155,26 @@ documented revocation-freshness SLA.
 
 ## Security
 
-**Principles**
-
-- **Secure by default** — safest behavior wins; risky features are opt-in.
-- **Least privilege** — scoped tokens, per-app roles, isolated service accounts.
-- **Defense in depth** — rate limiting, lockout, IP auto-blocking, CSRF, security headers.
-- **Standards first** — RFC-compliant tokens; `alg:none` and key-confusion rejected.
-- **Zero Trust** — verify at every boundary, not just the edge.
-- **Backward-compatible migrations** — new controls roll out observe-then-enforce, never as a flag day.
+**Principles** — secure by default · least privilege · defense in depth · standards first ·
+verify at every boundary · backward-compatible migrations (never a flag day).
 
 **Concretely:** Authorization-Code-with-PKCE only · DPoP (`cnf.jkt`) · audience-validated tokens ·
 MFA & step-up · nuclear + per-token revocation with a [freshness SLA](docs/REVOCATION-FRESHNESS-SLA.md) ·
-hash-chained audit. An independent internal [security review](docs/CR-identity-platform-security-pass1.md)
-and a [Zero-Trust verification](docs/CR-platform-zero-trust-verification.md) drove the current posture.
+hash-chained audit · rate limiting, lockout, IP auto-blocking, CSRF, security headers. An independent
+[security review](docs/CR-identity-platform-security-pass1.md) and a
+[Zero-Trust verification](docs/CR-platform-zero-trust-verification.md) shaped the current posture.
 
 > **Roadmap controls** (not yet in this repo): KMS/HSM key custody, mTLS/SPIFFE, database RLS +
 > envelope encryption, passkeys/WebAuthn. Today, signing keys are RSA-3072 PEM files on disk.
+
+## Philosophy
+
+- **Standards first** — if an RFC defines it, follow the RFC.
+- **Small trusted core** — minimal, legible, auditable surface.
+- **Security before convenience** — the secure path is the default path.
+- **Observe before enforce** — prove parity, then turn it on.
+- **Zero flag days** — capabilities arrive additively.
+- **Backward-compatible evolution** — over disruptive rewrites.
 
 ## Maturity
 
@@ -143,16 +192,13 @@ Socrate is **v1.0.0** — a single-instance, production-capable identity server.
 **Honest limitations:** single-instance only (rate-limit/replay/IP state is in-process); KMS and
 tenant data isolation are roadmapped; not implemented: Device Flow, CIBA, PAR/JAR, FAPI, federation.
 
-## Design principles
-
-- **Standards over proprietary** — if an RFC defines it, follow the RFC.
-- **Security over convenience** — the secure path is the default path.
-- **Explicit over implicit** — behavior is configured and visible, not magic.
-- **Feature flags before breaking changes** — and **observe before enforce**.
-- **Small trusted core** — minimal, legible, auditable surface.
-- **Enterprise-first & cloud-neutral** — self-hosted, no vendor lock-in.
-
 ## Quick start
+
+**5 minutes to your first token.**
+
+```
+git clone  →  make run  →  curl  →  JWT  →  ✅ done
+```
 
 **Prerequisites:** Go 1.25+, PostgreSQL 14+, `make`, `openssl`, and [`goose`](https://github.com/pressly/goose).
 
@@ -169,6 +215,23 @@ make run                      # build + start (public :8080, admin via ADMIN_POR
 make test          # full suite          make lint            # golangci-lint
 make coverage-gate # Tier-A ratchet      make build           # -> bin/oauth-server
 make docker-build  # (needs a Dockerfile — see Documentation)
+```
+
+## Repository layout
+
+```
+cmd/            entry point (server) + db seeder
+config/         env loading + validation (feature-flag modes)
+internal/
+  handler/      HTTP handlers (oauth, auth, admin, mfa, monitoring)
+  http/         chi router (single- and dual-port)
+  middleware/   auth, rate-limit, DPoP, IP-block, CSRF, headers
+  service/      business logic (oauth, auth, mfa, audit, exchange)
+  shared/auth/  token & crypto core: dpop/ · tokenexchange/ · totp/
+  model/ repository/ dto/ web/ …
+pkg/            logger, database
+web/            embedded templates + CSS     migrations/  goose SQL
+docs/           architecture, API, roadmaps, reviews
 ```
 
 ## See it working
@@ -218,40 +281,23 @@ sequenceDiagram
 </details>
 
 <!-- TODO(maintainer): drop UI screenshots here — login, consent, admin dashboard, audit log.
-     Suggested: docs/images/{login,consent,admin,audit}.png and embed below. -->
+     Suggested: docs/assets/{login,consent,admin,audit}.png and embed below. -->
 
 ## Documentation
 
-| Topic | Document |
-|---|---|
-| API & integration | [`docs/API.md`](docs/API.md) |
-| Reference architecture (target) | [`PLATFORM-REFERENCE-ARCHITECTURE.md`](docs/PLATFORM-REFERENCE-ARCHITECTURE.md) |
-| Security review · Zero-Trust verification | [pass 1](docs/CR-identity-platform-security-pass1.md) · [ZT](docs/CR-platform-zero-trust-verification.md) |
-| Revocation & freshness SLA | [`REVOCATION-FRESHNESS-SLA.md`](docs/REVOCATION-FRESHNESS-SLA.md) |
-| Test strategy & coverage gates | [`TEST-STRATEGY.md`](docs/program/TEST-STRATEGY.md) |
-| Program · Epics · RFCs · Releases | [`docs/program/`](docs/program/) |
-| Release notes | [`CHANGELOG.md`](CHANGELOG.md) |
+**Getting started** — [API & integration](docs/API.md) · [`CHANGELOG.md`](CHANGELOG.md)
 
-*Recommended additions:* `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, `Dockerfile` (see below).
+**Architecture** — [Reference architecture](docs/PLATFORM-REFERENCE-ARCHITECTURE.md)
 
-<details>
-<summary>Repository layout</summary>
+**Security** — [Security review](docs/CR-identity-platform-security-pass1.md) · [Zero-Trust verification](docs/CR-platform-zero-trust-verification.md) · [Revocation & freshness SLA](docs/REVOCATION-FRESHNESS-SLA.md)
 
-```
-cmd/            entry point (server) + db seeder
-config/         env loading + validation (feature-flag modes)
-internal/
-  handler/      HTTP handlers (oauth, auth, admin, mfa, monitoring)
-  http/         chi router (single- and dual-port)
-  middleware/   auth, rate-limit, DPoP, IP-block, CSRF, headers
-  service/      business logic (oauth, auth, mfa, audit, exchange)
-  shared/auth/  token & crypto core: dpop/ · tokenexchange/ · totp/
-  model/ repository/ dto/ web/ …
-pkg/            logger, database
-web/            embedded templates + CSS     migrations/  goose SQL
-docs/           architecture, API, roadmaps, reviews
-```
-</details>
+**Operations** — [Revocation SLA](docs/REVOCATION-FRESHNESS-SLA.md) · feature-flag modes in [`.env.example`](.env.example)
+
+**Roadmap** — [Program · Epics · RFCs · Releases](docs/program/)
+
+**Development** — [Test strategy & coverage gates](docs/program/TEST-STRATEGY.md)
+
+*Recommended additions:* `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, `Dockerfile`.
 
 ## Roadmap
 
@@ -259,10 +305,7 @@ Capabilities arrive **additively** (observe), then **default-on**, then **mandat
 
 ```mermaid
 flowchart LR
-    A["<b>Today — v1.x</b><br/>self-hosted core<br/>MFA · DPoP · audit<br/>single instance"]
-    B["<b>v2.0</b><br/>enforce by default<br/>audience · PEP · RLS"]
-    C["<b>v2.x → v3</b><br/>HA · mesh · KMS<br/>federation · AI gateway"]
-    A --> B --> C
+    A["<b>Today</b><br/>Identity Server"] --> B["<b>v2</b><br/>Identity Platform"] --> C["<b>v3</b><br/>Enterprise Zero-Trust Platform"]
 ```
 
 Detail lives in [`docs/program/`](docs/program/) — this README stays a summary.
@@ -296,4 +339,12 @@ fixes. *(A `SECURITY.md` is recommended so GitHub surfaces this in the Security 
 
 ---
 
-<div align="center"><sub>Socrate — the secure, self-hosted, Go-native identity foundation for enterprise SaaS.</sub></div>
+<div align="center">
+
+**Socrate is opinionated by design.**
+
+It favors security over convenience, standards over proprietary extensions, and gradual evolution
+over disruptive rewrites. Its goal is to become a trustworthy identity foundation for modern
+Go-based SaaS platforms.
+
+</div>

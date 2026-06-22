@@ -443,9 +443,11 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 	// has a stored hash.
 	if app.ClientSecretHash != "" {
 		if clientSecret == "" {
+			s.logClientAuthFailed(ctx, clientID, "missing_secret", &app.ID)
 			return nil, fmt.Errorf("%w: client_secret required for confidential client", ErrInvalidCredentials)
 		}
 		if !auth.CheckClientSecret(clientSecret, app.ClientSecretHash) {
+			s.logClientAuthFailed(ctx, clientID, "invalid_secret", &app.ID)
 			return nil, ErrInvalidCredentials
 		}
 	}
@@ -586,9 +588,11 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 
 	if app.ClientSecretHash != "" {
 		if clientSecret == "" {
+			s.logClientAuthFailed(ctx, clientID, "missing_secret", &app.ID)
 			return nil, fmt.Errorf("%w: client_secret required for confidential client", ErrInvalidCredentials)
 		}
 		if !auth.CheckClientSecret(clientSecret, app.ClientSecretHash) {
+			s.logClientAuthFailed(ctx, clientID, "invalid_secret", &app.ID)
 			return nil, ErrInvalidCredentials
 		}
 	}
@@ -698,6 +702,7 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 
 func (s *oauthService) handleClientCredentialsGrant(ctx context.Context, req dto.TokenRequest, clientID, clientSecret string) (*dto.TokenResponse, error) {
 	if clientSecret == "" {
+		s.logClientAuthFailed(ctx, clientID, "missing_secret", nil)
 		return nil, fmt.Errorf("%w: client_secret required for client_credentials grant", ErrInvalidCredentials)
 	}
 
@@ -707,6 +712,7 @@ func (s *oauthService) handleClientCredentialsGrant(ctx context.Context, req dto
 	}
 
 	if !auth.CheckClientSecret(clientSecret, app.ClientSecretHash) {
+		s.logClientAuthFailed(ctx, clientID, "invalid_secret", &app.ID)
 		return nil, ErrInvalidCredentials
 	}
 
@@ -1221,6 +1227,16 @@ func (s *oauthService) verifyExchangeToken(tokenStr, tokenType string) (sub, sco
 	default:
 		return "", "", 0, 0, nil, fmt.Errorf("unsupported token type %q", tokenType)
 	}
+}
+
+// logClientAuthFailed audits a confidential-client authentication failure at the
+// token endpoint (RFC-007). appID may be nil when the client could not be
+// resolved. reason is "missing_secret" or "invalid_secret".
+func (s *oauthService) logClientAuthFailed(ctx context.Context, clientID, reason string, appID *uint) {
+	s.logSecurityEvent(ctx, model.SecurityEventClientAuthFailed, nil, appID, false, map[string]interface{}{
+		"client_id": clientID,
+		"reason":    reason,
+	})
 }
 
 // logSecurityEvent logs a security event to the audit log.

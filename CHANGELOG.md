@@ -10,6 +10,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Added
+- **Observability / Audit completeness:** Confidential-client **authentication
+  failures at the token endpoint are now audited** (RFC-007 / RFC 6749 §3.2.1).
+  A missing or wrong `client_secret` on the authorization-code, refresh-token, or
+  client-credentials grant emits a `client_auth_failed` event (with `client_id`
+  and a `missing_secret`/`invalid_secret` reason) — a credential-stuffing /
+  brute-force signal that previously went unrecorded. (Token exchange already
+  audited this via its own event.) Additive; success and error responses are
+  unchanged. _Traceability: C5 → EPIC-5 → RFC-007 → #140._
+
 ### Fixed
 - **Docs / Config accuracy:** Corrected stale `DPOP_MODE` and `TOKEN_EXCHANGE_MODE`
   documentation in `config.go`. Both `enforce` values were described as

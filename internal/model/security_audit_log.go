@@ -37,6 +37,10 @@ const (
 	// token was presented again — a token-theft signal (OAuth 2.0 Security BCP /
 	// RFC 9700 §4.14.2). In enforce mode the user's token family is revoked.
 	SecurityEventRefreshTokenReuse SecurityEventType = "refresh_token_reuse"
+	// SecurityEventClientAuthFailed: a confidential client failed authentication
+	// at the token endpoint (missing or wrong client_secret) — a credential-
+	// stuffing / brute-force signal (RFC 6749 §3.2.1).
+	SecurityEventClientAuthFailed SecurityEventType = "client_auth_failed"
 
 	// OAuth events
 	SecurityEventAuthCodeIssued     SecurityEventType = "auth_code_issued"

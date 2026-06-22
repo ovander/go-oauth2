@@ -73,7 +73,10 @@ Unknown scopes are rejected with `invalid scope`.
 
 Access-token claims include: `sub`, `iss`, `aud`, `exp`, `iat`, `nbf`, `email`,
 `email_verified`, `name`, `preferred_username`, `role`, `app_roles`,
-`token_version`. Verify signatures against the JWKS endpoint (§7).
+`token_version`, `auth_time`, and — for interactive logins — `amr`/`acr`
+(RFC 8176 authentication methods / context class: `["pwd"]`/`pwd` for a password
+login, `["pwd","otp","mfa"]`/`mfa` when a second factor was used). Verify
+signatures against the JWKS endpoint (§7).
 
 **Nuclear revocation:** every user has a `token_version`. Logout, password
 reset, or admin "revoke tokens" increments it, instantly invalidating all
@@ -347,6 +350,8 @@ parsing the JWT:
 - `auth_time` — the end-user's last authentication time (RFC 9068 §2.2.1) for
   freshness/step-up decisions. Omitted when the token has no associated user
   authentication (client-credentials / token-exchange results).
+- `amr` / `acr` — authentication methods / context class (RFC 8176), for gating
+  on authentication strength (e.g. require `mfa`). Present for interactive logins.
 - `cnf` `{ "jkt": "..." }` — DPoP sender-constraint (RFC 9449 §7), when present.
 - `act` `{ "sub": "...", "act": {...} }` — the actor (delegation/impersonation)
   chain (RFC 8693 §4.1), when the token was minted via token exchange.

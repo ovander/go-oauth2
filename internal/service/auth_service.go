@@ -115,6 +115,19 @@ func (s *authService) stepUpMFA(ctx context.Context, user *model.User, code stri
 	return ErrMFAInvalidCode
 }
 
+// loginAuthnContext derives the RFC 8176 amr / acr for an interactive password
+// login. The password is always verified (`pwd`); when the user completed MFA
+// step-up a second factor was used (`otp`, `mfa`) and the context class is
+// "mfa" rather than the single-factor "pwd". Stamped on the issued access and
+// ID tokens so resource servers can make their own assurance/step-up decisions
+// (RFC-001 canonical claim set).
+func loginAuthnContext(mfaUsed bool) (amr []string, acr string) {
+	if mfaUsed {
+		return []string{"pwd", "otp", "mfa"}, "mfa"
+	}
+	return []string{"pwd"}, "pwd"
+}
+
 // MFA admin-enrollment policy modes. "off" leaves admin login unchanged;
 // "observe" allows an admin without MFA but audits it; "enforce" denies login
 // until the admin enrolls. (Observe→enforce rollout, RFC-011.)
@@ -442,10 +455,11 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 		logger.Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 
-	tokenSet, err := s.tokenService.GenerateTokenSet(
+	amr, acr := loginAuthnContext(user.MFAEnabled)
+	tokenSet, err := s.tokenService.GenerateTokenSetWithAuth(
 		user, app, string(userAppRole.Role),
 		"openid email profile offline_access",
-		appRoles, "", now.Unix(),
+		appRoles, "", now.Unix(), amr, acr,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate tokens: %w", err)
@@ -558,10 +572,11 @@ func (s *authService) AdminLogin(ctx context.Context, req dto.AdminLoginRequest)
 		Name:     "Admin Portal",
 	}
 
-	tokenSet, err := s.tokenService.GenerateTokenSet(
+	amr, acr := loginAuthnContext(user.MFAEnabled)
+	tokenSet, err := s.tokenService.GenerateTokenSetWithAuth(
 		user, adminApp, string(user.Role),
 		"openid email profile offline_access",
-		make(map[string]string), "", now.Unix(),
+		make(map[string]string), "", now.Unix(), amr, acr,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate tokens: %w", err)

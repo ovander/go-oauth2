@@ -11,6 +11,17 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Tokens / DPoP:** Per-client **require-DPoP** policy (RFC 9449). A new
+  `apps.require_dpop` flag (migration `0012`, default false) makes the token
+  endpoint reject an `authorization_code` or `refresh_token` request from that
+  client unless it carries a verified DPoP proof (`400 invalid_dpop_proof`). This
+  is the strict end-state of the rollout — unlike global `enforce` (which only
+  rejects *present-but-invalid* proofs), a require-DPoP client must also supply a
+  proof at all. Default-false, so existing clients are unaffected; the flag
+  requires DPoP enabled globally (`DPOP_MODE != off`) to be satisfiable.
+  _Traceability: C8 → EPIC-8 → RFC-003 → #72._
+
+### Added
 - **Tokens / DPoP:** `DPOP_MODE=enforce` now **rejects a present-but-invalid**
   DPoP proof at the token endpoint with `400 invalid_dpop_proof` (RFC 9449 §5) —
   a malformed, expired, replayed, or mismatched proof can no longer be silently

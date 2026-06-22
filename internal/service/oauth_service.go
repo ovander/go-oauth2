@@ -17,10 +17,20 @@ import (
 )
 
 // dpopJKTFromContext returns the verified DPoP JWK thumbprint placed on the
-// request context by middleware.DPoPObserve, or "" when no valid proof was sent.
+// request context by middleware.DPoP, or "" when no valid proof was sent.
 func dpopJKTFromContext(ctx context.Context) string {
 	jkt, _ := ctx.Value(contextkeys.DPoPJKTKey).(string)
 	return jkt
+}
+
+// requireDPoP enforces a client's per-client DPoP requirement: when app.RequireDPoP
+// is set, the request must carry a verified DPoP proof (a non-empty thumbprint on
+// the context). Returns ErrDPoPRequired otherwise.
+func requireDPoP(ctx context.Context, app *model.App) error {
+	if app.RequireDPoP && dpopJKTFromContext(ctx) == "" {
+		return ErrDPoPRequired
+	}
+	return nil
 }
 
 // OAuth service errors
@@ -33,6 +43,9 @@ var (
 	ErrCodeAlreadyUsed      = errors.New("authorization code already used")
 	ErrPKCERequired         = errors.New("PKCE code verifier required")
 	ErrPKCEVerificationFail = errors.New("PKCE verification failed")
+	// ErrDPoPRequired indicates the client requires DPoP (RFC 9449) but the token
+	// request carried no valid DPoP proof.
+	ErrDPoPRequired = errors.New("DPoP proof required for this client")
 )
 
 var validScopes = map[string]bool{
@@ -316,6 +329,11 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 		}
 	}
 
+	// RFC 9449 / EPIC-8: enforce the per-client DPoP requirement.
+	if err := requireDPoP(ctx, app); err != nil {
+		return nil, err
+	}
+
 	// Get the user
 	user, err := s.userRepo.FindByID(ctx, authCode.UserID)
 	if err != nil {
@@ -418,6 +436,11 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 		if !auth.CheckClientSecret(clientSecret, app.ClientSecretHash) {
 			return nil, ErrInvalidCredentials
 		}
+	}
+
+	// RFC 9449 / EPIC-8: enforce the per-client DPoP requirement.
+	if err := requireDPoP(ctx, app); err != nil {
+		return nil, err
 	}
 
 	userID, err := strconv.ParseUint(claims.Subject, 10, 64)

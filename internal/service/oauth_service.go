@@ -367,11 +367,22 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 	// Redeem the code atomically
 	authCode, err := s.codeStore.RedeemCode(ctx, req.Code)
 	if err != nil || authCode == nil {
+		// RFC-007: a failed code redemption (invalid, expired, or already-used
+		// code) is an attack signal (code replay / brute force) — audit it.
+		s.logSecurityEvent(ctx, model.SecurityEventAuthCodeFailed, nil, nil, false, map[string]interface{}{
+			"client_id": clientID,
+			"reason":    "invalid_or_used_code",
+		})
 		return nil, ErrInvalidCode
 	}
 
 	// Verify client ID matches
 	if authCode.ClientID != clientID {
+		uid := authCode.UserID
+		s.logSecurityEvent(ctx, model.SecurityEventAuthCodeFailed, &uid, nil, false, map[string]interface{}{
+			"client_id": clientID,
+			"reason":    "client_id_mismatch",
+		})
 		return nil, fmt.Errorf("%w: client_id mismatch", ErrInvalidCode)
 	}
 
@@ -399,9 +410,21 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 	// Verify PKCE if used
 	if authCode.CodeChallenge != "" {
 		if req.CodeVerifier == "" {
+			uid := authCode.UserID
+			s.logSecurityEvent(ctx, model.SecurityEventPKCEValidationFail, &uid, &app.ID, false, map[string]interface{}{
+				"client_id": clientID,
+				"reason":    "missing_code_verifier",
+			})
 			return nil, ErrPKCERequired
 		}
 		if err := auth.VerifyPKCE(req.CodeVerifier, authCode.CodeChallenge, authCode.CodeChallengeMethod); err != nil {
+			// RFC-007: a PKCE verification failure is a strong signal of an
+			// authorization-code interception attempt — audit it.
+			uid := authCode.UserID
+			s.logSecurityEvent(ctx, model.SecurityEventPKCEValidationFail, &uid, &app.ID, false, map[string]interface{}{
+				"client_id": clientID,
+				"reason":    "verification_failed",
+			})
 			return nil, fmt.Errorf("%w: %v", ErrPKCEVerificationFail, err)
 		}
 	}

@@ -10,6 +10,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Added
+- **Observability / Audit completeness:** Security-relevant **authorization-code
+  grant failures are now audited** (RFC-007 / EPIC-5). The token endpoint emits
+  `auth_code_failed` for an invalid / expired / already-used code and for a
+  `client_id` mismatch, and `pkce_validation_failed` for a missing or wrong PKCE
+  `code_verifier` — all strong signals of code-replay or code-interception
+  attacks that previously went unrecorded (the event types existed but were never
+  emitted). Each row carries the `client_id` and a `reason`. Additive; success
+  paths are unchanged. _Traceability: C5 → EPIC-5 → RFC-007 → #136._
+
 ### Fixed
 - **Identity / PKCE hardening:** PKCE is now enforced for **public clients at the
   point of use**, not just via the create-time default (OAuth 2.1). The

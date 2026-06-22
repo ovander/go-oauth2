@@ -10,6 +10,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Fixed
+- **Docs / Config accuracy:** Corrected stale `DPOP_MODE` and `TOKEN_EXCHANGE_MODE`
+  documentation in `config.go`. Both `enforce` values were described as
+  "reserved / behaves as observe", but they have been **live since v1.0.0**:
+  DPoP `enforce` rejects a present-but-invalid proof (`400 invalid_dpop_proof`),
+  and token-exchange `enforce` actually issues the exchanged token. The
+  misleading comments could have led an operator to avoid `enforce` thinking it
+  was a no-op. Comments only — no behaviour change. _Traceability: C8 → EPIC-8 →
+  RFC-003 / RFC-019._
+
 ### Added
 - **Observability / Audit completeness:** Security-relevant **authorization-code
   grant failures are now audited** (RFC-007 / EPIC-5). The token endpoint emits

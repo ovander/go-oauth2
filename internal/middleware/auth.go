@@ -12,8 +12,23 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 )
 
-// AuthMiddleware validates JWT tokens, verifies token version, and adds user info to context
-func AuthMiddleware(tokenService *auth.TokenService, userRepo repository.UserRepository) func(http.Handler) http.Handler {
+// isRevoked reports whether the token's JTI has been individually revoked via
+// /oauth/revoke (the JTI is blacklisted in used_tokens). Nil repo or an empty
+// JTI means "not revoked"; a repo error fails open (returns false) so a
+// transient store outage never locks out otherwise-valid tokens — consistent
+// with Introspect's best-effort blacklist check. EPIC-14 / RFC-012: this is
+// what propagates a per-token revocation to the direct-auth hot path, not just
+// to introspection.
+func isRevoked(ctx context.Context, usedTokenRepo repository.UsedTokenRepository, jti string) bool {
+	if usedTokenRepo == nil || jti == "" {
+		return false
+	}
+	revoked, err := usedTokenRepo.IsUsed(ctx, jti)
+	return err == nil && revoked
+}
+
+// AuthMiddleware validates JWT tokens, verifies token version + revocation, and adds user info to context
+func AuthMiddleware(tokenService *auth.TokenService, userRepo repository.UserRepository, usedTokenRepo repository.UsedTokenRepository) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
@@ -65,6 +80,14 @@ func AuthMiddleware(tokenService *auth.TokenService, userRepo repository.UserRep
 				return
 			}
 
+			// EPIC-14: reject a token whose JTI was individually revoked via
+			// /oauth/revoke, so per-token revocation propagates to this hot path
+			// (previously only Introspect honored the blacklist).
+			if isRevoked(r.Context(), usedTokenRepo, claims.ID) {
+				writeAuthError(w, "token has been revoked", http.StatusUnauthorized)
+				return
+			}
+
 			// Check if user account is locked
 			if user.IsLocked() {
 				writeAuthError(w, "account is locked", http.StatusForbidden)
@@ -83,7 +106,7 @@ func AuthMiddleware(tokenService *auth.TokenService, userRepo repository.UserRep
 }
 
 // OptionalAuthMiddleware extracts user info if token present, but doesn't require it
-func OptionalAuthMiddleware(tokenService *auth.TokenService, userRepo repository.UserRepository) func(http.Handler) http.Handler {
+func OptionalAuthMiddleware(tokenService *auth.TokenService, userRepo repository.UserRepository, usedTokenRepo repository.UsedTokenRepository) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
@@ -124,6 +147,12 @@ func OptionalAuthMiddleware(tokenService *auth.TokenService, userRepo repository
 			// was 0 were never rejected here, defeating nuclear revocation on the
 			// OptionalAuth paths (e.g. POST /oauth/revoke Path 1 classification).
 			if user.TokenVersion > claims.TokenVersion {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// EPIC-14: a per-token-revoked token is treated as unauthenticated.
+			if isRevoked(r.Context(), usedTokenRepo, claims.ID) {
 				next.ServeHTTP(w, r)
 				return
 			}

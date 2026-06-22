@@ -157,7 +157,7 @@ func TestFIND01_AuthMiddleware_ZeroVersion_SameVersion_Allows(t *testing.T) {
 
 	inner := &nopOKHandler{}
 	repo := &find01UserRepo{user: &model.User{ID: 42, Email: "test@example.com", TokenVersion: 0}}
-	h := AuthMiddleware(ts, repo)(inner)
+	h := AuthMiddleware(ts, repo, nil)(inner)
 
 	w, req := makeAuthRequest(token)
 	h.ServeHTTP(w, req)
@@ -185,7 +185,7 @@ func TestFIND01_AuthMiddleware_ZeroToOne_Revocation_Rejects(t *testing.T) {
 	inner := &nopOKHandler{}
 	// Simulate nuclear revocation: user.TokenVersion is now 1.
 	repo := &find01UserRepo{user: &model.User{ID: 42, Email: "test@example.com", TokenVersion: 1}}
-	h := AuthMiddleware(ts, repo)(inner)
+	h := AuthMiddleware(ts, repo, nil)(inner)
 
 	w, req := makeAuthRequest(token)
 	h.ServeHTTP(w, req)
@@ -211,7 +211,7 @@ func TestFIND01_AuthMiddleware_OneToOne_NotRevoked_Allows(t *testing.T) {
 
 	inner := &nopOKHandler{}
 	repo := &find01UserRepo{user: &model.User{ID: 7, Email: "u@example.com", TokenVersion: 1}}
-	h := AuthMiddleware(ts, repo)(inner)
+	h := AuthMiddleware(ts, repo, nil)(inner)
 
 	w, req := makeAuthRequest(token)
 	h.ServeHTTP(w, req)
@@ -233,7 +233,7 @@ func TestFIND01_AuthMiddleware_OneToTwo_Revocation_Rejects(t *testing.T) {
 
 	inner := &nopOKHandler{}
 	repo := &find01UserRepo{user: &model.User{ID: 5, Email: "u@example.com", TokenVersion: 2}}
-	h := AuthMiddleware(ts, repo)(inner)
+	h := AuthMiddleware(ts, repo, nil)(inner)
 
 	w, req := makeAuthRequest(token)
 	h.ServeHTTP(w, req)
@@ -255,7 +255,7 @@ func TestFIND01_AuthMiddleware_MultiIncrement_Rejects(t *testing.T) {
 
 	inner := &nopOKHandler{}
 	repo := &find01UserRepo{user: &model.User{ID: 9, Email: "u@example.com", TokenVersion: 5}}
-	h := AuthMiddleware(ts, repo)(inner)
+	h := AuthMiddleware(ts, repo, nil)(inner)
 
 	w, req := makeAuthRequest(token)
 	h.ServeHTTP(w, req)
@@ -271,7 +271,7 @@ func TestFIND01_AuthMiddleware_NoAuthHeader_Returns401(t *testing.T) {
 	t.Parallel()
 	ts := newFind01TokenService(t)
 	repo := &find01UserRepo{user: &model.User{ID: 1, TokenVersion: 0}}
-	h := AuthMiddleware(ts, repo)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	h := AuthMiddleware(ts, repo, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -305,7 +305,7 @@ func TestFIND01_OptionalAuth_ZeroToOne_NoUserInContext(t *testing.T) {
 
 	// Simulate nuclear revocation: user is now at version 1.
 	repo := &find01UserRepo{user: &model.User{ID: 42, Email: "u@example.com", TokenVersion: 1}}
-	h := OptionalAuthMiddleware(ts, repo)(inner)
+	h := OptionalAuthMiddleware(ts, repo, nil)(inner)
 
 	w, req := makeAuthRequest(token)
 	h.ServeHTTP(w, req)
@@ -335,7 +335,7 @@ func TestFIND01_OptionalAuth_MatchingVersion_UserInContext(t *testing.T) {
 	})
 
 	repo := &find01UserRepo{user: &model.User{ID: 42, Email: "u@example.com", TokenVersion: 1}}
-	h := OptionalAuthMiddleware(ts, repo)(inner)
+	h := OptionalAuthMiddleware(ts, repo, nil)(inner)
 
 	w, req := makeAuthRequest(token)
 	h.ServeHTTP(w, req)
@@ -358,7 +358,7 @@ func TestFIND01_OptionalAuth_NoToken_CallsNext(t *testing.T) {
 	repo := &find01UserRepo{user: &model.User{ID: 1, TokenVersion: 0}}
 
 	called := false
-	h := OptionalAuthMiddleware(ts, repo)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	h := OptionalAuthMiddleware(ts, repo, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -390,7 +390,7 @@ func TestFIND01_OptionalAuth_OneToTwo_NoUserInContext(t *testing.T) {
 	})
 
 	repo := &find01UserRepo{user: &model.User{ID: 55, Email: "u@example.com", TokenVersion: 2}}
-	h := OptionalAuthMiddleware(ts, repo)(inner)
+	h := OptionalAuthMiddleware(ts, repo, nil)(inner)
 
 	w, req := makeAuthRequest(token)
 	h.ServeHTTP(w, req)

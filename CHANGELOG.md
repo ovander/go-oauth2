@@ -10,6 +10,17 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Fixed
+- **Identity / Revocation propagation:** A token **individually revoked** via
+  `/oauth/revoke` (its `jti` blacklisted) is now rejected on the **direct-auth
+  hot path** too — `AuthMiddleware` rejects it (401 `token has been revoked`) and
+  `OptionalAuthMiddleware` treats it as unauthenticated. Previously only
+  introspection honored the blacklist, so a per-token revocation didn't
+  propagate to APIs that validate the bearer token directly (EPIC-14 / RFC-012).
+  The check is nil-safe (disabled when no revocation store is wired) and fails
+  open on a store error, so a transient outage never locks out valid tokens.
+  _Traceability: C14 → EPIC-14 → RFC-012 → #117._
+
 ### Added
 - **Identity / Audience binding / Introspection:** Token introspection now
   **surfaces `aud`** (RFC 7662 §2.2), so a resource server that introspects a

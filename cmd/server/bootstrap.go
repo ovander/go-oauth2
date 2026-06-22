@@ -534,6 +534,7 @@ func Bootstrap(cfg *config.Config) *App {
 			magicLinkHandler,
 			tokenService,
 			userRepo,
+			usedTokenRepo, // EPIC-14: per-token revocation propagation
 			userAppRoleRepo,
 			appRepo,
 			routerConfig,
@@ -573,6 +574,7 @@ func Bootstrap(cfg *config.Config) *App {
 		magicLinkHandler,
 		tokenService,
 		userRepo,
+		usedTokenRepo, // EPIC-14: per-token revocation propagation
 		userAppRoleRepo,
 		appRepo,
 		routerConfig,

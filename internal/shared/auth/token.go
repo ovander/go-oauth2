@@ -114,6 +114,15 @@ func (s *TokenService) GetIssuer() string {
 	return s.issuer
 }
 
+// GetAudienceMode returns the configured audience-binding mode ("off"/"dual",
+// RFC-001 / EPIC-7).
+func (s *TokenService) GetAudienceMode() string {
+	if s.audienceMode == "" {
+		return AudienceModeOff
+	}
+	return s.audienceMode
+}
+
 // Confirmation is the RFC 7800 `cnf` (confirmation) claim. For DPoP (RFC 9449)
 // it carries `jkt` — the base64url SHA-256 thumbprint of the JWK the access
 // token is bound to, so a resource server can require a matching DPoP proof.

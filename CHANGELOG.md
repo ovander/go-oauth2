@@ -10,6 +10,17 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Added
+- **Observability / Audience binding:** Token-issuance audit rows now carry
+  **audience-coverage telemetry** (RFC-001 / EPIC-7, Phase 1): `audience_registered`
+  (does the client have registered audiences), `audience_count`, and the active
+  `audience_mode`. This is the **parity signal** operators watch before enabling
+  audience-scoped enforcement — once coverage approaches 100% for clients that
+  call protected resources, resource servers can enforce `aud` with ≈0 legitimate
+  denials. Added to the `token_issued` (authorization-code, client-credentials)
+  and `token_refreshed` events. Additive telemetry only. _Traceability: C7 →
+  EPIC-7 → RFC-001 → #144._
+
 ### Fixed
 - **Identity / Response caching:** The **userinfo, introspection, and revocation**
   responses are now marked **`Cache-Control: no-store` / `Pragma: no-cache`**.

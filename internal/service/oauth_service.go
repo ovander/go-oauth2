@@ -489,12 +489,12 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 	if tokenSet.IDToken != "" {
 		tokenTypes = append(tokenTypes, "id_token")
 	}
-	s.logSecurityEvent(ctx, model.SecurityEventTokenIssued, &user.ID, &app.ID, true, map[string]interface{}{
+	s.logSecurityEvent(ctx, model.SecurityEventTokenIssued, &user.ID, &app.ID, true, s.withAudienceCoverage(map[string]interface{}{
 		"grant_type":  "authorization_code",
 		"scope":       authCode.Scope,
 		"client_id":   clientID,
 		"token_types": tokenTypes,
-	})
+	}, app))
 
 	return &dto.TokenResponse{
 		AccessToken:  tokenSet.AccessToken,
@@ -681,12 +681,12 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 	if tokenSet.IDToken != "" {
 		refreshTokenTypes = append(refreshTokenTypes, "id_token")
 	}
-	s.logSecurityEvent(ctx, model.SecurityEventTokenRefreshed, &user.ID, &app.ID, true, map[string]interface{}{
+	s.logSecurityEvent(ctx, model.SecurityEventTokenRefreshed, &user.ID, &app.ID, true, s.withAudienceCoverage(map[string]interface{}{
 		"grant_type":  "refresh_token",
 		"scope":       claims.Scope,
 		"client_id":   clientID,
 		"token_types": refreshTokenTypes,
-	})
+	}, app))
 
 	return &dto.TokenResponse{
 		AccessToken:  tokenSet.AccessToken,
@@ -727,12 +727,12 @@ func (s *oauthService) handleClientCredentialsGrant(ctx context.Context, req dto
 	}
 
 	// Log token issuance (no user for client_credentials grant, only access_token)
-	s.logSecurityEvent(ctx, model.SecurityEventTokenIssued, nil, &app.ID, true, map[string]interface{}{
+	s.logSecurityEvent(ctx, model.SecurityEventTokenIssued, nil, &app.ID, true, s.withAudienceCoverage(map[string]interface{}{
 		"grant_type":  "client_credentials",
 		"scope":       scope,
 		"client_id":   clientID,
 		"token_types": []string{"access_token"},
-	})
+	}, app))
 
 	return &dto.TokenResponse{
 		AccessToken: accessToken,
@@ -1227,6 +1227,19 @@ func (s *oauthService) verifyExchangeToken(tokenStr, tokenType string) (sub, sco
 	default:
 		return "", "", 0, 0, nil, fmt.Errorf("unsupported token type %q", tokenType)
 	}
+}
+
+// withAudienceCoverage adds EPIC-7 parity telemetry to a token-issuance audit
+// row: whether the client has registered audiences (its readiness for
+// audience-scoped enforcement), how many, and the active audience mode. This is
+// the leading indicator operators watch — once coverage approaches 100% for the
+// clients that call protected resources, resource-server audience enforcement
+// can be flipped on with ≈0 legitimate denials. RFC-001.
+func (s *oauthService) withAudienceCoverage(details map[string]interface{}, app *model.App) map[string]interface{} {
+	details["audience_registered"] = len(app.Audiences) > 0
+	details["audience_count"] = len(app.Audiences)
+	details["audience_mode"] = s.tokenService.GetAudienceMode()
+	return details
 }
 
 // logClientAuthFailed audits a confidential-client authentication failure at the

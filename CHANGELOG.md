@@ -11,6 +11,14 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / Delegation / DPoP:** Exchanged tokens are now **opportunistically
+  DPoP-bound** (RFC 9449 / RFC 8693). When a token-exchange request carries a
+  valid DPoP proof (verified by the token-endpoint middleware), the issued
+  exchanged access token is sender-constrained via `cnf.jkt` to the requesting
+  client's key; without a proof it is an ordinary bearer token (unchanged). The
+  audit row records `dpop_bound`. _Traceability: C16 → EPIC-16 → RFC-019 → #101._
+
+### Added
 - **Identity / Delegation / Discovery:** OIDC discovery advertises the RFC 8693
   token-exchange grant (`urn:ietf:params:oauth:grant-type:token-exchange` in
   `grant_types_supported`) **when it can actually be issued**

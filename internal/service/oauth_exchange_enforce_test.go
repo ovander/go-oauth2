@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 )
@@ -49,6 +50,46 @@ func TestExchangeToken_EnforceDelegationIssuesScopedActorBoundToken(t *testing.T
 	}
 	if audit.last.Details["outcome"] != "issued" {
 		t.Errorf("audit outcome = %v, want issued", audit.last.Details["outcome"])
+	}
+}
+
+func TestExchangeToken_EnforceDPoPBindsWhenProofPresent(t *testing.T) {
+	svc, audit, ts := newShadowExchangeSvc(t, &model.App{ID: 7, ClientID: "c", AllowTokenExchange: true})
+	svc.tokenExchangeMode = TokenExchangeModeEnforce
+
+	// The token-endpoint middleware would have verified a DPoP proof and stashed
+	// its thumbprint on the context.
+	ctx := context.WithValue(context.Background(), contextkeys.DPoPJKTKey, "jkt-exch")
+	form := exForm(mintToken(t, ts, 100, "read write"), mintToken(t, ts, 200, "read"), "read", "https://api")
+
+	resp, err := svc.ExchangeToken(ctx, form, "c", "")
+	if err != nil {
+		t.Fatalf("enforce dpop: %v", err)
+	}
+	claims, err := ts.VerifyAccessToken(resp.AccessToken)
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if claims.Cnf == nil || claims.Cnf.JKT != "jkt-exch" {
+		t.Fatalf("expected exchanged token bound to jkt, got %+v", claims.Cnf)
+	}
+	if audit.last.Details["dpop_bound"] != true {
+		t.Fatalf("audit dpop_bound = %v, want true", audit.last.Details["dpop_bound"])
+	}
+}
+
+func TestExchangeToken_EnforceUnboundWhenNoProof(t *testing.T) {
+	svc, _, ts := newShadowExchangeSvc(t, &model.App{ID: 7, ClientID: "c", AllowTokenExchange: true})
+	svc.tokenExchangeMode = TokenExchangeModeEnforce
+
+	form := exForm(mintToken(t, ts, 100, "read write"), mintToken(t, ts, 200, "read"), "read", "https://api")
+	resp, err := svc.ExchangeToken(context.Background(), form, "c", "")
+	if err != nil {
+		t.Fatalf("enforce: %v", err)
+	}
+	claims, _ := ts.VerifyAccessToken(resp.AccessToken)
+	if claims.Cnf != nil {
+		t.Fatalf("expected an unbound token without a proof, got %+v", claims.Cnf)
 	}
 }
 

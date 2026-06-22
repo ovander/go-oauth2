@@ -261,9 +261,11 @@ func (ts *TokenService) GenerateBoundAccessToken(user *model.User, app *model.Ap
 // result. The subject, audience, scope and token version are supplied explicitly
 // (recovered from the verified subject token, so the token version still drives
 // revocation), and the act (actor) claim records who is acting — preserving
-// dual-principal visibility downstream. It uses the standard short access-token
-// TTL. This is purely the issuance primitive; the caller owns authorization.
-func (ts *TokenService) GenerateExchangedToken(subject string, audience []string, scope string, tokenVersion int, actor *ActClaim) (token string, expiresIn int, err error) {
+// dual-principal visibility downstream. When jkt is non-empty the token is
+// DPoP-bound (cnf.jkt, RFC 9449) to the requesting client's key. It uses the
+// standard short access-token TTL. This is purely the issuance primitive; the
+// caller owns authorization.
+func (ts *TokenService) GenerateExchangedToken(subject string, audience []string, scope string, tokenVersion int, actor *ActClaim, jkt string) (token string, expiresIn int, err error) {
 	now := time.Now()
 	claims := AccessTokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -279,6 +281,9 @@ func (ts *TokenService) GenerateExchangedToken(subject string, audience []string
 		Type:         "access",
 		TokenVersion: tokenVersion,
 		Act:          actor,
+	}
+	if jkt != "" {
+		claims.Cnf = &Confirmation{JKT: jkt}
 	}
 	signed, serr := ts.signToken(claims)
 	if serr != nil {

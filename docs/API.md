@@ -372,10 +372,14 @@ admin (`admin`/`superadmin`). App-scoped routes require an app role.
   ```json
   { "name": "My App", "url": "https://app.example.com",
     "redirect_uris": ["https://app.example.com/callback"],
-    "is_public": false, "require_pkce": true }
+    "is_public": false, "require_pkce": true,
+    "audiences": ["https://api.example.com"] }
   ```
   Returns `AppWithSecretResponse` including the one-time `client_secret`
-  (empty for public clients).
+  (empty for public clients). `audiences` (optional) registers the resource
+  identifiers tokens for this client are intended for — the canonical `aud`
+  claim (RFC-001). On update, omitting `audiences` leaves it unchanged; a
+  non-null value (including `[]`) replaces the set.
 - `GET /{id}` · `PUT /{id}` · `DELETE /{id}`
 - `POST /{id}/rotate-secret` — issue a new secret (returned once).
 

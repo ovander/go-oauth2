@@ -115,6 +115,7 @@ func (s *appService) Create(ctx context.Context, req dto.CreateAppRequest, owner
 		RequireDPoP:        req.RequireDPoP,
 		AllowTokenExchange: req.AllowTokenExchange,
 		AllowImpersonation: req.AllowImpersonation,
+		Audiences:          model.StringArray(req.Audiences),
 		Active:             true,
 		URL:                req.URL,
 		RedirectURIs:       model.StringArray(req.RedirectURIs),
@@ -156,6 +157,9 @@ func (s *appService) Update(ctx context.Context, id uint, req dto.UpdateAppReque
 	}
 	if req.AllowImpersonation != nil {
 		app.AllowImpersonation = *req.AllowImpersonation
+	}
+	if req.Audiences != nil {
+		app.Audiences = model.StringArray(*req.Audiences)
 	}
 
 	app.UpdatedAt = time.Now()

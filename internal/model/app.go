@@ -49,6 +49,13 @@ type App struct {
 	// identity) — the higher-risk case. Default false. Requires
 	// AllowTokenExchange; delegation (actor present) does not need this flag.
 	AllowImpersonation bool `gorm:"column:allow_impersonation;default:false" json:"allow_impersonation"`
+
+	// Audiences are the resource identifiers (e.g. API URIs) that tokens issued
+	// for this client are intended for — the canonical `aud` claim per RFC-001 /
+	// EPIC-7. Empty means none registered (the current behaviour, where `aud`
+	// carries the client_id). This is registration only; token issuance and
+	// resource-server enforcement are layered in later (warn → enforce) slices.
+	Audiences StringArray `gorm:"type:text[];column:audiences" json:"audiences"`
 }
 
 // IsConfidential returns true when the client has a stored secret hash,

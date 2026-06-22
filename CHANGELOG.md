@@ -11,6 +11,17 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / Audience binding:** Clients can now **register audiences** —
+  the resource identifiers (e.g. API URIs) their tokens are intended for, the
+  canonical `aud` claim per RFC-001 / EPIC-7. New optional `audiences` field on
+  app create/update + `AppResponse`, backed by an additive `apps.audiences`
+  `text[]` column (migration 0014, default empty). This is **registration
+  only** — token issuance and resource-server enforcement are layered in by
+  later (warn → enforce) slices, so there is no behaviour change: `aud` still
+  carries the `client_id` today. Existing clients are unaffected (empty set).
+  _Traceability: C7 → EPIC-7 → RFC-001 → #111._
+
+### Added
 - **Identity / Impersonation:** Impersonation **step-up** (RFC 8693 / EPIC-17).
   Because a back-channel token exchange has no interactive user, the control is
   the **freshness of the impersonated subject's session**: an impersonation

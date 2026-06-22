@@ -53,14 +53,16 @@ type Config struct {
 	// without MFA), or "enforce" (deny until the admin enrolls). RFC-011.
 	AdminMFAPolicy string
 	// DPoPMode controls DPoP (RFC 9449) sender-constraint handling at the token
-	// endpoint: "off" (default), "observe" (verify any DPoP proof and log
-	// telemetry without affecting responses), or "enforce" (reserved for a later
-	// slice; currently behaves as observe). RFC-003.
+	// endpoint: "off" (default), "observe" (verify any DPoP proof, log telemetry,
+	// and bind the issued token when a valid proof is sent, but never reject), or
+	// "enforce" (same as observe, but a proof that is present and invalid is
+	// rejected with 400 invalid_dpop_proof; a request with no proof still
+	// proceeds). RFC-003.
 	DPoPMode string
 	// TokenExchangeMode controls OAuth 2.0 Token Exchange (RFC 8693): "off"
 	// (default — the grant is unsupported), "shadow" (validate + audit attempts
-	// but never issue an exchanged token), or "enforce" (reserved; actually
-	// issue). RFC-019.
+	// but never issue an exchanged token), or "enforce" (validate, audit, and
+	// actually issue the exchanged token). RFC-019.
 	TokenExchangeMode string
 	// ImpersonationTokenTTL time-boxes access tokens minted via impersonation
 	// (the actor-absent token-exchange case, EPIC-17). Impersonation is

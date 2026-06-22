@@ -144,6 +144,13 @@ type Config struct {
 	// Defaults to 24h (AUDIT_INTEGRITY_SCAN_LOOKBACK_SECONDS).
 	AuditIntegrityScanLookback time.Duration
 
+	// UsedTokenCleanupInterval is how often expired rows are pruned from the
+	// used_tokens table (single-use refresh JTIs + the per-token revocation
+	// blacklist). Without pruning the table grows without bound. Defaults to 1h;
+	// 0 disables the scheduled cleanup (USED_TOKEN_CLEANUP_INTERVAL_SECONDS).
+	// EPIC-14 / RFC-012.
+	UsedTokenCleanupInterval time.Duration
+
 	// Trusted Proxies
 	// Comma-separated IPs or CIDR ranges whose X-Forwarded-For / X-Real-IP
 	// headers are trusted for real-IP extraction (e.g. "10.0.0.0/8,172.16.0.0/12").
@@ -255,6 +262,7 @@ func Load() *Config {
 		// 0 = disabled; lookback defaults to 24h.
 		AuditIntegrityScanInterval: time.Duration(getEnvInt("AUDIT_INTEGRITY_SCAN_INTERVAL_SECONDS", 0)) * time.Second,
 		AuditIntegrityScanLookback: time.Duration(getEnvInt("AUDIT_INTEGRITY_SCAN_LOOKBACK_SECONDS", 86400)) * time.Second,
+		UsedTokenCleanupInterval:   time.Duration(getEnvInt("USED_TOKEN_CLEANUP_INTERVAL_SECONDS", 3600)) * time.Second,
 
 		// Trusted Proxies
 		TrustedProxies: getEnv("TRUSTED_PROXIES", ""),

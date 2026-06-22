@@ -853,25 +853,23 @@ func validateScope(scope string) error {
 	return nil
 }
 
-// logSecurityEvent logs a security event to the audit log
-// ExchangeToken implements the RFC 8693 token-exchange grant. This slice wires
-// the grant in "shadow" mode only: it parses and classifies the request, audits
-// the attempt (delegation vs impersonation, the requesting client, and whether
-// that client is authorized), and then reports the grant as unsupported — no
-// token is verified or issued. Subject/actor verification + the downscope
-// policy, and actual issuance, are later slices. In "off" mode the grant is
-// unsupported and nothing is audited.
+// ExchangeToken implements the RFC 8693 token-exchange grant in "shadow" mode:
+// it verifies the presented subject (and actor) tokens, evaluates the
+// authorization policy, and audits the would-be decision — but never issues a
+// token (the grant is reported unsupported). "off" reports the grant unsupported
+// without auditing. Actual issuance is the enforce slice.
 func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clientID, clientSecret string) (*dto.TokenResponse, error) {
 	if s.tokenExchangeMode != TokenExchangeModeShadow && s.tokenExchangeMode != TokenExchangeModeEnforce {
 		return nil, ErrInvalidGrantType
 	}
 
-	// Resolve the requesting client for telemetry (its capability flags).
+	// Resolve the requesting client for the policy + telemetry.
+	var app *model.App
 	var appID *uint
 	allowTE, allowImp := false, false
-	if app, aerr := s.appRepo.FindByClientID(ctx, clientID); aerr == nil {
-		appID = &app.ID
-		allowTE, allowImp = app.AllowTokenExchange, app.AllowImpersonation
+	if a, aerr := s.appRepo.FindByClientID(ctx, clientID); aerr == nil {
+		app, appID = a, &a.ID
+		allowTE, allowImp = a.AllowTokenExchange, a.AllowImpersonation
 	}
 
 	details := map[string]interface{}{
@@ -880,24 +878,89 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 		"allow_token_exchange": allowTE,
 		"allow_impersonation":  allowImp,
 	}
+	// Audit the (would-be) decision exactly once, on every return path.
+	defer func() {
+		s.logSecurityEvent(ctx, model.SecurityEventTokenExchange, nil, appID, false, details)
+	}()
 
 	req, perr := tokenexchange.Parse(form)
 	if perr != nil {
 		details["outcome"] = "parse_error"
 		details["error"] = perr.Error()
-	} else {
-		details["outcome"] = "shadow_not_issued"
-		details["is_delegation"] = req.IsDelegation()
-		details["subject_token_type"] = req.SubjectTokenType
-		details["requested_token_type"] = req.RequestedTokenType
+		return nil, ErrInvalidGrantType
 	}
-	s.logSecurityEvent(ctx, model.SecurityEventTokenExchange, nil, appID, false, details)
+	details["is_delegation"] = req.IsDelegation()
+	details["subject_token_type"] = req.SubjectTokenType
+	details["requested_token_type"] = req.RequestedTokenType
 
-	// Shadow: never issue. Report the grant as unsupported so the capability is
-	// not yet exposed to clients.
+	// Verify the subject token and recover its subject + scope.
+	subjectSub, subjectScope, sverr := s.verifyExchangeToken(req.SubjectToken, req.SubjectTokenType)
+	if sverr != nil {
+		details["outcome"] = "invalid_subject_token"
+		return nil, ErrInvalidGrantType
+	}
+	details["subject_sub"] = subjectSub
+
+	// For delegation, verify the actor token too.
+	if req.IsDelegation() {
+		actorSub, _, averr := s.verifyExchangeToken(req.ActorToken, req.ActorTokenType)
+		if averr != nil {
+			details["outcome"] = "invalid_actor_token"
+			return nil, ErrInvalidGrantType
+		}
+		details["actor_sub"] = actorSub
+	}
+
+	// Authorization policy (default-deny, downscope-only, audience-bound).
+	if app == nil {
+		details["outcome"] = "denied"
+		details["deny_reason"] = "unknown_client"
+		return nil, ErrInvalidGrantType
+	}
+	decision, derr := authorizeExchange(app, req, subjectScope)
+	if derr != nil {
+		details["outcome"] = "denied"
+		details["deny_reason"] = derr.Error()
+		return nil, ErrInvalidGrantType
+	}
+
+	details["outcome"] = "shadow_allow"
+	details["granted_scope"] = decision.GrantedScope
+	if len(decision.Audience) > 0 {
+		details["audience"] = decision.Audience
+	}
+	// Shadow: never issue. The audit row records what would have been issued.
 	return nil, ErrInvalidGrantType
 }
 
+// verifyExchangeToken verifies a token presented to the exchange and returns its
+// subject and (where applicable) scope, dispatching on the RFC 8693 token type.
+func (s *oauthService) verifyExchangeToken(tokenStr, tokenType string) (sub, scope string, err error) {
+	switch tokenType {
+	case tokenexchange.TokenTypeAccessToken, tokenexchange.TokenTypeJWT:
+		c, e := s.tokenService.VerifyAccessToken(tokenStr)
+		if e != nil {
+			return "", "", e
+		}
+		return c.Subject, c.Scope, nil
+	case tokenexchange.TokenTypeRefreshToken:
+		c, e := s.tokenService.VerifyRefreshToken(tokenStr)
+		if e != nil {
+			return "", "", e
+		}
+		return c.Subject, c.Scope, nil
+	case tokenexchange.TokenTypeIDToken:
+		c, e := s.tokenService.VerifyIDToken(tokenStr)
+		if e != nil {
+			return "", "", e
+		}
+		return c.Subject, "", nil
+	default:
+		return "", "", fmt.Errorf("unsupported token type %q", tokenType)
+	}
+}
+
+// logSecurityEvent logs a security event to the audit log.
 func (s *oauthService) logSecurityEvent(ctx context.Context, eventType model.SecurityEventType, userID *uint, appID *uint, success bool, details map[string]interface{}) {
 	if s.auditRepo == nil {
 		return

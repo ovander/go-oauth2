@@ -67,6 +67,11 @@ type IntrospectResponse struct {
 	Exp       int64  `json:"exp,omitempty"`
 	Iat       int64  `json:"iat,omitempty"`
 	Sub       string `json:"sub,omitempty"`
+	// Aud is the token's audience (RFC 7662 §2.2) — the resource identifiers it
+	// is intended for. A resource server introspecting a token verifies its own
+	// identifier appears here (RFC-001 / EPIC-7). Carries the client_id plus any
+	// registered audiences when AUDIENCE_MODE=dual.
+	Aud []string `json:"aud,omitempty"`
 	// AuthTime is the end-user's last authentication time (RFC 9068 §2.2.1 /
 	// OIDC auth_time), surfaced so a resource server introspecting a token can
 	// make freshness/step-up decisions. Omitted when the token carries no

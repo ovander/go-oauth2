@@ -336,6 +336,10 @@ Requires client authentication (Basic or body credentials). Returns
 or `{ "active": false }` for invalid/revoked/expired tokens. Additional fields
 surface security metadata so a resource server can act on it without locally
 parsing the JWT:
+- `aud` — the token's audience (RFC 7662 §2.2): the resource identifiers it is
+  intended for. A resource server verifies its own identifier appears here
+  (RFC-001). Carries the `client_id` plus any registered audiences under
+  `AUDIENCE_MODE=dual`.
 - `auth_time` — the end-user's last authentication time (RFC 9068 §2.2.1) for
   freshness/step-up decisions. Omitted when the token has no associated user
   authentication (client-credentials / token-exchange results).

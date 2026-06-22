@@ -11,6 +11,14 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / Audience binding / Introspection:** Token introspection now
+  **surfaces `aud`** (RFC 7662 §2.2), so a resource server that introspects a
+  token — rather than verifying the JWT locally — can confirm its own resource
+  identifier is in the audience (RFC-001 / EPIC-7). Carries the `client_id` plus
+  any registered audiences under `AUDIENCE_MODE=dual`. Additive; `client_id`
+  remains the first audience entry. _Traceability: C7 → EPIC-7 → RFC-001 → #115._
+
+### Added
 - **Identity / Audience binding:** Access tokens can now carry the client's
   **registered audiences** in `aud` (RFC-001 / EPIC-7), controlled by
   `AUDIENCE_MODE`: `off` (default — `aud` is the `client_id`, unchanged) or

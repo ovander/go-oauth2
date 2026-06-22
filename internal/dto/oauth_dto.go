@@ -71,11 +71,22 @@ type IntrospectResponse struct {
 	// token is sender-constrained (DPoP). It lets a resource server learn the
 	// `jkt` it must match against the request's DPoP proof.
 	Cnf *CnfClaim `json:"cnf,omitempty"`
+	// Act is the RFC 8693 §4.1 actor claim, present on tokens minted via token
+	// exchange (delegation/impersonation). It lets a resource server see who is
+	// acting on the subject's behalf.
+	Act *ActClaim `json:"act,omitempty"`
 }
 
 // CnfClaim is the introspection confirmation claim (carries the DPoP `jkt`).
 type CnfClaim struct {
 	JKT string `json:"jkt,omitempty"`
+}
+
+// ActClaim is the introspection actor claim (RFC 8693 §4.1), nestable to
+// represent a delegation chain.
+type ActClaim struct {
+	Sub string    `json:"sub"`
+	Act *ActClaim `json:"act,omitempty"`
 }
 
 type OAuthErrorResponse struct {

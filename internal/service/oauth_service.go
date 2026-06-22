@@ -684,7 +684,18 @@ func (s *oauthService) Introspect(ctx context.Context, token string) (*dto.Intro
 	if claims.Cnf != nil && claims.Cnf.JKT != "" {
 		resp.Cnf = &dto.CnfClaim{JKT: claims.Cnf.JKT}
 	}
+	// Surface the actor chain for delegated/impersonated tokens (RFC 8693 §4.1).
+	resp.Act = mapActClaim(claims.Act)
 	return resp, nil
+}
+
+// mapActClaim converts the auth actor claim to its introspection DTO,
+// preserving the (possibly nested) delegation chain. Returns nil for nil input.
+func mapActClaim(a *auth.ActClaim) *dto.ActClaim {
+	if a == nil {
+		return nil
+	}
+	return &dto.ActClaim{Sub: a.Sub, Act: mapActClaim(a.Act)}
 }
 
 // Revoke handles token revocation (RFC 7009).

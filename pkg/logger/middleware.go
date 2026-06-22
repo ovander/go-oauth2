@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
+	"github.com/sirupsen/logrus"
 )
 
 // RequestLoggerMiddleware logs incoming HTTP requests in structured Logrus format.
@@ -45,10 +46,25 @@ func RequestLoggerMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(ww, r)
 
 		duration := time.Since(t0)
+		// Level by outcome so error rates are queryable/alertable by level:
+		// 5xx → Error, 4xx → Warn, else Info.
 		entry.WithFields(Fields{
 			"status":   ww.Status(),
 			"bytes":    ww.BytesWritten(),
 			"duration": duration,
-		}).Info("📤 Request handled")
+		}).Log(levelForStatus(ww.Status()), "📤 Request handled")
 	})
+}
+
+// levelForStatus maps an HTTP status code to a log level: 5xx → Error, 4xx →
+// Warn, otherwise Info.
+func levelForStatus(status int) logrus.Level {
+	switch {
+	case status >= 500:
+		return logrus.ErrorLevel
+	case status >= 400:
+		return logrus.WarnLevel
+	default:
+		return logrus.InfoLevel
+	}
 }

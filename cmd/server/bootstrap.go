@@ -359,6 +359,7 @@ func Bootstrap(cfg *config.Config) *App {
 		cfg.ImpersonationTokenTTL,   // EPIC-17: time-box impersonated tokens
 		cfg.ImpersonationStepUpMode, // EPIC-17: impersonation step-up (subject freshness)
 		cfg.ImpersonationMaxAuthAge,
+		cfg.DelegationStepUpMode, // EPIC-17: delegation step-up (actor MFA)
 	)
 
 	// ==========================================

@@ -67,6 +67,10 @@ var (
 	// ErrStepUpRequired indicates an impersonation exchange was denied because the
 	// subject's authentication is too old (EPIC-17 step-up). Maps to invalid_grant.
 	ErrStepUpRequired = errors.New("impersonation requires a more recent subject authentication")
+	// ErrDelegationStepUpRequired indicates a delegation exchange was denied
+	// because the actor did not authenticate with MFA (EPIC-17 step-up). Maps to
+	// invalid_grant.
+	ErrDelegationStepUpRequired = errors.New("delegation requires the actor to have authenticated with MFA")
 )
 
 var validScopes = map[string]bool{
@@ -124,6 +128,11 @@ type oauthService struct {
 	// impersonationMaxAuthAge is the freshness window for impersonation step-up.
 	// Zero disables the check.
 	impersonationMaxAuthAge time.Duration
+	// delegationStepUpMode is "off" (default), "observe", or "enforce" (EPIC-17
+	// step-up). When not off, a delegation exchange requires the actor token to
+	// evidence MFA (amr ⊇ {mfa}); observe audits the would-be denial, enforce
+	// denies it.
+	delegationStepUpMode string
 }
 
 // Token-exchange rollout modes (RFC 8693 / EPIC-16).
@@ -160,6 +169,7 @@ func NewOAuthService(
 	impersonationTokenTTL time.Duration,
 	impersonationStepUpMode string,
 	impersonationMaxAuthAge time.Duration,
+	delegationStepUpMode string,
 ) OAuthService {
 	requireHTTPS := strings.HasPrefix(issuer, "https://")
 
@@ -171,6 +181,7 @@ func NewOAuthService(
 		"impersonation_token_ttl":    impersonationTokenTTL.String(),
 		"impersonation_stepup_mode":  impersonationStepUpMode,
 		"impersonation_max_auth_age": impersonationMaxAuthAge.String(),
+		"delegation_stepup_mode":     delegationStepUpMode,
 	}).Info("✅ OAuth service initialized")
 
 	return &oauthService{
@@ -188,6 +199,7 @@ func NewOAuthService(
 		impersonationTokenTTL:   impersonationTokenTTL,
 		impersonationStepUpMode: impersonationStepUpMode,
 		impersonationMaxAuthAge: impersonationMaxAuthAge,
+		delegationStepUpMode:    delegationStepUpMode,
 	}
 }
 
@@ -726,6 +738,16 @@ func (s *oauthService) Introspect(ctx context.Context, token string) (*dto.Intro
 	return resp, nil
 }
 
+// amrContains reports whether the authentication-methods list includes method.
+func amrContains(amr []string, method string) bool {
+	for _, m := range amr {
+		if m == method {
+			return true
+		}
+	}
+	return false
+}
+
 // mapActClaim converts the auth actor claim to its introspection DTO,
 // preserving the (possibly nested) delegation chain. Returns nil for nil input.
 func mapActClaim(a *auth.ActClaim) *dto.ActClaim {
@@ -957,20 +979,22 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 
 	// Verify the subject token and recover its subject, scope, version, and the
 	// end-user's authentication time (for the impersonation step-up check).
-	subjectSub, subjectScope, subjectVer, subjectAuthTime, sverr := s.verifyExchangeToken(req.SubjectToken, req.SubjectTokenType)
+	subjectSub, subjectScope, subjectVer, subjectAuthTime, _, sverr := s.verifyExchangeToken(req.SubjectToken, req.SubjectTokenType)
 	if sverr != nil {
 		return fail("invalid_subject_token", ErrInvalidToken)
 	}
 	details["subject_sub"] = subjectSub
 
-	// For delegation, verify the actor token too.
+	// For delegation, verify the actor token too and recover its authentication
+	// methods (amr) for the delegation step-up check.
 	actorSub := ""
+	var actorAmr []string
 	if req.IsDelegation() {
-		as, _, _, _, averr := s.verifyExchangeToken(req.ActorToken, req.ActorTokenType)
+		as, _, _, _, aamr, averr := s.verifyExchangeToken(req.ActorToken, req.ActorTokenType)
 		if averr != nil {
 			return fail("invalid_actor_token", ErrInvalidToken)
 		}
-		actorSub = as
+		actorSub, actorAmr = as, aamr
 		details["actor_sub"] = actorSub
 	}
 
@@ -1026,6 +1050,27 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 		}
 	}
 
+	// Delegation step-up (EPIC-17 / RFC-016): the human actor doing the
+	// delegating must have authenticated with MFA. Unlike impersonation (no human
+	// at the exchange), delegation carries an actor token whose `amr` evidences
+	// how that human logged in, so requiring `mfa` there is the step-up control.
+	// An actor token without `amr` (or without `mfa`) cannot prove it. observe
+	// audits the would-be denial but still issues; enforce denies.
+	if !decision.IsImpersonation && s.delegationStepUpMode != stepUpModeOff {
+		details["delegation_stepup_mode"] = s.delegationStepUpMode
+		if !amrContains(actorAmr, "mfa") {
+			switch s.delegationStepUpMode {
+			case stepUpModeEnforce:
+				details["deny_reason"] = ErrDelegationStepUpRequired.Error()
+				return fail("denied", ErrDelegationStepUpRequired)
+			case stepUpModeObserve:
+				details["delegation_stepup"] = "would_deny"
+			}
+		} else {
+			details["delegation_stepup"] = "mfa"
+		}
+	}
+
 	// Enforce: mint the exchanged token. The act (actor) claim records who is
 	// acting — the actor token's subject for delegation, the requesting client
 	// for impersonation — so both principals stay visible downstream.
@@ -1078,31 +1123,31 @@ func (s *oauthService) impersonationExchangeTTL(isImpersonation bool) time.Durat
 }
 
 // verifyExchangeToken verifies a token presented to the exchange and returns its
-// subject, scope, token version, and the end-user authentication time
-// (auth_time, 0 when the token carries none), dispatching on the RFC 8693 token
-// type.
-func (s *oauthService) verifyExchangeToken(tokenStr, tokenType string) (sub, scope string, version int, authTime int64, err error) {
+// subject, scope, token version, the end-user authentication time (auth_time, 0
+// when the token carries none), and the authentication methods (amr, nil when
+// the token carries none), dispatching on the RFC 8693 token type.
+func (s *oauthService) verifyExchangeToken(tokenStr, tokenType string) (sub, scope string, version int, authTime int64, amr []string, err error) {
 	switch tokenType {
 	case tokenexchange.TokenTypeAccessToken, tokenexchange.TokenTypeJWT:
 		c, e := s.tokenService.VerifyAccessToken(tokenStr)
 		if e != nil {
-			return "", "", 0, 0, e
+			return "", "", 0, 0, nil, e
 		}
-		return c.Subject, c.Scope, c.TokenVersion, c.AuthTime, nil
+		return c.Subject, c.Scope, c.TokenVersion, c.AuthTime, c.Amr, nil
 	case tokenexchange.TokenTypeRefreshToken:
 		c, e := s.tokenService.VerifyRefreshToken(tokenStr)
 		if e != nil {
-			return "", "", 0, 0, e
+			return "", "", 0, 0, nil, e
 		}
-		return c.Subject, c.Scope, c.Ver, c.AuthTime, nil
+		return c.Subject, c.Scope, c.Ver, c.AuthTime, nil, nil
 	case tokenexchange.TokenTypeIDToken:
 		c, e := s.tokenService.VerifyIDToken(tokenStr)
 		if e != nil {
-			return "", "", 0, 0, e
+			return "", "", 0, 0, nil, e
 		}
-		return c.Subject, "", 0, c.AuthTime, nil
+		return c.Subject, "", 0, c.AuthTime, c.Amr, nil
 	default:
-		return "", "", 0, 0, fmt.Errorf("unsupported token type %q", tokenType)
+		return "", "", 0, 0, nil, fmt.Errorf("unsupported token type %q", tokenType)
 	}
 }
 

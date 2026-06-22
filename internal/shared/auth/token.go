@@ -85,6 +85,15 @@ type Confirmation struct {
 	JKT string `json:"jkt,omitempty"`
 }
 
+// ActClaim is the RFC 8693 §4.1 `act` (actor) claim. It records the party
+// currently acting on the subject's behalf in a delegation, and nests to
+// represent a chain of delegation (the outermost `act` is the most recent
+// actor). Carrying it keeps both principals visible to downstream services.
+type ActClaim struct {
+	Sub string    `json:"sub"`
+	Act *ActClaim `json:"act,omitempty"`
+}
+
 // AccessTokenClaims represents access token claims
 type AccessTokenClaims struct {
 	jwt.RegisteredClaims
@@ -97,6 +106,9 @@ type AccessTokenClaims struct {
 	// Cnf is the optional DPoP/RFC 7800 confirmation claim (sender-constraint).
 	// Absent (nil) for ordinary bearer tokens.
 	Cnf *Confirmation `json:"cnf,omitempty"`
+	// Act is the optional RFC 8693 actor claim, present only on tokens minted via
+	// token exchange (delegation). Absent (nil) for ordinary tokens.
+	Act *ActClaim `json:"act,omitempty"`
 }
 
 // RefreshTokenClaims represents refresh token claims

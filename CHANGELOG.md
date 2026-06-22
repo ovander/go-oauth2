@@ -11,6 +11,17 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / Delegation:** Token-exchange shadow mode now performs **full
+  validation** (RFC 8693 / EPIC-16). `ExchangeToken` verifies the presented
+  subject (and, for delegation, actor) tokens, recovers the subject's scope, and
+  runs the authorization policy (`authorizeExchange`) — then audits the *would-be*
+  decision (`shadow_allow` with the downscoped grant + audience, or `denied` with
+  the reason; plus `invalid_subject_token` / `invalid_actor_token` /
+  `parse_error`). It still **issues nothing** and reports the grant unsupported.
+  This completes the observe step; only issuance (`enforce`) remains.
+  _Traceability: C16 → EPIC-16 → RFC-019 → #95._
+
+### Added
 - **Identity / Delegation:** Token-exchange grant **dispatch + shadow telemetry**
   (RFC 8693 / EPIC-16). `POST /oauth/token` now recognizes the token-exchange
   grant and routes it to `OAuthService.ExchangeToken`, gated by

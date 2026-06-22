@@ -329,6 +329,23 @@ var migrations = []Migration{
 			return nil
 		},
 	},
+	{
+		// RFC-001 / EPIC-7: per-client registered audiences (resource
+		// identifiers) for the canonical `aud` claim. Additive text[] column
+		// defaulting to an empty array, so existing clients are unaffected;
+		// token issuance and enforcement are layered in by later slices.
+		ID:   "0014",
+		Name: "add_apps.audiences",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("apps") {
+				return nil
+			}
+			if db.Migrator().HasColumn(&model.App{}, "audiences") {
+				return nil
+			}
+			return db.Exec("ALTER TABLE apps ADD COLUMN audiences TEXT[] NOT NULL DEFAULT '{}'").Error
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

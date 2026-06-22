@@ -955,6 +955,7 @@ func appToResponse(app model.App) dto.AppResponse {
 		RequireDPoP:        app.RequireDPoP,
 		AllowTokenExchange: app.AllowTokenExchange,
 		AllowImpersonation: app.AllowImpersonation,
+		Audiences:          app.Audiences,
 		URL:                app.URL,
 		RedirectURIs:       app.RedirectURIs,
 		OwnerID:            app.OwnerID,

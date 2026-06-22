@@ -19,6 +19,10 @@ type CreateAppRequest struct {
 	// client (delegation, and the higher-risk impersonation, respectively).
 	AllowTokenExchange bool `json:"allow_token_exchange"`
 	AllowImpersonation bool `json:"allow_impersonation"`
+	// Audiences are the resource identifiers tokens for this client are intended
+	// for — the canonical `aud` claim (RFC-001 / EPIC-7). Optional; empty means
+	// none registered.
+	Audiences []string `json:"audiences,omitempty"`
 }
 
 type UpdateAppRequest struct {
@@ -33,6 +37,10 @@ type UpdateAppRequest struct {
 	// client. Omitted = unchanged.
 	AllowTokenExchange *bool `json:"allow_token_exchange,omitempty"`
 	AllowImpersonation *bool `json:"allow_impersonation,omitempty"`
+	// Audiences replaces the client's registered resource identifiers (RFC-001 /
+	// EPIC-7). Omitted (nil) = unchanged; a non-nil value (including an empty
+	// array) replaces the set.
+	Audiences *[]string `json:"audiences,omitempty"`
 }
 
 type AddAppUserRequest struct {
@@ -57,6 +65,7 @@ type AppResponse struct {
 	RequireDPoP        bool      `json:"require_dpop"`
 	AllowTokenExchange bool      `json:"allow_token_exchange"`
 	AllowImpersonation bool      `json:"allow_impersonation"`
+	Audiences          []string  `json:"audiences"`
 	URL                *string   `json:"url,omitempty"`
 	RedirectURIs       []string  `json:"redirect_uris"`
 	OwnerID            *uint     `json:"owner_id,omitempty"`

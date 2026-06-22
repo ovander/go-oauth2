@@ -22,6 +22,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
   RFC 9700 → #150._
 
 ### Added
+- **Tests / Integration (Phase 1):** Added a **router-level integration harness**
+  (docs/program/TEST-STRATEGY.md) that drives the OAuth/OIDC endpoints through a
+  real `chi` router with the real middleware stack (JSONContentType /
+  NoCacheHeaders / DPoP). Covers discovery, JWKS, the token endpoint, and
+  introspection end-to-end — asserting routing, status codes, `no-store` headers
+  (RFC 7662 §4), content type, method handling (405), and 404s — the HTTP wiring
+  that handler unit tests can't see. Test-only; no production change.
+  _Traceability: C6 → EPIC-6 → RFC-014 → #148._
+
+### Added
 - **CI / Test strategy:** Added `docs/program/TEST-STRATEGY.md` — the
   identity-server test-assurance plan (risk-tiered coverage, adversarial / fuzz /
   mutation / conformance layers, phased roadmap, and the eventual blocking CI

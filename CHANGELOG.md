@@ -11,6 +11,18 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / Delegation:** Token-exchange **authorization policy** (RFC 8693 /
+  EPIC-16) as a pure decision function. `authorizeExchange` enforces the agreed
+  best-practice rules — default-deny (`allow_token_exchange` required),
+  impersonation gated by `allow_impersonation`, **downscope-only** (requested
+  scope ⊆ subject scope; empty defaults to the subject's), and **audience-bound**
+  (a target audience or resource is required) — returning the downscoped grant +
+  bound audience + delegation/impersonation classification, with a typed error
+  per violation. It verifies no tokens and mints nothing; wiring it at the token
+  endpoint (observe-first) is the next slice. _Traceability: C16 → EPIC-16 →
+  RFC-019 → #90._
+
+### Added
 - **Identity / Delegation:** Per-client token-exchange capability flags
   (RFC 8693 / EPIC-16). New `apps.allow_token_exchange` and
   `apps.allow_impersonation` columns (migration `0013`, both default false),

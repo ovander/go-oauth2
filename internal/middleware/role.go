@@ -3,12 +3,38 @@ package middleware
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 )
+
+// RequirePasswordChangeComplete rejects requests from an authenticated user who
+// is flagged MustChangePassword, returning 403 with the machine-readable code
+// "password_change_required" so the client can force the change-password flow.
+//
+// It must run AFTER AuthMiddleware (which populates CurrentUserKey). Paths whose
+// URL ends with one of exemptSuffixes are allowed through so the change-password
+// (and logout) endpoints stay reachable while a change is pending.
+func RequirePasswordChangeComplete(exemptSuffixes ...string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			for _, suffix := range exemptSuffixes {
+				if suffix != "" && strings.HasSuffix(r.URL.Path, suffix) {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+			if user, ok := r.Context().Value(contextkeys.CurrentUserKey).(*model.User); ok && user != nil && user.MustChangePassword {
+				http.Error(w, `{"error": "password_change_required"}`, http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
 
 // RequireRole checks if the user has one of the specified roles
 func RequireRole(roles ...string) func(http.Handler) http.Handler {

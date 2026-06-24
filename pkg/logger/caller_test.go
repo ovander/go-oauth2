@@ -36,6 +36,25 @@ func TestCallerHook_PointsAtRealCallSite(t *testing.T) {
 	}
 }
 
+// TestShortCaller verifies module paths become module-relative and non-module
+// paths are reduced to their last two segments (never absolute).
+func TestShortCaller(t *testing.T) {
+	cases := map[string]string{
+		modRoot + "internal/handler/oauth_handler.go": "internal/handler/oauth_handler.go",
+		"/usr/lib/go/src/runtime/proc.go":             "runtime/proc.go",
+		"/root/go/pkg/mod/x@v1/foo/bar/baz.go":        "bar/baz.go",
+		"file.go":                                     "file.go",
+	}
+	for in, want := range cases {
+		if got := shortCaller(in); got != want {
+			t.Errorf("shortCaller(%q) = %q, want %q", in, got, want)
+		}
+		if strings.HasPrefix(shortCaller(in), "/") {
+			t.Errorf("shortCaller(%q) leaked an absolute path: %q", in, shortCaller(in))
+		}
+	}
+}
+
 // TestCallerHook_PreservesExistingCaller verifies the hook does not overwrite a
 // caller that an upstream (e.g. the GORM logger) already set.
 func TestCallerHook_PreservesExistingCaller(t *testing.T) {

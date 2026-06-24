@@ -111,8 +111,7 @@ func startDualPortMode(cfg *config.Config, app *App) {
 
 	// Start Admin server
 	go func() {
-		logger.Infof("🔒 Admin API starting on port %s (internal)", cfg.AdminPort)
-		logger.Info("   Ensure this port is firewalled from public access!")
+		logger.Warnf("🔒 Admin API listening on port %s (internal) — ensure it is firewalled from public access", cfg.AdminPort)
 
 		if err := adminSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatalf("Failed to start Admin server: %v", err)

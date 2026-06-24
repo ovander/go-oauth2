@@ -10,6 +10,8 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-06-24
+
 ### Fixed
 - **Observability / Startup:** Polished startup logs — the caller hook now
   **shortens non-module paths** to their last two segments (e.g.

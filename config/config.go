@@ -34,6 +34,17 @@ type Config struct {
 	// window. Default 5 min; 0 disables the gate.
 	AdminElevationMaxAge time.Duration
 
+	// AdminConsoleRedirectURIs are the exact-match redirect URIs registered for
+	// the first-party admin-console public PKCE client. When set together with
+	// AdminConsoleClientID, that client is seeded at startup (public, PKCE
+	// mandatory, no secret). Comma-separated; empty skips seeding.
+	AdminConsoleRedirectURIs string
+
+	// AdminPasswordLoginEnabled gates the legacy /api/admin/login password flow.
+	// Default true (backward compatible); set false once the admin console is on
+	// Authorization Code + PKCE so the deprecated password endpoint is refused.
+	AdminPasswordLoginEnabled bool
+
 	// Database
 	DatabaseURL string
 	DBPoolSize  int
@@ -227,6 +238,9 @@ func Load() *Config {
 		// require an authentication (auth_time) no older than this. Default 300s
 		// (5 min); 0 disables the gate.
 		AdminElevationMaxAge: time.Duration(getEnvInt("ADMIN_ELEVATION_MAX_AGE", 300)) * time.Second,
+
+		AdminConsoleRedirectURIs:  getEnv("ADMIN_CONSOLE_REDIRECT_URIS", ""),
+		AdminPasswordLoginEnabled: getEnvBool("ADMIN_PASSWORD_LOGIN_ENABLED", true),
 
 		// Database
 		DatabaseURL: getEnv("DATABASE_URL", "postgres://localhost/socrate_auth_dev"),

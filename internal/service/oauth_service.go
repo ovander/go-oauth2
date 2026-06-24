@@ -718,6 +718,42 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 	}, nil
 }
 
+// RefreshFromBearer redeems a refresh token presented outside the OAuth token
+// endpoint — e.g. POST /api/auth/refresh — where the client is not separately
+// authenticated. It derives the client from the token's audience and runs the
+// single hardened refresh grant (the same handleRefreshTokenGrant code path as
+// /oauth/token), so rotation, single-use/replay detection, token-family
+// revocation and DPoP binding all apply uniformly.
+//
+// This is the bearer path for public first-party clients (the admin console,
+// SPAs). Confidential clients (those with a stored secret) are rejected here
+// because no client secret is presented — they must use /oauth/token with
+// client authentication.
+func (s *oauthService) RefreshFromBearer(ctx context.Context, refreshToken string) (*dto.RefreshResponse, error) {
+	claims, err := s.tokenService.VerifyRefreshToken(refreshToken)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidToken, err)
+	}
+	clientID := ""
+	if len(claims.Audience) > 0 {
+		clientID = claims.Audience[0]
+	}
+	resp, err := s.handleRefreshTokenGrant(ctx, dto.TokenRequest{
+		GrantType:    "refresh_token",
+		RefreshToken: refreshToken,
+	}, clientID, "")
+	if err != nil {
+		return nil, err
+	}
+	return &dto.RefreshResponse{
+		AccessToken:  resp.AccessToken,
+		RefreshToken: resp.RefreshToken,
+		IDToken:      resp.IDToken,
+		TokenType:    resp.TokenType,
+		ExpiresIn:    resp.ExpiresIn,
+	}, nil
+}
+
 func (s *oauthService) handleClientCredentialsGrant(ctx context.Context, req dto.TokenRequest, clientID, clientSecret string) (*dto.TokenResponse, error) {
 	if clientSecret == "" {
 		s.logClientAuthFailed(ctx, clientID, "missing_secret", nil)

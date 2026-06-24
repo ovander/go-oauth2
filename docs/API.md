@@ -262,6 +262,15 @@ Errors: `401` invalid credentials, `403` account locked / email not verified.
 ### 5.4 Refresh — `POST /api/auth/refresh`
 `{ "refresh_token": "eyJ..." }` → new `{ access_token, refresh_token, id_token, token_type, expires_in }`. `401` if invalid/expired. (Rate-limited together with `/oauth/token`.)
 
+This endpoint runs the **same single refresh code path** as `/oauth/token`
+(`grant_type=refresh_token`): one hardened implementation enforcing
+**single-use rotation, replay detection, token-family revocation on reuse**
+(`REFRESH_REUSE_MODE`), token-version revocation, and **DPoP** sender-constraint
+binding. The client is identified by the refresh token's own `aud` claim — no
+`client_id` is sent here. **Confidential clients** (those with a stored secret)
+must refresh at `/oauth/token` with client authentication; this bearer endpoint
+is for **public first-party clients** (the admin console, SPAs).
+
 ### 5.5 Logout — `POST /api/auth/logout`
 Requires `Authorization: Bearer <access_token>`. Increments the user's
 `token_version` (revokes all their tokens). `200`: `{ "message": "Logged out successfully" }`

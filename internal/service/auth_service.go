@@ -35,6 +35,16 @@ type AuthService interface {
 	WithMFA(mfa MFAService) AuthService
 }
 
+// RefreshGranter performs a refresh-token grant using the single hardened
+// implementation (rotation + single-use/replay detection + token-family
+// revocation + DPoP binding) that also backs the /oauth/token refresh grant.
+// The bearer refresh endpoint (POST /api/auth/refresh) delegates to it so the
+// platform has exactly one refresh code path. The client is identified by the
+// refresh token's own audience claim.
+type RefreshGranter interface {
+	RefreshFromBearer(ctx context.Context, refreshToken string) (*dto.RefreshResponse, error)
+}
+
 type authService struct {
 	userRepo          repository.UserRepository
 	appRepo           repository.AppRepository
@@ -47,7 +57,16 @@ type authService struct {
 	lockoutDuration   time.Duration
 	mfa               MFAService // optional; nil disables login step-up
 	adminMFAPolicy    string     // "off" (default) | "observe" | "enforce"
+	// refreshGranter is the single hardened refresh implementation that the
+	// bearer refresh endpoint delegates to. Wired by bootstrap via
+	// SetRefreshGranter once the OAuth service is constructed.
+	refreshGranter RefreshGranter
 }
+
+// SetRefreshGranter wires the single hardened refresh path so that
+// /api/auth/refresh and /oauth/token share one rotation/replay/DPoP-enforcing
+// implementation. Bootstrap calls this after the OAuth service is built.
+func (s *authService) SetRefreshGranter(g RefreshGranter) { s.refreshGranter = g }
 
 // enforceAdminMFAPolicy applies the admin-enrollment MFA policy at admin-portal
 // login. It is a no-op when the policy is off or the admin already has MFA
@@ -602,61 +621,25 @@ func (s *authService) AdminLogin(ctx context.Context, req dto.AdminLoginRequest)
 	}, nil
 }
 
-// RefreshTokens refreshes the token set
+// RefreshTokens redeems a refresh token presented at POST /api/auth/refresh.
+//
+// It delegates to the single hardened refresh grant shared with the
+// /oauth/token endpoint (rotation, single-use/replay detection, token-family
+// revocation on reuse, and DPoP binding) so the platform has exactly one
+// refresh code path. The client is identified by the refresh token's own
+// audience claim; confidential clients (those with a stored secret) must use
+// /oauth/token with client authentication.
+//
+// The previous implementation here was a second, weaker path that performed no
+// rotation or replay detection — it has been removed (Tier-0 hardening).
 func (s *authService) RefreshTokens(ctx context.Context, refreshToken string) (*dto.RefreshResponse, error) {
-	claims, err := s.tokenService.VerifyRefreshToken(refreshToken)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidToken, err)
+	if s.refreshGranter == nil {
+		// Misconfiguration: refuse rather than silently fall back to an
+		// unhardened path. Bootstrap must wire SetRefreshGranter.
+		logger.FromContext(ctx).Error("auth: refresh granter not configured; refresh rejected")
+		return nil, fmt.Errorf("%w: refresh path not configured", ErrInvalidToken)
 	}
-
-	userID, err := strconv.ParseUint(claims.Subject, 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("%w: invalid subject", ErrInvalidToken)
-	}
-
-	user, err := s.userRepo.FindByID(ctx, uint(userID))
-	if err != nil {
-		return nil, fmt.Errorf("%w: user_id=%d", ErrUserNotFound, userID)
-	}
-
-	if user.TokenVersion != claims.Ver {
-		return nil, fmt.Errorf("%w: token has been revoked", ErrInvalidToken)
-	}
-
-	clientID := ""
-	if len(claims.Audience) > 0 {
-		clientID = claims.Audience[0]
-	}
-	app, err := s.appRepo.FindByClientID(ctx, clientID)
-	if err != nil {
-		return nil, fmt.Errorf("%w: client_id=%s", ErrAppNotFound, clientID)
-	}
-
-	userAppRole, err := s.userAppRoleRepo.FindByUserAndApp(ctx, user.ID, app.ID)
-	if err != nil {
-		return nil, fmt.Errorf("%w: user has no access to app", ErrRoleNotFound)
-	}
-
-	appRoles, _ := s.userAppRoleRepo.GetUserRolesMap(ctx, user.ID)
-	if appRoles == nil {
-		appRoles = make(map[string]string)
-	}
-
-	tokenSet, err := s.tokenService.GenerateTokenSet(
-		user, app, string(userAppRole.Role),
-		claims.Scope, appRoles, "", claims.AuthTime,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate tokens: %w", err)
-	}
-
-	return &dto.RefreshResponse{
-		AccessToken:  tokenSet.AccessToken,
-		RefreshToken: tokenSet.RefreshToken,
-		IDToken:      tokenSet.IDToken,
-		TokenType:    "Bearer",
-		ExpiresIn:    tokenSet.ExpiresIn,
-	}, nil
+	return s.refreshGranter.RefreshFromBearer(ctx, refreshToken)
 }
 
 // Logout invalidates all user tokens

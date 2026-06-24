@@ -49,6 +49,11 @@ type Config struct {
 	DatabaseURL string
 	DBPoolSize  int
 	DBTimeout   time.Duration
+	// DBLogLevel controls GORM query logging: silent | error | warn | info.
+	// Default warn — normal queries are not logged (avoids bound-parameter
+	// secrets/PII at info, HIGH-06); only slow queries and errors are. info
+	// surfaces every statement at DEBUG (needs LOG_LEVEL=debug too).
+	DBLogLevel string
 
 	// JWT
 	// M-10 fix: JWTSecret was loaded from JWT_SECRET but never used — the
@@ -246,6 +251,7 @@ func Load() *Config {
 		DatabaseURL: getEnv("DATABASE_URL", "postgres://localhost/socrate_auth_dev"),
 		DBPoolSize:  getEnvInt("DB_POOL_SIZE", 10),
 		DBTimeout:   time.Duration(getEnvInt("DB_TIMEOUT_SECONDS", 30)) * time.Second,
+		DBLogLevel:  getEnv("DB_LOG_LEVEL", "warn"),
 
 		// JWT
 		OAuthIssuer: getEnv("OAUTH_ISSUER", "http://localhost:8080"),

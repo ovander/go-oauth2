@@ -10,6 +10,17 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Fixed
+- **Observability / Logging (HIGH-06):** GORM no longer logs **every SQL
+  statement at `info`**. Successful queries — which carry bound parameters
+  (emails, password hashes, reset/refresh tokens, IPs) — now log at **DEBUG**,
+  and the GORM level is configurable via **`DB_LOG_LEVEL`** (`silent|error|warn|
+  info`, default **`warn`**): at the default only **slow queries** (Warn) and
+  **errors** (Error) are logged, and normal queries aren't even rendered. This
+  closes the audit's HIGH-06 (secrets/PII in info-level logs) and removes the
+  startup/runtime SQL flood. To see SQL, set `DB_LOG_LEVEL=info` **and**
+  `LOG_LEVEL=debug`. _Traceability: C4 → EPIC-4 → RFC-008 → #179._
+
 ### Added
 - **Identity / Admin console (Tier-0):** The first-party **admin console is now a
   public Authorization Code + PKCE client**, auto-registered at startup

@@ -24,7 +24,7 @@ type appActivityLogService struct {
 func NewAppActivityLogService(repo repository.AppActivityLogRepository) AppActivityLogService {
 	logger.WithFields(logger.Fields{
 		"service": "app_activity_log",
-	}).Info("✅ App activity log service initialized")
+	}).Debug("✅ App activity log service initialized")
 
 	return &appActivityLogService{repo: repo}
 }

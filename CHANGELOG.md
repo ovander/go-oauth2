@@ -10,6 +10,18 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Changed
+- **Observability / Startup:** The startup flow now emits a single **structured
+  configuration summary** at `info` — version, environment, issuer, mode, ports,
+  the full **security posture** (DPoP / token-exchange / refresh-reuse / audience
+  modes, admin-MFA policy), the **admin-console hardening** flags (PKCE console
+  client, elevation window, password-login state), and the scheduled-job
+  intervals — the one line an operator greps to confirm a deployment. The ~16
+  per-service `… initialized` lines are **demoted to DEBUG** so info-level
+  startup is concise, and production emits explicit **safety warnings** (non-https
+  issuer, deprecated password login enabled). _Traceability: C4 → EPIC-4 →
+  RFC-008 → #183._
+
 ### Fixed
 - **Observability / Logging:** The log `caller` field is now **accurate and
   module-relative**. Previously `SetReportCaller` reported this package's thin

@@ -46,7 +46,7 @@ type userService struct {
 func NewUserService(repo repository.UserRepository) UserService {
 	logger.WithFields(logger.Fields{
 		"service": "user",
-	}).Info("✅ User service initialized")
+	}).Debug("✅ User service initialized")
 
 	return &userService{repo: repo}
 }

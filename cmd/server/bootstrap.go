@@ -18,6 +18,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth/dpop"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth/tokenexchange"
+	"github.com/ovandermoten/go-oauth2/internal/version"
 	"github.com/ovandermoten/go-oauth2/internal/web"
 	"github.com/ovandermoten/go-oauth2/pkg/database"
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
@@ -84,6 +85,60 @@ func mustParseTrustedProxies(raw string) []*net.IPNet {
 		logger.Info("No trusted proxies configured — using RemoteAddr for client IP (safe default)")
 	}
 	return cidrs
+}
+
+// LogStartupSummary emits a single structured line summarising the server's
+// effective configuration — version, environment, ports, the security posture
+// (DPoP / token-exchange / refresh-reuse / audience / admin-MFA modes), the
+// admin-console hardening flags, and the scheduled-job intervals. It is the one
+// line an operator greps to confirm how a deployment is configured. Production
+// safety warnings are emitted separately so they stand out.
+func LogStartupSummary(cfg *config.Config) {
+	dur := func(d time.Duration) string {
+		if d <= 0 {
+			return "disabled"
+		}
+		return d.String()
+	}
+	mode := "single-port"
+	if cfg.AdminPort != "" {
+		mode = "dual-port"
+	}
+
+	logger.WithFields(logger.Fields{
+		"version":     version.Version,
+		"commit":      version.Commit,
+		"environment": cfg.Environment,
+		"issuer":      cfg.OAuthIssuer,
+		"mode":        mode,
+		"oauth_port":  cfg.Port,
+		"admin_port":  cfg.AdminPort,
+		// Security posture (observe → enforce rollout flags).
+		"dpop_mode":           cfg.DPoPMode,
+		"token_exchange_mode": cfg.TokenExchangeMode,
+		"refresh_reuse_mode":  cfg.RefreshReuseMode,
+		"audience_mode":       cfg.AudienceMode,
+		"admin_mfa_policy":    cfg.AdminMFAPolicy,
+		// Admin-console session hardening.
+		"admin_console_pkce":   cfg.AdminConsoleClientID != "",
+		"admin_elevation":      dur(cfg.AdminElevationMaxAge),
+		"admin_password_login": cfg.AdminPasswordLoginEnabled,
+		// Scheduled background jobs.
+		"key_rotation":         dur(cfg.KeyRotationInterval),
+		"audit_integrity_scan": dur(cfg.AuditIntegrityScanInterval),
+		"used_token_cleanup":   dur(cfg.UsedTokenCleanupInterval),
+	}).Info("✅ Socrate initialized — effective configuration")
+
+	// Production safety: surface risky-but-allowed settings so they are obvious
+	// in the logs of a real deployment.
+	if cfg.IsProduction() {
+		if !strings.HasPrefix(cfg.OAuthIssuer, "https://") {
+			logger.Warn("⚠️  production issuer is not https:// — tokens and cookies are not transport-secured")
+		}
+		if cfg.AdminPasswordLoginEnabled {
+			logger.Warn("⚠️  /api/admin/login (deprecated password flow) is enabled in production — set ADMIN_PASSWORD_LOGIN_ENABLED=false once the admin console is on PKCE")
+		}
+	}
 }
 
 // splitCSV splits a comma-separated config value into trimmed, non-empty
@@ -414,7 +469,7 @@ func Bootstrap(cfg *config.Config) *App {
 			CityDBPath: cfg.GeoIPCityDBPath,
 			ASNDBPath:  cfg.GeoIPASNDBPath,
 		})
-		logger.Info("GeoIP service initialized")
+		logger.Debug("GeoIP service initialized")
 	} else {
 		geoIPService = service.NewGeoIPServiceDisabled()
 		logger.Info("GeoIP service running in fallback mode (no database configured)")
@@ -493,7 +548,7 @@ func Bootstrap(cfg *config.Config) *App {
 	if err != nil {
 		logger.Fatalf("Failed to create web handler: %v", err)
 	}
-	logger.Info("✅ Web handler initialized")
+	logger.Debug("✅ Web handler initialized")
 
 	// ==========================================
 	// Auto-Defense System (automatic IP blocking)
@@ -503,14 +558,14 @@ func Bootstrap(cfg *config.Config) *App {
 		securityAuditRepo,
 		service.DefaultAutoDefenseConfig(),
 	)
-	logger.Info("✅ Auto-defense system initialized")
+	logger.Debug("✅ Auto-defense system initialized")
 
 	// IP Block Checker (middleware cache)
 	ipBlockChecker := middleware.NewIPBlockChecker(
 		blockedIPRepo,
 		middleware.DefaultIPBlockCheckerConfig(),
 	)
-	logger.Info("✅ IP block checker initialized")
+	logger.Debug("✅ IP block checker initialized")
 
 	// Connect auto-defense to IP block checker for immediate cache invalidation
 	autoDefense.SetOnBlockCallback(func(ip string) {

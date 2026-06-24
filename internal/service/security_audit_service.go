@@ -58,7 +58,7 @@ type securityAuditService struct {
 func NewSecurityAuditService(repo repository.SecurityAuditLogRepository) SecurityAuditService {
 	logger.WithFields(logger.Fields{
 		"service": "security_audit",
-	}).Info("✅ Security audit service initialized")
+	}).Debug("✅ Security audit service initialized")
 
 	return &securityAuditService{repo: repo}
 }

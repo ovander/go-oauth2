@@ -6,9 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md`
-(current line: **v0.x — Foundations & Additive Capabilities**, non-breaking).
+(current line: **v1.x — Foundations & Additive Capabilities**, non-breaking).
 
 ## [Unreleased]
+
+## [1.1.0] - 2026-06-24
 
 ### Changed
 - **Observability / Startup:** The startup flow now emits a single **structured

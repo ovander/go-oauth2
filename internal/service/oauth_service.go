@@ -197,7 +197,7 @@ func NewOAuthService(
 		"impersonation_max_auth_age": impersonationMaxAuthAge.String(),
 		"delegation_stepup_mode":     delegationStepUpMode,
 		"refresh_reuse_mode":         refreshReuseMode,
-	}).Info("✅ OAuth service initialized")
+	}).Debug("✅ OAuth service initialized")
 
 	return &oauthService{
 		userRepo:                userRepo,
@@ -236,7 +236,7 @@ func NewOAuthServiceWithConfig(
 		"service":       "oauth",
 		"issuer":        issuer,
 		"require_https": config.RequireHTTPS,
-	}).Info("✅ OAuth service initialized")
+	}).Debug("✅ OAuth service initialized")
 
 	return &oauthService{
 		userRepo:        userRepo,

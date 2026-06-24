@@ -36,7 +36,7 @@ type appService struct {
 func NewAppService(repo repository.AppRepository) AppService {
 	logger.WithFields(logger.Fields{
 		"service": "app",
-	}).Info("✅ App service initialized")
+	}).Debug("✅ App service initialized")
 
 	return &appService{repo: repo}
 }

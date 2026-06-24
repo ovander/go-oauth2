@@ -23,7 +23,7 @@ type adminLogService struct {
 func NewAdminLogService(repo repository.AdminLogRepository) AdminLogService {
 	logger.WithFields(logger.Fields{
 		"service": "admin_log",
-	}).Info("✅ Admin log service initialized")
+	}).Debug("✅ Admin log service initialized")
 
 	return &adminLogService{repo: repo}
 }

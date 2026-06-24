@@ -51,7 +51,7 @@ func NewTemplateService() *TemplateService {
 	logger.WithFields(logger.Fields{
 		"service":   "template",
 		"templates": []string{"login", "consent", "error", "accept_invite", "forgot_password", "reset_password"},
-	}).Info("✅ Template service initialized")
+	}).Debug("✅ Template service initialized")
 
 	return &TemplateService{
 		loginTemplate:          loginTmpl,

@@ -188,7 +188,7 @@ func NewAuthService(
 		"used_token_tracking": false,
 		"audit_logging":       false,
 		"email_enabled":       false,
-	}).Info("✅ Auth service initialized")
+	}).Debug("✅ Auth service initialized")
 
 	return &authService{
 		userRepo:          userRepo,
@@ -219,7 +219,7 @@ func NewAuthServiceWithUsedTokenRepo(
 		"used_token_tracking": true,
 		"audit_logging":       false,
 		"email_enabled":       false,
-	}).Info("✅ Auth service initialized")
+	}).Debug("✅ Auth service initialized")
 
 	return &authService{
 		userRepo:          userRepo,
@@ -252,7 +252,7 @@ func NewAuthServiceFull(
 		"used_token_tracking": usedTokenRepo != nil,
 		"audit_logging":       auditRepo != nil,
 		"email_enabled":       emailService != nil,
-	}).Info("✅ Auth service initialized")
+	}).Debug("✅ Auth service initialized")
 
 	return &authService{
 		userRepo:          userRepo,

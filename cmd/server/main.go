@@ -33,6 +33,10 @@ func main() {
 	// Initialize application
 	app := Bootstrap(cfg)
 
+	// Effective-configuration summary (security posture, admin hardening,
+	// scheduled jobs) — one structured line per startup.
+	LogStartupSummary(cfg)
+
 	// Determine server mode based on ADMIN_PORT configuration
 	if cfg.AdminPort != "" {
 		// DUAL-PORT MODE (Recommended for production)
@@ -62,9 +66,7 @@ func startSinglePortMode(cfg *config.Config, app *App) {
 	}
 
 	go func() {
-		logger.Infof("🚀 OAuth 2.0 Server starting on port %s (single-port mode)", cfg.Port)
-		logger.Infof("📍 Issuer: %s", cfg.OAuthIssuer)
-		logger.Infof("🌍 Environment: %s", cfg.Environment)
+		logger.Infof("🚀 OAuth 2.0 Server listening on port %s (single-port mode)", cfg.Port)
 		logger.Warnf("⚠️  Admin API available at /manage/api/admin/* (consider using dual-port mode for production)")
 
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -100,9 +102,7 @@ func startDualPortMode(cfg *config.Config, app *App) {
 
 	// Start OAuth server
 	go func() {
-		logger.Infof("🚀 OAuth 2.0 Server starting on port %s (public)", cfg.Port)
-		logger.Infof("📍 Issuer: %s", cfg.OAuthIssuer)
-		logger.Infof("🌍 Environment: %s", cfg.Environment)
+		logger.Infof("🚀 OAuth 2.0 Server listening on port %s (public)", cfg.Port)
 
 		if err := oauthSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatalf("Failed to start OAuth server: %v", err)

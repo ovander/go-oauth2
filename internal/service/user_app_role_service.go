@@ -29,7 +29,7 @@ type userAppRoleService struct {
 func NewUserAppRoleService(repo repository.UserAppRoleRepository) UserAppRoleService {
 	logger.WithFields(logger.Fields{
 		"service": "user_app_role",
-	}).Info("✅ User app role service initialized")
+	}).Debug("✅ User app role service initialized")
 
 	return &userAppRoleService{repo: repo}
 }

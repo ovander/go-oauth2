@@ -11,6 +11,57 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Added
+- **Identity / Admin console (Tier-0):** The first-party **admin console is now a
+  public Authorization Code + PKCE client**, auto-registered at startup
+  (`ADMIN_CONSOLE_CLIENT_ID` + `ADMIN_CONSOLE_REDIRECT_URIS`) as public,
+  PKCE-mandatory and secretless with exact-match redirect URIs. The legacy
+  `POST /api/admin/login` password flow is **deprecated** (always emits a
+  `Deprecation: true` header, RFC 8594) and can be refused with
+  `403 password_login_disabled` via `ADMIN_PASSWORD_LOGIN_ENABLED=false`
+  (default keeps it on — backward compatible). Adds `docs/ADMIN-SPA-MIGRATION.md`,
+  the end-to-end contract for the admin SPA. _Traceability: OAuth 2.1 (PKCE) →
+  admin session hardening → #176._
+
+### Added
+- **Identity / Admin console (Tier-0):** The most destructive admin operations
+  — delete OAuth client, rotate client secret, create/delete superadmin, block
+  user — now require **step-up**: an authentication (`auth_time`, RFC 9068) no
+  older than `ADMIN_ELEVATION_MAX_AGE` (default 5 min; `0` disables). A stale
+  token gets `403 elevation_required`; the admin re-authenticates via
+  `POST /api/admin/elevate` (password + MFA → fresh-`auth_time` access token, no
+  new session). A merely refreshed session is correctly **not** fresh. Reuses the
+  existing RFC 9068 `auth_time` and the codebase's step-up pattern. _Traceability:
+  C9 → EPIC-9 → RFC-011 → #174._
+
+### Added
+- **Identity / Admin console (Tier-0):** `must_change_password` is now
+  **enforced**. A flagged admin gets `403 password_change_required` on every
+  `/api/admin/*` route except the new `POST /api/admin/change-password`, which
+  verifies the current password, validates the new one, and revokes the admin's
+  tokens (token-version bump → re-login). Previously the flag was set and
+  returned but never enforced. _Traceability: C9 → EPIC-9 → #172._
+
+### Added
+- **Identity / Admin console (Tier-0):** The admin console can now **refresh
+  silently** via an **HttpOnly refresh-token cookie** that JavaScript cannot read
+  (XSS-safe). When `ADMIN_CONSOLE_CLIENT_ID` is set, `/oauth/token` delivers that
+  client's refresh token as `HttpOnly; Secure; SameSite=Strict; Path=/oauth/token`
+  and **omits it from the JSON body**; it is read back from the cookie on refresh
+  (running the single hardened grant — rotation + replay + DPoP) and **cleared on
+  logout**. The access token stays a Bearer token in the body. Inert when the env
+  var is unset. _Traceability: C8 → EPIC-8 → RFC-003 → #170._
+
+### Fixed
+- **Identity / Refresh (Tier-0):** Collapsed refresh-token handling to **exactly
+  one hardened code path**. `POST /api/auth/refresh` previously used a separate,
+  weaker implementation (no rotation, no replay detection, no DPoP); it now
+  delegates to the same `/oauth/token` refresh grant (single-use rotation,
+  replay → token-family revocation, token-version + DPoP binding). The client is
+  derived from the refresh token's `aud`; confidential clients must use
+  `/oauth/token` with client authentication. _Traceability: C14 → EPIC-14 →
+  RFC-012 → #167._
+
+### Added
 - **Observability / Logging:** Logs are now emitted as **structured JSON in
   production** (clean ingestion by ELK/Loki/Datadog) and human-readable **text in
   development/test**, chosen by `selectFormatter` — an explicit `LOG_FORMAT`

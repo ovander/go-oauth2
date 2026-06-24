@@ -15,6 +15,9 @@ type AdminAuthHandler struct {
 	authService service.AuthService
 	userService service.UserService
 	autoDefense *service.AutoDefenseService
+	// reauth backs POST /api/admin/elevate (step-up). Optional; nil disables the
+	// endpoint. Wired by bootstrap. Tier-0 admin session hardening.
+	reauth service.Reauthenticator
 }
 
 // NewAdminAuthHandler creates a new admin auth handler
@@ -23,6 +26,55 @@ func NewAdminAuthHandler(authService service.AuthService, userService service.Us
 		authService: authService,
 		userService: userService,
 	}
+}
+
+// SetReauthenticator wires the step-up re-authentication backend for
+// POST /api/admin/elevate. Without it the endpoint returns 501.
+func (h *AdminAuthHandler) SetReauthenticator(r service.Reauthenticator) { h.reauth = r }
+
+// POST /api/admin/elevate
+// Step-up: the already-authenticated admin re-presents their password (and MFA,
+// if enrolled) to obtain a fresh-auth_time access token, satisfying the
+// freshness gate (middleware.RequireFreshAuth) on destructive routes. The
+// returned access token replaces the one the SPA sends on those calls; the
+// session's refresh token is unchanged (no refresh token is returned).
+func (h *AdminAuthHandler) Elevate(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if h.reauth == nil {
+		writeError(w, "step-up is not configured", http.StatusNotImplemented)
+		return
+	}
+
+	var req dto.ElevateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if req.Password == "" {
+		writeError(w, "password is required", http.StatusBadRequest)
+		return
+	}
+
+	resp, err := h.reauth.ReAuthenticate(r.Context(), userID, req.Password, req.MFACode)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidCredentials):
+			writeError(w, "invalid credentials", http.StatusUnauthorized)
+		case errors.Is(err, service.ErrMFARequired):
+			writeError(w, "mfa_required", http.StatusUnauthorized)
+		case errors.Is(err, service.ErrMFAInvalidCode):
+			writeError(w, "invalid mfa code", http.StatusUnauthorized)
+		default:
+			writeError(w, "elevation failed", http.StatusBadRequest)
+		}
+		return
+	}
+
+	writeJSON(w, resp)
 }
 
 // SetAutoDefenseService sets the auto-defense service for IP-based threat detection

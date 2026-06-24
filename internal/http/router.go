@@ -68,6 +68,9 @@ type RouterConfig struct {
 	DPoPMode        string
 	DPoPReplayCache dpop.ReplayCache
 	DPoPHTUBase     string
+	// AdminElevationMaxAge is the freshness window for admin step-up: destructive
+	// admin routes require an auth_time within it. 0 disables the gate.
+	AdminElevationMaxAge time.Duration
 }
 
 // Routers holds both the OAuth and Admin routers for separate port binding
@@ -394,6 +397,13 @@ func newAdminRouter(
 		// Authenticated password change (satisfies a pending forced change).
 		r.Post("/change-password", adminAuthHandler.ChangePassword)
 
+		// Step-up: obtain a fresh-auth_time token for destructive operations.
+		r.Post("/elevate", adminAuthHandler.Elevate)
+
+		// freshAuth gates the most destructive operations on a recent
+		// authentication (Tier-0 step-up). A zero window disables it.
+		freshAuth := middleware.RequireFreshAuth(config.AdminElevationMaxAge)
+
 		// Current admin profile
 		r.Get("/profile", adminAuthHandler.GetProfile)
 
@@ -409,8 +419,9 @@ func newAdminRouter(
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", adminHandler.GetApp)
 				r.Put("/", adminHandler.UpdateApp)
-				r.Delete("/", adminHandler.DeleteApp)
-				r.Post("/rotate-secret", adminHandler.RotateSecret)
+				// Destructive: require fresh step-up.
+				r.With(freshAuth).Delete("/", adminHandler.DeleteApp)
+				r.With(freshAuth).Post("/rotate-secret", adminHandler.RotateSecret)
 			})
 		})
 
@@ -425,7 +436,8 @@ func newAdminRouter(
 				r.Get("/sessions", monitoringHandler.GetUserSessions)
 				r.Post("/revoke-tokens", adminHandler.RevokeUserTokens)
 				r.Post("/unlock", adminHandler.UnlockUser)
-				r.Post("/block", adminHandler.BlockUser)
+				// Destructive: require fresh step-up.
+				r.With(freshAuth).Post("/block", adminHandler.BlockUser)
 			})
 		})
 
@@ -441,12 +453,14 @@ func newAdminRouter(
 		// Superadmin management
 		r.Route("/superadmins", func(r chi.Router) {
 			r.Get("/", adminHandler.ListSuperadmins)
-			r.Post("/", adminHandler.CreateSuperadmin)
+			// Destructive: require fresh step-up.
+			r.With(freshAuth).Post("/", adminHandler.CreateSuperadmin)
 
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", adminHandler.GetSuperadmin)
 				r.Put("/", adminHandler.UpdateSuperadmin)
-				r.Delete("/", adminHandler.DeleteSuperadmin)
+				// Destructive: require fresh step-up.
+				r.With(freshAuth).Delete("/", adminHandler.DeleteSuperadmin)
 			})
 		})
 

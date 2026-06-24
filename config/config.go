@@ -28,6 +28,12 @@ type Config struct {
 	// session hardening.
 	AdminConsoleClientID string
 
+	// AdminElevationMaxAge is the freshness window for admin step-up: the most
+	// destructive admin routes (delete client, rotate secret, create/delete
+	// superadmin, block user) require an authentication (auth_time) within this
+	// window. Default 5 min; 0 disables the gate.
+	AdminElevationMaxAge time.Duration
+
 	// Database
 	DatabaseURL string
 	DBPoolSize  int
@@ -216,6 +222,11 @@ func Load() *Config {
 
 		// Tier-0 admin session hardening: empty disables the cookie channel.
 		AdminConsoleClientID: getEnv("ADMIN_CONSOLE_CLIENT_ID", ""),
+
+		// Freshness window for admin step-up: the most destructive admin routes
+		// require an authentication (auth_time) no older than this. Default 300s
+		// (5 min); 0 disables the gate.
+		AdminElevationMaxAge: time.Duration(getEnvInt("ADMIN_ELEVATION_MAX_AGE", 300)) * time.Second,
 
 		// Database
 		DatabaseURL: getEnv("DATABASE_URL", "postgres://localhost/socrate_auth_dev"),

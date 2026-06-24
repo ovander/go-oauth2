@@ -45,6 +45,14 @@ type RefreshGranter interface {
 	RefreshFromBearer(ctx context.Context, refreshToken string) (*dto.RefreshResponse, error)
 }
 
+// Reauthenticator re-verifies an already-identified admin's credentials and
+// issues a fresh-auth_time access token for step-up (POST /api/admin/elevate),
+// so the most destructive admin routes (gated by middleware.RequireFreshAuth)
+// can require a recent authentication without a full logout/login cycle.
+type Reauthenticator interface {
+	ReAuthenticate(ctx context.Context, userID uint, password, mfaCode string) (*dto.LoginResponse, error)
+}
+
 type authService struct {
 	userRepo          repository.UserRepository
 	appRepo           repository.AppRepository
@@ -640,6 +648,62 @@ func (s *authService) RefreshTokens(ctx context.Context, refreshToken string) (*
 		return nil, fmt.Errorf("%w: refresh path not configured", ErrInvalidToken)
 	}
 	return s.refreshGranter.RefreshFromBearer(ctx, refreshToken)
+}
+
+// ReAuthenticate verifies the password (and MFA, if enrolled) of an already
+// authenticated admin and issues a token set whose auth_time is now — the
+// "step-up" used to satisfy middleware.RequireFreshAuth on destructive routes.
+//
+// Only a fresh access token is returned (RefreshToken is intentionally blank):
+// elevation proves presence, it does not start a new session, so the admin's
+// existing refresh token / cookie is left untouched.
+func (s *authService) ReAuthenticate(ctx context.Context, userID uint, password, mfaCode string) (*dto.LoginResponse, error) {
+	user, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: user_id=%d", ErrUserNotFound, userID)
+	}
+
+	if !auth.CheckPassword(password, user.HashedPassword) {
+		s.logSecurityEvent(ctx, model.SecurityEventLoginFailed, &user.ID, nil, false, map[string]interface{}{
+			"email":      user.Email,
+			"login_type": "admin_elevate",
+			"reason":     "invalid_password",
+		})
+		return nil, ErrInvalidCredentials
+	}
+
+	// MFA step-up, same as interactive login.
+	if err := s.stepUpMFA(ctx, user, mfaCode); err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	adminApp := &model.App{ID: 0, ClientID: "admin-portal", Name: "Admin Portal"}
+	amr, acr := loginAuthnContext(user.MFAEnabled)
+	tokenSet, err := s.tokenService.GenerateTokenSetWithAuth(
+		user, adminApp, string(user.Role),
+		"openid email profile",
+		make(map[string]string), "", now.Unix(), amr, acr,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate tokens: %w", err)
+	}
+
+	s.logSecurityEvent(ctx, model.SecurityEventLoginSuccess, &user.ID, nil, true, map[string]interface{}{
+		"email":      user.Email,
+		"login_type": "admin_elevate",
+	})
+
+	return &dto.LoginResponse{
+		AccessToken:  tokenSet.AccessToken,
+		RefreshToken: "", // elevation does not rotate the session
+		IDToken:      tokenSet.IDToken,
+		TokenType:    "Bearer",
+		ExpiresIn:    tokenSet.ExpiresIn,
+		UserID:       user.ID,
+		Roles:        []string{string(user.Role)},
+		AppRoles:     make(map[string]string),
+	}, nil
 }
 
 // Logout invalidates all user tokens

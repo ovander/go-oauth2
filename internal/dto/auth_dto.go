@@ -53,6 +53,15 @@ type ChangePasswordRequest struct {
 	NewPassword     string `json:"new_password"`
 }
 
+// ElevateRequest is the body for admin step-up (POST /api/admin/elevate). The
+// admin is already authenticated (Bearer); they re-present their password (and
+// MFA, if enrolled) to obtain a fresh-auth_time access token for destructive
+// operations. Tier-0 admin session hardening.
+type ElevateRequest struct {
+	Password string `json:"password"`
+	MFACode  string `json:"mfa_code,omitempty"`
+}
+
 type AcceptInviteRequest struct {
 	Token    string `json:"token"`
 	Name     string `json:"name"`

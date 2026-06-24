@@ -430,6 +430,10 @@ func Bootstrap(cfg *config.Config) *App {
 	mfaHandler := handler.NewMFAHandler(mfaService)
 	adminHandler := handler.NewAdminHandler(appService, userService, userAppRoleService, adminLogService, appActivityLogService, emailService)
 	adminAuthHandler := handler.NewAdminAuthHandler(authService, userService)
+	// Tier-0 step-up: wire the re-authentication backend for POST /api/admin/elevate.
+	if ra, ok := authService.(service.Reauthenticator); ok {
+		adminAuthHandler.SetReauthenticator(ra)
+	}
 	dashboardHandler := handler.NewDashboardHandler(db, userRepo, appRepo, userAppRoleRepo)
 	healthHandler := handler.NewHealthHandler(db)
 	appLogsHandler := handler.NewAppLogsHandler(appActivityLogService)
@@ -538,14 +542,15 @@ func Bootstrap(cfg *config.Config) *App {
 	}
 
 	routerConfig := internalhttp.RouterConfig{
-		AllowedOrigins:    parseAllowedOrigins(cfg.AllowedOrigins),
-		LoginRateLimiter:  loginRateLimiter,
-		SignupRateLimiter: signupRateLimiter,
-		TokenRateLimiter:  tokenRateLimiter, // MED-05: nil only when explicitly disabled
-		IPBlockChecker:    ipBlockChecker,
-		TrustedProxyCIDRs: mustParseTrustedProxies(cfg.TrustedProxies),
-		DPoPMode:          cfg.DPoPMode,
-		DPoPHTUBase:       cfg.OAuthIssuer,
+		AllowedOrigins:       parseAllowedOrigins(cfg.AllowedOrigins),
+		LoginRateLimiter:     loginRateLimiter,
+		SignupRateLimiter:    signupRateLimiter,
+		TokenRateLimiter:     tokenRateLimiter, // MED-05: nil only when explicitly disabled
+		IPBlockChecker:       ipBlockChecker,
+		TrustedProxyCIDRs:    mustParseTrustedProxies(cfg.TrustedProxies),
+		DPoPMode:             cfg.DPoPMode,
+		DPoPHTUBase:          cfg.OAuthIssuer,
+		AdminElevationMaxAge: cfg.AdminElevationMaxAge, // Tier-0 step-up freshness window
 	}
 	if dpopReplayCache != nil {
 		routerConfig.DPoPReplayCache = dpopReplayCache

@@ -424,6 +424,26 @@ detect this code and route the admin through the change-password flow.
 `{ "email": "...", "password": "..." }` (no app context). Returns a token set.
 `GET /api/admin/profile` returns the current admin.
 
+**Step-up for destructive operations (Tier-0).** The most destructive admin
+routes — **delete OAuth client** (`DELETE /api/admin/apps/{id}`), **rotate client
+secret** (`POST /api/admin/apps/{id}/rotate-secret`), **create/delete superadmin**
+(`POST /api/admin/superadmins`, `DELETE /api/admin/superadmins/{id}`), and **block
+user** (`POST /api/admin/users/{id}/block`) — require a *recent* authentication.
+If the access token's `auth_time` is older than `ADMIN_ELEVATION_MAX_AGE`
+(default 5 min), they return `403 { "error": "elevation_required" }`. The client
+then calls `POST /api/admin/elevate` (§8.1.2) and retries with the fresh token.
+A refreshed session does **not** count as fresh (refresh preserves the original
+`auth_time`).
+
+### 8.1.2 Step-up / elevate — `POST /api/admin/elevate`
+`{ "password": "...", "mfa_code": "..."? }`. Requires a Bearer token; the
+already-authenticated admin re-presents their password (and MFA if enrolled) to
+obtain a **fresh-`auth_time` access token** for destructive operations. Returns
+the same shape as login but **no refresh token** (elevation proves presence; it
+does not start a new session — the existing refresh token / cookie is untouched).
+`401` on bad credentials / `mfa_required` / invalid MFA code; `501` if step-up is
+not configured.
+
 ### 8.1.1 Change password — `POST /api/admin/change-password`
 `{ "current_password": "...", "new_password": "..." }`. Requires a Bearer token;
 **reachable even while `password_change_required` is in force**. On success the

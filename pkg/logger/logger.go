@@ -103,13 +103,30 @@ func (callerHook) Fire(e *logrus.Entry) error {
 	for {
 		f, more := frames.Next()
 		if f.File != "" && !isInternalFrame(f.File) {
-			e.Data["caller"] = strings.TrimPrefix(f.File, modRoot) + ":" + strconv.Itoa(f.Line)
+			e.Data["caller"] = shortCaller(f.File) + ":" + strconv.Itoa(f.Line)
 			return nil
 		}
 		if !more {
 			return nil
 		}
 	}
+}
+
+// shortCaller renders a caller file path compactly and without leaking absolute
+// build paths: module files become module-relative (e.g.
+// internal/handler/x.go); anything else (stdlib, runtime, third-party) is
+// reduced to its last two path segments (e.g. runtime/proc.go).
+func shortCaller(file string) string {
+	if modRoot != "" && strings.HasPrefix(file, modRoot) {
+		return strings.TrimPrefix(file, modRoot)
+	}
+	if i := strings.LastIndexByte(file, '/'); i > 0 {
+		if j := strings.LastIndexByte(file[:i], '/'); j >= 0 {
+			return file[j+1:]
+		}
+		return file[i+1:]
+	}
+	return file
 }
 
 // isInternalFrame reports whether a frame belongs to logrus or this file's thin
@@ -148,7 +165,9 @@ func init() {
 		}
 	}
 	Logger.SetLevel(level)
-	Logger.Infof("✅ Logger initialized with level: %s", level.String())
+	// Debug: self-referential init line (its only caller is package init, i.e.
+	// the runtime). The effective level is surfaced in the startup summary.
+	Logger.Debugf("✅ Logger initialized with level: %s", level.String())
 }
 
 func WithError(err error) *logrus.Entry {

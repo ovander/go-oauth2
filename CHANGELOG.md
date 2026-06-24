@@ -10,6 +10,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Fixed
+- **Observability / Startup:** Polished startup logs — the caller hook now
+  **shortens non-module paths** to their last two segments (e.g.
+  `runtime/proc.go:7670`) so an **absolute build path can never leak** in
+  `caller` (the one place #181 didn't cover: package-init logs whose caller is
+  the Go runtime). The self-referential `✅ Logger initialized` line is demoted
+  to DEBUG (the effective level is now in the startup summary as `log_level`),
+  and the admin server logs a single consistent `listening … — ensure it is
+  firewalled` line. _Traceability: C4 → EPIC-4 → RFC-008 → #187._
+
 ## [1.1.0] - 2026-06-24
 
 ### Changed

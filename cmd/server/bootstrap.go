@@ -113,6 +113,7 @@ func LogStartupSummary(cfg *config.Config) {
 		"mode":        mode,
 		"oauth_port":  cfg.Port,
 		"admin_port":  cfg.AdminPort,
+		"log_level":   logger.Logger.GetLevel().String(),
 		// Security posture (observe → enforce rollout flags).
 		"dpop_mode":           cfg.DPoPMode,
 		"token_exchange_mode": cfg.TokenExchangeMode,

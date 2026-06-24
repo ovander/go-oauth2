@@ -50,9 +50,6 @@ func FromContext(ctx context.Context) *logrus.Entry {
 // human-readable **text in development/test**. ENV unset is treated as
 // production (matching config's fail-safe default).
 func selectFormatter(logFormat, env string) logrus.Formatter {
-	caller := func(f *runtime.Frame) (string, string) {
-		return "", f.File + ":" + strconv.Itoa(f.Line)
-	}
 	useJSON := true
 	switch strings.ToLower(strings.TrimSpace(logFormat)) {
 	case "json":
@@ -67,21 +64,72 @@ func selectFormatter(logFormat, env string) logrus.Formatter {
 	}
 	if useJSON {
 		return &logrus.JSONFormatter{
-			TimestampFormat:  "2006-01-02T15:04:05.000Z07:00",
-			CallerPrettyfier: caller,
+			TimestampFormat: "2006-01-02T15:04:05.000Z07:00",
 		}
 	}
 	return &logrus.TextFormatter{
-		FullTimestamp:    true,
-		TimestampFormat:  "2006-01-02 15:04:05",
-		CallerPrettyfier: caller,
+		FullTimestamp:   true,
+		TimestampFormat: "2006-01-02 15:04:05",
 	}
+}
+
+// modRoot is the absolute path prefix of this module (derived from this file's
+// own path), used to render caller paths module-relative instead of leaking
+// absolute build paths.
+var modRoot = func() string {
+	if _, file, _, ok := runtime.Caller(0); ok {
+		return strings.TrimSuffix(file, "pkg/logger/logger.go")
+	}
+	return ""
+}()
+
+// callerHook attaches an accurate, module-relative "caller" field to every log
+// entry. logrus's SetReportCaller reports the immediate caller, which — because
+// all logging flows through this package's thin wrappers — is always this
+// package. Instead we walk the stack to the first frame outside logrus and this
+// package. An entry that already carries a "caller" (e.g. the GORM logger, which
+// resolves its own DB call site) is left untouched.
+type callerHook struct{}
+
+func (callerHook) Levels() []logrus.Level { return logrus.AllLevels }
+
+func (callerHook) Fire(e *logrus.Entry) error {
+	if _, ok := e.Data["caller"]; ok {
+		return nil
+	}
+	var pcs [32]uintptr
+	n := runtime.Callers(2, pcs[:]) // skip runtime.Callers + this Fire
+	frames := runtime.CallersFrames(pcs[:n])
+	for {
+		f, more := frames.Next()
+		if f.File != "" && !isInternalFrame(f.File) {
+			e.Data["caller"] = strings.TrimPrefix(f.File, modRoot) + ":" + strconv.Itoa(f.Line)
+			return nil
+		}
+		if !more {
+			return nil
+		}
+	}
+}
+
+// isInternalFrame reports whether a frame belongs to logrus or this file's thin
+// wrappers/hook — the frames to skip when locating the true caller. Only
+// logger.go is skipped (not the whole package), so a log emitted directly from
+// e.g. the request-logger middleware is attributed to that middleware rather
+// than walked past into net/http.
+func isInternalFrame(file string) bool {
+	if strings.Contains(file, "/sirupsen/logrus") {
+		return true
+	}
+	return strings.HasSuffix(file, "pkg/logger/logger.go")
 }
 
 func init() {
 	Logger = logrus.New()
 	Logger.SetOutput(os.Stdout)
-	Logger.SetReportCaller(true)
+	// Caller info is attached by callerHook (accurate + module-relative) rather
+	// than logrus's SetReportCaller, which would report this package's wrappers.
+	Logger.AddHook(callerHook{})
 
 	Logger.SetFormatter(selectFormatter(os.Getenv("LOG_FORMAT"), os.Getenv("ENV")))
 

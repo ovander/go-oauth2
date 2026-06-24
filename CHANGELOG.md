@@ -11,6 +11,15 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Fixed
+- **Observability / Logging:** The log `caller` field is now **accurate and
+  module-relative**. Previously `SetReportCaller` reported this package's thin
+  wrappers (every line showed `pkg/logger/logger.go`), and paths were absolute
+  build paths. A caller hook now walks the stack to the **real call site** (e.g.
+  `internal/handler/oauth_handler.go:543`), preserves a `caller` already set by
+  the GORM logger, and drops the misleading `file` field. _Traceability:
+  C4 → EPIC-4 → RFC-008 → #181._
+
+### Fixed
 - **Observability / Logging (HIGH-06):** GORM no longer logs **every SQL
   statement at `info`**. Successful queries — which carry bound parameters
   (emails, password hashes, reset/refresh tokens, IPs) — now log at **DEBUG**,

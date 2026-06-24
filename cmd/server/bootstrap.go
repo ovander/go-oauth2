@@ -363,6 +363,24 @@ func Bootstrap(cfg *config.Config) *App {
 		cfg.RefreshReuseMode,     // RFC 9700: refresh-token reuse detection
 	)
 
+	// Single refresh code path: POST /api/auth/refresh delegates to the hardened
+	// /oauth/token refresh grant (rotation + single-use/replay detection +
+	// token-family revocation + DPoP binding) instead of a separate, weaker
+	// implementation. Wire the granter now that the OAuth service exists.
+	// Both assertions hold by construction (*authService / *oauthService); a
+	// failure is a wiring bug, so fail fast rather than run an unhardened path.
+	granter, ok := oauthService.(service.RefreshGranter)
+	if !ok {
+		logger.Fatalf("bootstrap: OAuth service does not implement RefreshGranter")
+	}
+	rg, ok := authService.(interface {
+		SetRefreshGranter(service.RefreshGranter)
+	})
+	if !ok {
+		logger.Fatalf("bootstrap: auth service does not support SetRefreshGranter")
+	}
+	rg.SetRefreshGranter(granter)
+
 	// ==========================================
 	// Template Service
 	// ==========================================

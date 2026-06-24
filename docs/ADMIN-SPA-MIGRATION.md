@@ -40,11 +40,16 @@ exact redirect URIs.
 4. On `redirect_uri?code=…&state=…`, exchange the code:
    ```
    POST {issuer}/oauth/token   (application/x-www-form-urlencoded)
+     X-Requested-By: oauth2-admin          (custom-header CSRF defense)
      grant_type=authorization_code
      &code={code}&redirect_uri={same URI}
      &client_id={ADMIN_CONSOLE_CLIENT_ID}
      &code_verifier={verifier}
    ```
+   > The `X-Requested-By` request header is a custom-header CSRF defense: a
+   > cross-site page cannot set a custom header without a CORS grant, so the
+   > server requiring it blocks forged cross-site token requests. It is in the
+   > server's CORS `AllowedHeaders`, so cross-origin SPA preflights succeed.
 5. Response: `{ access_token, id_token, token_type, expires_in, ... }`.
    **There is no `refresh_token` in the body** — it was set as a cookie:
    ```

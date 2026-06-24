@@ -39,9 +39,18 @@ func corsHandler(config RouterConfig) func(http.Handler) http.Handler {
 		origins = []string{"*"}
 	}
 	return cors.Handler(cors.Options{
-		AllowedOrigins:   origins,
-		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Correlation-ID"},
+		AllowedOrigins: origins,
+		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		// go-chi/cors only emits Access-Control-Allow-Origin when the origin AND
+		// the method AND every requested header are allowed; a header outside
+		// this list silently aborts the preflight (bare 200, no CORS headers),
+		// which the browser reports as a generic "no Access-Control-Allow-Origin"
+		// failure. X-Requested-By is sent by the first-party admin console on the
+		// token/refresh calls as a custom-header CSRF defense (a cross-site page
+		// cannot set a custom header without a CORS grant), so it must be
+		// explicitly allowed here. Keep this list explicit and auditable rather
+		// than reflecting arbitrary requested headers.
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Correlation-ID", "X-Requested-By"},
 		ExposedHeaders:   []string{"X-Content-Type-Options", "X-Frame-Options", "Content-Security-Policy", "Strict-Transport-Security", "X-Correlation-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"},
 		AllowCredentials: allowCredentials,
 		MaxAge:           300,

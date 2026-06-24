@@ -146,6 +146,40 @@ func TestCORSHandler_ExplicitOrigins_AllowsAuthorizationHeader(t *testing.T) {
 	}
 }
 
+// preflightWithRequestedHeaders sends a CORS preflight from origin advertising
+// the given Access-Control-Request-Headers value, and returns the response.
+func preflightWithRequestedHeaders(t *testing.T, config RouterConfig, origin, reqHeaders string) nethttp.Header {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("OPTIONS", "/oauth/token", nil)
+	req.Header.Set("Origin", origin)
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	req.Header.Set("Access-Control-Request-Headers", reqHeaders)
+	corsHandler(config)(corsNopHandler).ServeHTTP(rec, req)
+	return rec.Header()
+}
+
+func TestCORSHandler_ExplicitOrigins_RequestedByHeader_Allowed(t *testing.T) {
+	// Regression: the admin console sends X-Requested-By on the token/refresh
+	// calls as a custom-header CSRF defense. The preflight requesting it must
+	// still get Access-Control-Allow-Origin + Allow-Credentials from an
+	// allow-listed origin. Previously this header was outside AllowedHeaders, so
+	// go-chi/cors aborted the preflight — emitting a bare 200 with no CORS
+	// headers, indistinguishable from an origin rejection.
+	config := RouterConfig{AllowedOrigins: []string{"http://localhost:5173"}}
+	h := preflightWithRequestedHeaders(t, config, "http://localhost:5173", "X-Requested-By")
+
+	if got := h.Get("Access-Control-Allow-Origin"); got != "http://localhost:5173" {
+		t.Errorf("X-Requested-By must not drop ACAO; got %q", got)
+	}
+	if got := h.Get("Access-Control-Allow-Credentials"); got != "true" {
+		t.Errorf("expected Allow-Credentials: true for allow-listed origin, got %q", got)
+	}
+	if got := h.Get("Access-Control-Allow-Headers"); got == "" {
+		t.Error("expected Access-Control-Allow-Headers to be set for an allowed custom header")
+	}
+}
+
 func TestCORSHandler_SimpleRequest_WildcardOrigin_RespondsOK(t *testing.T) {
 	config := RouterConfig{AllowedOrigins: []string{"*"}}
 	h := simpleRequestHeaders(t, config, "https://anything.example.com")

@@ -462,7 +462,15 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 
 	userAppRole, err := s.userAppRoleRepo.FindByUserAndApp(ctx, user.ID, app.ID)
 	if err != nil {
-		return nil, fmt.Errorf("%w: user has no access to app", ErrRoleNotFound)
+		// Global admins (admin/superadmin) may sign in to any app's hosted login
+		// without an explicit per-app membership, consistent with
+		// middleware.RequireAppAdmin. This is what lets a platform superadmin use
+		// the first-party admin console (and any app) without being seeded as a
+		// member of that client. Non-admins still require a membership row.
+		if !user.IsGlobalAdmin() {
+			return nil, fmt.Errorf("%w: user has no access to app", ErrRoleNotFound)
+		}
+		userAppRole = &model.UserAppRole{UserID: user.ID, AppID: app.ID, Role: model.AppRoleAdmin}
 	}
 
 	appRoles, err := s.userAppRoleRepo.GetUserRolesMap(ctx, user.ID)

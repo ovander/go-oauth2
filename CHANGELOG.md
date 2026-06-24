@@ -10,6 +10,19 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Fixed
+- **Identity / Hosted login (admin console):** A global **admin/superadmin can now
+  complete the hosted login** (`/oauth/authorize`) for any app **without an
+  explicit per-app membership** — consistent with `middleware.RequireAppAdmin`,
+  which already lets global admins bypass per-app role checks. Previously
+  `authService.Login` always required a `user_app_roles` row, so a platform
+  superadmin could not sign in to the first-party PKCE admin console (nothing
+  seeds that membership), failing with a misleading "Login failed". Non-admins
+  still require a membership row. Also fixed the authorize login handler to map
+  errors with `errors.Is` instead of equality, so **wrapped** errors
+  (role-not-found, locked, unverified) render their accurate message instead of
+  the generic fallback. _Traceability: C9 → EPIC-9 → RFC-011 → #191._
+
 ## [1.1.1] - 2026-06-24
 
 ### Fixed

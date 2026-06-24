@@ -69,7 +69,7 @@ func (l *GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (stri
 		// Optionally ignore not found
 		if l.ignoreNotFound && errors.Is(err, gorm.ErrRecordNotFound) {
 			if l.level >= glogger.Info {
-				entry.Info("🔍 SQL not found")
+				entry.Debug("🔍 SQL not found")
 			}
 			return
 		}
@@ -81,8 +81,12 @@ func (l *GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (stri
 			entry.Warn("🐢 Slow SQL query")
 		}
 	default:
+		// Normal queries log at DEBUG, never INFO: a successful statement carries
+		// bound parameters (emails, hashes, tokens, IPs) that must not land in
+		// info-level logs (HIGH-06). Visible only at LOG_LEVEL=debug and when the
+		// GORM level is Info.
 		if l.level >= glogger.Info {
-			entry.Info("💾 SQL query")
+			entry.Debug("💾 SQL query")
 		}
 	}
 }

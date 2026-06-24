@@ -1,6 +1,7 @@
 package database
 
 import (
+	"strings"
 	"time"
 
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
@@ -17,6 +18,12 @@ type ConnectionConfig struct {
 	ConnMaxIdleTime  time.Duration
 	SlowQueryLogTime time.Duration
 	PrepareStmt      bool
+	// LogLevel controls GORM query logging. Default Warn: normal queries are not
+	// logged (and not even rendered), only slow queries (Warn) and errors
+	// (Error). Set Info to surface every statement — at DEBUG, so it requires
+	// LOG_LEVEL=debug too. Avoids logging bound parameters (emails, hashes,
+	// tokens) at info in production (HIGH-06).
+	LogLevel glogger.LogLevel
 }
 
 // DefaultConnectionConfig returns sensible defaults for connection config
@@ -28,6 +35,22 @@ func DefaultConnectionConfig(poolSize int) ConnectionConfig {
 		ConnMaxIdleTime:  10 * time.Minute,
 		SlowQueryLogTime: 200 * time.Millisecond,
 		PrepareStmt:      true,
+		LogLevel:         glogger.Warn,
+	}
+}
+
+// ParseGormLogLevel maps a DB_LOG_LEVEL string to a GORM log level. Unknown or
+// empty values fall back to Warn (the safe, quiet default).
+func ParseGormLogLevel(s string) glogger.LogLevel {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "silent":
+		return glogger.Silent
+	case "error":
+		return glogger.Error
+	case "info":
+		return glogger.Info
+	default: // "warn" and anything unrecognized
+		return glogger.Warn
 	}
 }
 
@@ -38,8 +61,12 @@ func Connect(databaseURL string, poolSize int) *gorm.DB {
 
 // ConnectWithConfig connects to the database with custom configuration
 func ConnectWithConfig(databaseURL string, cfg ConnectionConfig) *gorm.DB {
+	level := cfg.LogLevel
+	if level == 0 { // unset zero value → safe quiet default
+		level = glogger.Warn
+	}
 	gormConfig := &gorm.Config{
-		Logger:      logger.NewGormLogger(glogger.Info, cfg.SlowQueryLogTime, true),
+		Logger:      logger.NewGormLogger(level, cfg.SlowQueryLogTime, true),
 		PrepareStmt: cfg.PrepareStmt, // Cache prepared statements for better performance
 	}
 

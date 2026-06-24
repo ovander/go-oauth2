@@ -168,6 +168,7 @@ func Bootstrap(cfg *config.Config) *App {
 	// lifetime so connections that have been unused for longer than the
 	// configured timeout are recycled rather than held indefinitely.
 	dbCfg := database.DefaultConnectionConfig(cfg.DBPoolSize)
+	dbCfg.LogLevel = database.ParseGormLogLevel(cfg.DBLogLevel)
 	if cfg.DBTimeout > 0 {
 		dbCfg.ConnMaxIdleTime = cfg.DBTimeout
 	}

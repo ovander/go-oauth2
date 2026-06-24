@@ -22,6 +22,17 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
   errors with `errors.Is` instead of equality, so **wrapped** errors
   (role-not-found, locked, unverified) render their accurate message instead of
   the generic fallback. _Traceability: C9 → EPIC-9 → RFC-011 → #191._
+- **Identity / Hosted login (admin console):** Completed the global-admin bypass
+  on the **authorization-code issuance** path (`oauthService.Authorize`), the
+  sibling of the login fix above. A global **admin/superadmin can now obtain an
+  authorization code** for any app without an explicit `user_app_roles` row, so
+  the first-party PKCE admin console flow no longer fails at the consent step
+  with `server_error` / "authorization failed". The consent handler now maps
+  `Authorize` errors with `errors.Is` (instead of equality), so a wrapped
+  role-not-found renders `access_denied`, and `re-auth required` / `PKCE
+  required` map to the correct OAuth codes (`login_required` /
+  `invalid_request`) instead of the generic `server_error`. Non-admins without a
+  membership row are still rejected. _Traceability: C9 → EPIC-9 → RFC-011 → #193._
 
 ## [1.1.1] - 2026-06-24
 

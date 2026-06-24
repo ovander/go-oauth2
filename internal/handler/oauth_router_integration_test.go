@@ -39,12 +39,14 @@ type fakeOAuthSvc struct {
 	introspect *dto.IntrospectResponse
 	discovery  *dto.OpenIDConfiguration
 	jwks       dto.JWKS
+	gotReq     dto.TokenRequest // captures the last Token() request (for assertions)
 }
 
 func (f *fakeOAuthSvc) Authorize(_ context.Context, _ dto.AuthorizeRequest, _ uint) (string, error) {
 	return "code", nil
 }
-func (f *fakeOAuthSvc) Token(_ context.Context, _ dto.TokenRequest, _, _ string) (*dto.TokenResponse, error) {
+func (f *fakeOAuthSvc) Token(_ context.Context, req dto.TokenRequest, _, _ string) (*dto.TokenResponse, error) {
+	f.gotReq = req
 	return f.tokenResp, f.tokenErr
 }
 func (f *fakeOAuthSvc) ExchangeToken(_ context.Context, _ url.Values, _, _ string) (*dto.TokenResponse, error) {

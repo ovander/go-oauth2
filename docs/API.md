@@ -274,6 +274,28 @@ is for **public first-party clients** (the admin console, SPAs).
 ### 5.5 Logout — `POST /api/auth/logout`
 Requires `Authorization: Bearer <access_token>`. Increments the user's
 `token_version` (revokes all their tokens). `200`: `{ "message": "Logged out successfully" }`
+When the admin-console refresh cookie channel is enabled (see §5.8), logout also
+clears that cookie.
+
+### 5.8 Admin-console refresh cookie (first-party, Tier-0)
+When `ADMIN_CONSOLE_CLIENT_ID` is configured, the **first-party admin console**
+(a public, PKCE client) does **not** receive its refresh token in the JSON body.
+Instead, on `authorization_code` login and on every refresh, `/oauth/token` sets
+it as a cookie and omits it from the body:
+
+```
+Set-Cookie: refresh_token=<jwt>; Path=/oauth/token; Max-Age=<REFRESH_TOKEN_TTL>;
+            HttpOnly; Secure; SameSite=Strict
+```
+
+- The **access token** stays a Bearer token in the JSON body (held in memory by
+  the SPA); the **refresh token** is never readable by JavaScript (XSS-safe).
+- To refresh, the SPA POSTs `grant_type=refresh_token&client_id=<admin client>`
+  to `/oauth/token` with the cookie attached — no `refresh_token` form field.
+  The server reads it from the cookie and runs the single hardened refresh grant
+  (rotation + replay detection + DPoP binding, §5.4 / §2.3), rotating the cookie.
+- **Logout** (`/api/auth/logout`) revokes the tokens server-side and clears the
+  cookie. The channel is inert (unchanged behaviour) when the env var is unset.
 
 ### 5.6 Password reset
 - `POST /api/auth/request-password-reset` — `{ "email": "..." }`. Always `200` with a generic message (no email enumeration).

@@ -20,6 +20,14 @@ type Config struct {
 	Host        string
 	Environment string
 
+	// AdminConsoleClientID is the client_id of the first-party admin console — a
+	// public, PKCE client. When non-empty, the token endpoint delivers that
+	// client's refresh token as an HttpOnly; Secure; SameSite=Strict cookie
+	// (XSS-safe silent refresh) instead of in the JSON body, and logout clears
+	// it. Empty (default) disables the cookie channel entirely. Tier-0 admin
+	// session hardening.
+	AdminConsoleClientID string
+
 	// Database
 	DatabaseURL string
 	DBPoolSize  int
@@ -205,6 +213,9 @@ func Load() *Config {
 		// Operators must explicitly set ENV=development or ENV=test to opt
 		// into a less-restrictive mode.
 		Environment: getEnv("ENV", "production"),
+
+		// Tier-0 admin session hardening: empty disables the cookie channel.
+		AdminConsoleClientID: getEnv("ADMIN_CONSOLE_CLIENT_ID", ""),
 
 		// Database
 		DatabaseURL: getEnv("DATABASE_URL", "postgres://localhost/socrate_auth_dev"),

@@ -17,6 +17,33 @@ type AuthHandler struct {
 	autoDefense  *service.AutoDefenseService
 	environment  string
 	issuer       string
+	// refreshCookie mirrors the OAuth handler's first-party refresh cookie so
+	// that logout can clear it. Disabled (zero value) unless SetRefreshCookie is
+	// called. Tier-0 admin session hardening.
+	refreshCookieEnabled bool
+	refreshCookieSecure  bool
+}
+
+// SetRefreshCookie tells the handler to clear the first-party refresh-token
+// cookie on logout. secure must match how the cookie was set (true in
+// production). A no-op channel (enabled=false) leaves logout unchanged.
+func (h *AuthHandler) SetRefreshCookie(enabled, secure bool) {
+	h.refreshCookieEnabled = enabled
+	h.refreshCookieSecure = secure
+}
+
+// clearRefreshCookie expires the first-party refresh-token cookie. The Name and
+// Path must match how it was set so the browser overwrites the right cookie.
+func (h *AuthHandler) clearRefreshCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshCookieName,
+		Value:    "",
+		Path:     refreshCookiePath,
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   h.refreshCookieSecure,
+		SameSite: http.SameSiteStrictMode,
+	})
 }
 
 func NewAuthHandler(authService service.AuthService, userService service.UserService, emailService service.EmailService, environment, issuer string) *AuthHandler {
@@ -169,6 +196,13 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	if err := h.authService.Logout(r.Context(), userID); err != nil {
 		writeError(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	// Tier-0 admin session hardening: the user's tokens were revoked
+	// server-side (token-version bump in Logout); also clear the first-party
+	// refresh cookie so the browser stops presenting it.
+	if h.refreshCookieEnabled {
+		h.clearRefreshCookie(w)
 	}
 
 	writeJSON(w, dto.MessageResponse{Message: "Logged out successfully"})

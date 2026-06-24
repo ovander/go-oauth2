@@ -412,6 +412,13 @@ func Bootstrap(cfg *config.Config) *App {
 		oauthHandler.SetDPoPSigningAlgs([]string{"ES256"})
 	}
 	oauthHandler.SetJWKSCacheMaxAge(int(cfg.JWKSCacheMaxAge.Seconds()))
+	// Tier-0 admin session hardening: when an admin-console client is configured,
+	// deliver its refresh token as an HttpOnly cookie (set/read at /oauth/token,
+	// cleared at logout). Secure in production. Empty client id leaves it off.
+	if cfg.AdminConsoleClientID != "" {
+		oauthHandler.SetRefreshCookie(cfg.AdminConsoleClientID, cfg.RefreshTokenTTL, cfg.IsProduction())
+		authHandler.SetRefreshCookie(true, cfg.IsProduction())
+	}
 	// Advertise the RFC 8693 token-exchange grant in discovery only when it can
 	// actually be issued (enforce). In shadow it is non-issuing, so advertising
 	// would mislead clients.

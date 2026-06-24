@@ -444,9 +444,13 @@ func (h *OAuthHandler) handleConsentPost(w http.ResponseWriter, r *http.Request,
 
 	code, err := h.oauthService.Authorize(r.Context(), req, userID)
 	if err != nil {
-		switch err {
-		case service.ErrRoleNotFound:
+		switch {
+		case errors.Is(err, service.ErrRoleNotFound):
 			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "access_denied", "user does not have access to this application")
+		case errors.Is(err, service.ErrReauthRequired):
+			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "login_required", "re-authentication required")
+		case errors.Is(err, service.ErrPKCERequired):
+			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "invalid_request", "this client requires PKCE")
 		default:
 			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "server_error", "authorization failed")
 		}

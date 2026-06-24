@@ -316,10 +316,19 @@ func (s *oauthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, 
 		return "", fmt.Errorf("%w: this client requires PKCE — include code_challenge in the authorization request", ErrPKCERequired)
 	}
 
-	// Get user's role for the app
+	// Get user's role for the app.
+	//
+	// Global admins/superadmins may issue an authorization code for any app
+	// without an explicit per-app membership row, consistent with the hosted
+	// login path (auth_service.Login) and middleware.RequireAppAdmin. This is
+	// what lets a platform superadmin drive the first-party PKCE admin console,
+	// which has no seeded user_app_roles entry. Non-admins still require a row.
 	userAppRole, err := s.userAppRoleRepo.FindByUserAndApp(ctx, userID, app.ID)
 	if err != nil {
-		return "", fmt.Errorf("%w: user has no role for app_id=%d", ErrRoleNotFound, app.ID)
+		if !user.IsGlobalAdmin() {
+			return "", fmt.Errorf("%w: user has no role for app_id=%d", ErrRoleNotFound, app.ID)
+		}
+		userAppRole = &model.UserAppRole{UserID: userID, AppID: app.ID, Role: model.AppRoleAdmin}
 	}
 
 	// Get all user's app roles

@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
 	"github.com/ovandermoten/go-oauth2/internal/dto"
@@ -48,6 +49,63 @@ type OAuthHandler struct {
 	// beyond the always-supported set (e.g. the RFC 8693 token-exchange URN when
 	// TOKEN_EXCHANGE_MODE=enforce). Empty when none are enabled.
 	extraGrantTypes []string
+	// refreshCookie configures the first-party admin-console refresh-token
+	// cookie channel. Disabled (zero value) unless SetRefreshCookie is called
+	// with a non-empty client id. Tier-0 admin session hardening.
+	refreshCookie refreshCookieConfig
+}
+
+// refreshCookieConfig delivers a first-party public client's refresh token as
+// an HttpOnly; Secure; SameSite=Strict cookie so a browser SPA can refresh
+// silently without the refresh token ever being readable by JavaScript.
+type refreshCookieConfig struct {
+	clientID string // first-party admin-console client_id; empty disables the channel
+	name     string // cookie name (refreshCookieName)
+	path     string // cookie path (refreshCookiePath) — scopes it to the token endpoint
+	secure   bool   // Secure flag; true in production
+	maxAge   int    // cookie Max-Age in seconds (refresh-token TTL)
+}
+
+const (
+	refreshCookieName = "refresh_token"
+	refreshCookiePath = "/oauth/token"
+)
+
+// enabled reports whether the cookie channel is configured.
+func (c refreshCookieConfig) enabled() bool { return c.clientID != "" }
+
+// handles reports whether refresh tokens for clientID are cookie-borne.
+func (c refreshCookieConfig) handles(clientID string) bool {
+	return c.enabled() && clientID == c.clientID
+}
+
+// SetRefreshCookie enables the first-party admin-console refresh-token cookie
+// channel for the given client id. A zero/empty clientID leaves it disabled.
+// refreshTTL sets the cookie Max-Age; secure sets the Secure flag (true in
+// production). Tier-0 admin session hardening.
+func (h *OAuthHandler) SetRefreshCookie(clientID string, refreshTTL time.Duration, secure bool) {
+	h.refreshCookie = refreshCookieConfig{
+		clientID: clientID,
+		name:     refreshCookieName,
+		path:     refreshCookiePath,
+		secure:   secure,
+		maxAge:   int(refreshTTL.Seconds()),
+	}
+}
+
+// writeRefreshCookie stores the refresh token in an HttpOnly cookie so it is
+// never exposed to JavaScript (XSS-safe). SameSite=Strict and a token-endpoint
+// path minimise where the browser will send it.
+func (h *OAuthHandler) writeRefreshCookie(w http.ResponseWriter, value string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     h.refreshCookie.name,
+		Value:    value,
+		Path:     h.refreshCookie.path,
+		MaxAge:   h.refreshCookie.maxAge,
+		HttpOnly: true,
+		Secure:   h.refreshCookie.secure,
+		SameSite: http.SameSiteStrictMode,
+	})
 }
 
 // SetJWKSCacheMaxAge configures the Cache-Control max-age (in seconds) for the
@@ -591,6 +649,16 @@ func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Tier-0 admin session hardening: when the admin console refreshes, its
+	// refresh token lives in an HttpOnly cookie (never sent in the body). Read
+	// it from the cookie when no explicit refresh_token was supplied so the
+	// existing hardened refresh grant (rotation/replay/DPoP) runs unchanged.
+	if req.GrantType == "refresh_token" && req.RefreshToken == "" && h.refreshCookie.enabled() {
+		if ck, cErr := r.Cookie(h.refreshCookie.name); cErr == nil && ck.Value != "" {
+			req.RefreshToken = ck.Value
+		}
+	}
+
 	// RFC 8693 token exchange is dispatched separately: its parameters are not
 	// part of the standard TokenRequest. ExchangeToken is gated by
 	// TOKEN_EXCHANGE_MODE and (off/shadow) reports the grant as unsupported.
@@ -650,6 +718,15 @@ func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 			writeOAuthError(w, "server_error", "an internal error occurred", http.StatusInternalServerError)
 		}
 		return
+	}
+
+	// Tier-0 admin session hardening: for the first-party admin console
+	// (authorization_code login and refresh rotation alike), deliver the refresh
+	// token as an HttpOnly cookie and strip it from the JSON body so it is never
+	// readable by JavaScript. The access token stays a Bearer token in the body.
+	if response != nil && response.RefreshToken != "" && h.refreshCookie.handles(clientID) {
+		h.writeRefreshCookie(w, response.RefreshToken)
+		response.RefreshToken = ""
 	}
 
 	writeJSON(w, response)

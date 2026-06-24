@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/ovandermoten/go-oauth2/internal/dto"
@@ -82,6 +83,44 @@ func (h *AdminAuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, response)
+}
+
+// POST /api/admin/change-password
+// Authenticated password change. Reachable even when the admin is flagged
+// MustChangePassword (the enforcement middleware exempts this path), so it is
+// the way out of a forced-change state. On success all the admin's tokens are
+// revoked (token-version bump) and they must re-authenticate.
+func (h *AdminAuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req dto.ChangePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if req.CurrentPassword == "" || req.NewPassword == "" {
+		writeError(w, "current_password and new_password are required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.authService.ChangePassword(r.Context(), userID, req.CurrentPassword, req.NewPassword); err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidCredentials):
+			writeError(w, "current password is incorrect", http.StatusUnauthorized)
+		default:
+			// Validation failures (weak password, same-as-current) are client
+			// errors; never leak raw internal error strings beyond their message.
+			writeError(w, err.Error(), http.StatusBadRequest)
+		}
+		return
+	}
+
+	// Tokens were revoked server-side; the client must re-authenticate.
+	writeJSON(w, dto.MessageResponse{Message: "Password changed successfully; please log in again"})
 }
 
 // GET /api/admin/profile

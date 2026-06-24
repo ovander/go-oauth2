@@ -386,6 +386,13 @@ func newAdminRouter(
 	// ==========================================
 	r.Route("/api/admin", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo))
+		// Tier-0: an admin flagged MustChangePassword is blocked from every admin
+		// API route (403 password_change_required) until they change it. The
+		// change-password endpoint itself is exempt so it stays reachable.
+		r.Use(middleware.RequirePasswordChangeComplete("/change-password"))
+
+		// Authenticated password change (satisfies a pending forced change).
+		r.Post("/change-password", adminAuthHandler.ChangePassword)
 
 		// Current admin profile
 		r.Get("/profile", adminAuthHandler.GetProfile)

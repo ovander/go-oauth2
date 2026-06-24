@@ -414,9 +414,22 @@ Revokes the session and optionally redirects to a validated
 All `/api/admin/*` routes require a Bearer access token belonging to a global
 admin (`admin`/`superadmin`). App-scoped routes require an app role.
 
+**Forced password change (Tier-0).** If the admin's account is flagged
+`must_change_password` (returned in the login response), **every** `/api/admin/*`
+route returns `403 { "error": "password_change_required" }` — except
+`POST /api/admin/change-password` — until the password is changed. Clients must
+detect this code and route the admin through the change-password flow.
+
 ### 8.1 Admin login — `POST /api/admin/login`
 `{ "email": "...", "password": "..." }` (no app context). Returns a token set.
 `GET /api/admin/profile` returns the current admin.
+
+### 8.1.1 Change password — `POST /api/admin/change-password`
+`{ "current_password": "...", "new_password": "..." }`. Requires a Bearer token;
+**reachable even while `password_change_required` is in force**. On success the
+admin's tokens are revoked (token-version bump) and they must log in again
+(`200 { "message": "Password changed successfully; please log in again" }`).
+`401` if the current password is wrong; `400` on a weak or unchanged new password.
 
 ### 8.2 App (client) management — `/api/admin/apps`
 - `GET /` — list apps → `{ "apps": [AppResponse], "total_count": n }`

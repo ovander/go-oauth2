@@ -46,6 +46,13 @@ type ResetPasswordRequest struct {
 	Password string `json:"password"`
 }
 
+// ChangePasswordRequest is the body for an authenticated password change. Used
+// to satisfy a pending MustChangePassword flag (Tier-0 admin session hardening).
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
 type AcceptInviteRequest struct {
 	Token    string `json:"token"`
 	Name     string `json:"name"`

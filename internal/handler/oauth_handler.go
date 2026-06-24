@@ -374,15 +374,21 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 		AppClientID: req.ClientID,
 	})
 	if err != nil {
-		switch err {
-		case service.ErrInvalidCredentials:
+		// errors.Is, not equality: Login returns several *wrapped* errors
+		// (ErrRoleNotFound / ErrAccountLocked / ErrUserNotVerified / ErrAppNotFound),
+		// which an equality switch would miss — collapsing them all to the
+		// generic message and hiding the real reason.
+		switch {
+		case errors.Is(err, service.ErrInvalidCredentials):
 			renderLoginError("Invalid email or password")
-		case service.ErrUserNotVerified:
+		case errors.Is(err, service.ErrUserNotVerified):
 			renderLoginError("Please verify your email address first")
-		case service.ErrAccountLocked:
+		case errors.Is(err, service.ErrAccountLocked):
 			renderLoginError("Your account has been locked. Please try again later")
-		case service.ErrRoleNotFound:
+		case errors.Is(err, service.ErrRoleNotFound):
 			renderLoginError("You do not have access to this application")
+		case errors.Is(err, service.ErrMFARequired), errors.Is(err, service.ErrMFAInvalidCode):
+			renderLoginError("Multi-factor authentication is required to sign in here")
 		default:
 			renderLoginError("Login failed. Please try again")
 		}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"strings"
@@ -83,6 +84,23 @@ func mustParseTrustedProxies(raw string) []*net.IPNet {
 		logger.Info("No trusted proxies configured — using RemoteAddr for client IP (safe default)")
 	}
 	return cidrs
+}
+
+// splitCSV splits a comma-separated config value into trimmed, non-empty
+// entries. Returns nil for an empty string.
+func splitCSV(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // parseAllowedOrigins converts the comma-separated ALLOWED_ORIGINS config value
@@ -433,6 +451,14 @@ func Bootstrap(cfg *config.Config) *App {
 	// Tier-0 step-up: wire the re-authentication backend for POST /api/admin/elevate.
 	if ra, ok := authService.(service.Reauthenticator); ok {
 		adminAuthHandler.SetReauthenticator(ra)
+	}
+	// Tier-0: refuse the deprecated /api/admin/login password flow once the admin
+	// console is on Authorization Code + PKCE (default keeps it enabled).
+	adminAuthHandler.SetPasswordLoginDisabled(!cfg.AdminPasswordLoginEnabled)
+	// Tier-0: idempotently register the first-party admin-console public PKCE
+	// client from config (no-op unless both client id and redirect URIs are set).
+	if _, err := service.EnsureAdminConsoleClient(context.Background(), appRepo, cfg.AdminConsoleClientID, splitCSV(cfg.AdminConsoleRedirectURIs)); err != nil {
+		logger.Warnf("admin console client seeding skipped: %v", err)
 	}
 	dashboardHandler := handler.NewDashboardHandler(db, userRepo, appRepo, userAppRoleRepo)
 	healthHandler := handler.NewHealthHandler(db)

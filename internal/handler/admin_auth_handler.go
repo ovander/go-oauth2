@@ -18,6 +18,15 @@ type AdminAuthHandler struct {
 	// reauth backs POST /api/admin/elevate (step-up). Optional; nil disables the
 	// endpoint. Wired by bootstrap. Tier-0 admin session hardening.
 	reauth service.Reauthenticator
+	// passwordLoginDisabled refuses the legacy /api/admin/login password flow
+	// when true. Zero value (false) keeps it enabled — backward compatible.
+	passwordLoginDisabled bool
+}
+
+// SetPasswordLoginDisabled toggles the deprecated /api/admin/login password
+// flow. true refuses it (the admin console must use Authorization Code + PKCE).
+func (h *AdminAuthHandler) SetPasswordLoginDisabled(disabled bool) {
+	h.passwordLoginDisabled = disabled
 }
 
 // NewAdminAuthHandler creates a new admin auth handler
@@ -85,6 +94,15 @@ func (h *AdminAuthHandler) SetAutoDefenseService(autoDefense *service.AutoDefens
 // POST /api/admin/login
 // Admin portal login - only allows superadmins
 func (h *AdminAuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	// RFC 8594: signal that the password login flow is deprecated in favour of
+	// the admin console's Authorization Code + PKCE flow.
+	w.Header().Set("Deprecation", "true")
+
+	if h.passwordLoginDisabled {
+		writeError(w, "password_login_disabled", http.StatusForbidden)
+		return
+	}
+
 	var req dto.AdminLoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, "invalid JSON", http.StatusBadRequest)

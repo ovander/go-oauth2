@@ -11,6 +11,17 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 ## [Unreleased]
 
 ### Fixed
+- **Identity / CORS (admin console):** The `/oauth/token` (and refresh) call from
+  a browser SPA was **blocked by CORS** even with the SPA origin correctly in
+  `ALLOWED_ORIGINS`. The admin console sends an `X-Requested-By` header on these
+  calls as a **custom-header CSRF defense**, but it was outside the server's
+  `AllowedHeaders` list. go-chi/cors emits `Access-Control-Allow-Origin` only
+  when the origin **and** method **and** every requested header are allowed, so
+  the unknown header **silently aborted the preflight** — a bare `200` with no
+  CORS headers, which the browser reports as the misleading "No
+  'Access-Control-Allow-Origin' header is present". `X-Requested-By` is now
+  explicitly allow-listed (the origin allow-list remains the gate; H-06 is
+  unaffected). _Traceability: C9 → EPIC-9 → RFC-011 → #195._
 - **Identity / Hosted login (admin console):** A global **admin/superadmin can now
   complete the hosted login** (`/oauth/authorize`) for any app **without an
   explicit per-app membership** — consistent with `middleware.RequireAppAdmin`,

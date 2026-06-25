@@ -1319,9 +1319,49 @@ func (h *MonitoringHandler) GetGeoAnalytics(w http.ResponseWriter, r *http.Reque
 // Report Generation API
 // ==========================================
 
-// In-memory report storage (would use database in production)
-var reports = make(map[string]*dto.ReportResponse)
-var reportData = make(map[string]*dto.SecurityReportData)
+// Reports are persisted in the security_reports table (see model.SecurityReport)
+// so they survive restarts and are retrievable from any server instance. The
+// previous implementation kept them in per-process in-memory maps.
+
+// reportDataToMap round-trips the structured report payload into the generic map
+// stored on model.SecurityReport (avoids a model→dto import cycle).
+func reportDataToMap(data *dto.SecurityReportData) (map[string]interface{}, error) {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// mapToReportData reconstructs the structured payload from the stored map.
+func mapToReportData(m map[string]interface{}) (*dto.SecurityReportData, error) {
+	raw, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	var data dto.SecurityReportData
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return nil, err
+	}
+	return &data, nil
+}
+
+func reportResponseFromModel(rec *model.SecurityReport) dto.ReportResponse {
+	return dto.ReportResponse{
+		ReportID:    rec.ReportID,
+		Status:      rec.Status,
+		Type:        rec.Type,
+		Format:      rec.Format,
+		DownloadURL: "/api/admin/reports/" + rec.ReportID + "/download",
+		CreatedAt:   rec.CreatedAt,
+		CompletedAt: rec.CompletedAt,
+		ExpiresAt:   rec.ExpiresAt,
+	}
+}
 
 // POST /api/admin/reports/security
 func (h *MonitoringHandler) GenerateSecurityReport(w http.ResponseWriter, r *http.Request) {
@@ -1346,68 +1386,79 @@ func (h *MonitoringHandler) GenerateSecurityReport(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// Generate report ID
+	// Best-effort cleanup of expired reports so the table does not grow unbounded.
+	h.db.WithContext(ctx).
+		Where("expires_at IS NOT NULL AND expires_at < ?", time.Now()).
+		Delete(&model.SecurityReport{})
+
+	// Generate report ID and data synchronously.
 	reportID := "rpt_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	now := time.Now()
 	expiresAt := now.Add(24 * time.Hour)
 
-	// Create report entry
-	report := &dto.ReportResponse{
+	data := h.generateReportData(ctx, req.Period)
+	dataMap, err := reportDataToMap(data)
+	if err != nil {
+		writeError(w, "failed to serialize report", http.StatusInternalServerError)
+		return
+	}
+
+	rec := &model.SecurityReport{
 		ReportID:    reportID,
-		Status:      "completed", // Generate synchronously for simplicity
+		Status:      "completed",
 		Type:        req.Type,
 		Format:      req.Format,
-		DownloadURL: "/api/admin/reports/" + reportID + "/download",
-		CreatedAt:   now,
+		Data:        dataMap,
 		CompletedAt: &now,
 		ExpiresAt:   &expiresAt,
 	}
-
-	// Generate report data
-	data := h.generateReportData(ctx, req.Period)
-	reportData[reportID] = data
-	reports[reportID] = report
+	if err := h.db.WithContext(ctx).Create(rec).Error; err != nil {
+		writeError(w, "failed to persist report", http.StatusInternalServerError)
+		return
+	}
 
 	w.WriteHeader(http.StatusCreated)
-	writeJSON(w, report)
+	writeJSON(w, reportResponseFromModel(rec))
 }
 
 // GET /api/admin/reports/:id
 func (h *MonitoringHandler) GetReportStatus(w http.ResponseWriter, r *http.Request) {
 	reportID := chi.URLParam(r, "id")
 
-	report, exists := reports[reportID]
-	if !exists {
+	var rec model.SecurityReport
+	if err := h.db.WithContext(r.Context()).
+		Where("report_id = ?", reportID).First(&rec).Error; err != nil {
 		writeError(w, "report not found", http.StatusNotFound)
 		return
 	}
 
-	writeJSON(w, report)
+	writeJSON(w, reportResponseFromModel(&rec))
 }
 
 // GET /api/admin/reports/:id/download
 func (h *MonitoringHandler) DownloadReport(w http.ResponseWriter, r *http.Request) {
 	reportID := chi.URLParam(r, "id")
 
-	report, exists := reports[reportID]
-	if !exists {
+	var rec model.SecurityReport
+	if err := h.db.WithContext(r.Context()).
+		Where("report_id = ?", reportID).First(&rec).Error; err != nil {
 		writeError(w, "report not found", http.StatusNotFound)
 		return
 	}
 
-	data, dataExists := reportData[reportID]
-	if !dataExists {
-		writeError(w, "report data not found", http.StatusNotFound)
-		return
-	}
-
 	// Check expiry
-	if report.ExpiresAt != nil && time.Now().After(*report.ExpiresAt) {
+	if rec.IsExpired() {
 		writeError(w, "report has expired", http.StatusGone)
 		return
 	}
 
-	switch report.Format {
+	data, err := mapToReportData(rec.Data)
+	if err != nil {
+		writeError(w, "failed to read report data", http.StatusInternalServerError)
+		return
+	}
+
+	switch rec.Format {
 	case "csv":
 		w.Header().Set("Content-Type", "text/csv")
 		w.Header().Set("Content-Disposition", "attachment; filename=security_report_"+reportID+".csv")

@@ -1,0 +1,12 @@
+.git
+bin/
+keys/
+data/
+*.md
+docs/
+web/node_modules/
+coverage*
+*.out
+.env
+.env.*
+deploy/_artifacts/

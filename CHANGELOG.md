@@ -10,7 +10,50 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-25
+
+Minor release on the **v1.x — Foundations & Additive Capabilities** line
+(non-breaking). Hardens the Tier-0 admin control plane (loopback bind,
+least-privilege scopes, fresh-auth step-up on destructive operations), completes
+the first-party PKCE admin-console login path end-to-end, and ships the backend
+deployment kit.
+
+> **Upgrade note (#205):** the admin API now binds to **loopback (`127.0.0.1`)
+> by default** instead of all interfaces. Single-host deployments fronted by a
+> same-host reverse proxy or BFF need no change. **Multi-host or container
+> deployments must set `ADMIN_BIND_HOST=0.0.0.0`** (and keep the admin port
+> firewalled / network-policied) or the admin API will be unreachable from other
+> hosts.
+
 ### Added
+- **Admin API / Least-privilege scopes:** Opt-in OAuth-scope enforcement
+  (`ADMIN_SCOPE_MODE=off|enforce`, default **off**) that confines a
+  least-privilege client (the monitoring console/BFF) to its own routes, so a
+  BFF compromise cannot reach the full admin surface. A new
+  `RequireScope(scope, enforce)` middleware checks the access token's `scope`
+  claim — `admin` is a super-scope satisfying any requirement; `monitoring:read`
+  / `monitoring:write` confine the monitoring routes. In `enforce` mode the
+  admin router gates reads → `monitoring:read`, mutations → `monitoring:write`,
+  and privileged console routes (apps, user management, superadmins, settings,
+  stats) → `admin`; `/profile`, `/elevate`, `/change-password` stay ungated.
+  Mirrors the DPoP/token-exchange mode pattern, so it cannot lock out the admin
+  console until deliberately enabled. _Traceability: #201, #209._
+- **Observability / Audit integrity:** New read-only
+  `GET /api/admin/security/audit-integrity` endpoint surfacing the
+  tamper-evidence health of the security audit log over a period — per-row HMAC
+  stamp coverage, hash-chain linkage count, the count and recent detail of
+  integrity violations recorded by the scheduled scanner, and a
+  `verified`/`violations_detected`/`not_configured` status. Read-only: it never
+  consults the signing key (verification remains the scanner's responsibility);
+  it only surfaces the scanner's findings. _Traceability: RFC-007 → #199, #200._
+- **Ops / Deployment kit:** Backend deployment kit complementing `make deploy` —
+  a multi-stage **Dockerfile** (distroless static nonroot; fixes
+  `make docker-build`, which referenced a missing Dockerfile), a hardened
+  **systemd unit** (`deploy/systemd/socrate.service`: no-login user,
+  `ProtectSystem=strict`, dropped capabilities, syscall allowlist, only the keys
+  dir writable), a **Caddyfile** example (public `:8080`; admin API stays
+  loopback), a production **env template**, a one-time VPS **bootstrap script**,
+  and a deployment **runbook** (`deploy/README.md`). _Traceability: #206._
 - **Observability / Version (admin console):** Added a **`/api/version`** alias
   (both the OAuth `:8080` and Admin `:8081` routers) returning the same
   `{version, commit, branch, build_time}` payload as the existing `/version`
@@ -18,6 +61,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
   `404`; the endpoint is unauthenticated and non-sensitive (the build version is
   already emitted on every response via `X-App-Version`). `/version` is retained.
   _Traceability: C4 → EPIC-4 → RFC-008 → #207._
+
+### Changed
+- **Security / Admin bind:** The admin API now binds to **loopback
+  (`127.0.0.1`) by default** via the new `ADMIN_BIND_HOST` setting (was: all
+  interfaces, secure only if the operator remembered to firewall it). By default
+  the Tier-0 control plane is unreachable from the public internet with no
+  firewall — a same-host reverse proxy (Caddy) or BFF fronts it over localhost.
+  Multi-host/container deployments set `ADMIN_BIND_HOST=0.0.0.0` and rely on
+  network policy (a warning is logged when not bound to loopback). See the
+  upgrade note above. _Traceability: #205._
 
 ### Fixed
 - **Identity / CORS (admin console):** The `/oauth/token` (and refresh) call from
@@ -53,6 +106,28 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
   required` map to the correct OAuth codes (`login_required` /
   `invalid_request`) instead of the generic `server_error`. Non-admins without a
   membership row are still rejected. _Traceability: C9 → EPIC-9 → RFC-011 → #193._
+- **Observability / Security events:** `SecurityAuditLog.CorrelationID`
+  (RFC-008 end-to-end request tracing) was stored but **dropped at the DTO
+  boundary**, so the monitoring SPA could not pivot from a security event to its
+  originating request. It is now serialised in `SecurityEventResponse` and mapped
+  in `FromSecurityAuditLog`. _Traceability: RFC-008 → #197._
+- **Observability / Security reports:** Generated security reports were stored in
+  two package-level in-memory maps, so they were **lost on restart** and
+  invisible to other instances (a report generated on instance A returned `404`
+  from instance B behind a load balancer). Reports now persist in a new
+  `security_reports` table (jsonb payload, included in `AutoMigrate`); generation,
+  status, and download read/write the table, and expired reports are cleaned up
+  best-effort on generation. _Traceability: RFC-007 → #198._
+
+### Security
+- **Admin API / Fresh-auth step-up:** The mutating monitoring endpoints now
+  require a **recent authentication** (Tier-0 `RequireFreshAuth` step-up), not
+  merely a valid session — `POST /users/{id}/revoke-tokens`,
+  `POST`/`DELETE /security/blocked-ips`, and `POST`/`PUT`/`DELETE /alerts/rules`.
+  These join the already-gated destructive admin operations (app delete, secret
+  rotation, user block, superadmin CUD). Read endpoints and the routine
+  alert-acknowledge action stay ungated; when `ADMIN_ELEVATION_MAX_AGE` is `0`
+  the gate is a pass-through. _Traceability: #201 → #204._
 
 ## [1.1.1] - 2026-06-24
 

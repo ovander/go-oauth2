@@ -12,18 +12,21 @@ import (
 
 // SecurityEventResponse represents a security event in API responses
 type SecurityEventResponse struct {
-	ID        uint                   `json:"id"`
-	UserID    *uint                  `json:"user_id,omitempty"`
-	UserEmail string                 `json:"user_email,omitempty"`
-	AppID     *uint                  `json:"app_id,omitempty"`
-	AppName   string                 `json:"app_name,omitempty"`
-	EventType string                 `json:"event_type"`
-	Severity  string                 `json:"severity"`
-	IPAddress string                 `json:"ip_address,omitempty"`
-	UserAgent string                 `json:"user_agent,omitempty"`
-	Details   map[string]interface{} `json:"details,omitempty"`
-	Success   bool                   `json:"success"`
-	CreatedAt time.Time              `json:"created_at"`
+	ID        uint   `json:"id"`
+	UserID    *uint  `json:"user_id,omitempty"`
+	UserEmail string `json:"user_email,omitempty"`
+	AppID     *uint  `json:"app_id,omitempty"`
+	AppName   string `json:"app_name,omitempty"`
+	EventType string `json:"event_type"`
+	Severity  string `json:"severity"`
+	IPAddress string `json:"ip_address,omitempty"`
+	UserAgent string `json:"user_agent,omitempty"`
+	// CorrelationID links this event to the originating request for end-to-end
+	// incident tracing (RFC-008). Empty when produced outside a request context.
+	CorrelationID string                 `json:"correlation_id,omitempty"`
+	Details       map[string]interface{} `json:"details,omitempty"`
+	Success       bool                   `json:"success"`
+	CreatedAt     time.Time              `json:"created_at"`
 }
 
 // SecurityEventsListResponse contains a paginated list of security events
@@ -343,16 +346,17 @@ type EventFilters struct {
 // FromSecurityAuditLog converts a model to a DTO
 func FromSecurityAuditLog(log *model.SecurityAuditLog) SecurityEventResponse {
 	resp := SecurityEventResponse{
-		ID:        log.ID,
-		UserID:    log.UserID,
-		AppID:     log.AppID,
-		EventType: string(log.EventType),
-		Severity:  string(log.Severity),
-		IPAddress: log.IPAddress,
-		UserAgent: log.UserAgent,
-		Details:   log.Details,
-		Success:   log.Success,
-		CreatedAt: log.CreatedAt,
+		ID:            log.ID,
+		UserID:        log.UserID,
+		AppID:         log.AppID,
+		EventType:     string(log.EventType),
+		Severity:      string(log.Severity),
+		IPAddress:     log.IPAddress,
+		UserAgent:     log.UserAgent,
+		CorrelationID: log.CorrelationID,
+		Details:       log.Details,
+		Success:       log.Success,
+		CreatedAt:     log.CreatedAt,
 	}
 	if log.User != nil {
 		resp.UserEmail = log.User.Email

@@ -268,6 +268,7 @@ func Bootstrap(cfg *config.Config) *App {
 			&model.BlockedIP{},
 			&model.MagicLinkToken{},
 			&model.MFARecoveryCode{},
+			&model.SecurityReport{},
 		); err != nil {
 			logger.Fatalf("Failed to auto-migrate database: %v", err)
 		}

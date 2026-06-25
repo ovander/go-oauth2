@@ -10,6 +10,15 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Added
+- **Observability / Version (admin console):** Added a **`/api/version`** alias
+  (both the OAuth `:8080` and Admin `:8081` routers) returning the same
+  `{version, commit, branch, build_time}` payload as the existing `/version`
+  route. The admin SPA probes `/api/version` on startup and previously got a
+  `404`; the endpoint is unauthenticated and non-sensitive (the build version is
+  already emitted on every response via `X-App-Version`). `/version` is retained.
+  _Traceability: C4 → EPIC-4 → RFC-008 → #207._
+
 ### Fixed
 - **Identity / CORS (admin console):** The `/oauth/token` (and refresh) call from
   a browser SPA was **blocked by CORS** even with the SPA origin correctly in

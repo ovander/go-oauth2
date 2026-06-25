@@ -443,7 +443,8 @@ func newAdminRouter(
 				r.Delete("/", adminHandler.DeleteUser)
 				r.Get("/apps", adminHandler.GetUserApps) // Get all apps user belongs to
 				r.Get("/sessions", monitoringHandler.GetUserSessions)
-				r.Post("/revoke-tokens", adminHandler.RevokeUserTokens)
+				// Destructive: require fresh step-up (revokes all of a user's tokens).
+				r.With(freshAuth).Post("/revoke-tokens", adminHandler.RevokeUserTokens)
 				r.Post("/unlock", adminHandler.UnlockUser)
 				// Destructive: require fresh step-up.
 				r.With(freshAuth).Post("/block", adminHandler.BlockUser)
@@ -482,8 +483,10 @@ func newAdminRouter(
 
 			// IP blocking
 			r.Get("/blocked-ips", monitoringHandler.ListBlockedIPs)
-			r.Post("/blocked-ips", monitoringHandler.BlockIP)
-			r.Delete("/blocked-ips/{id}", monitoringHandler.UnblockIP)
+			// Destructive: blocking/unblocking IPs alters the platform's defense
+			// posture — require fresh step-up.
+			r.With(freshAuth).Post("/blocked-ips", monitoringHandler.BlockIP)
+			r.With(freshAuth).Delete("/blocked-ips/{id}", monitoringHandler.UnblockIP)
 			r.Get("/ip-reputation/{ip}", monitoringHandler.GetIPReputation)
 		})
 
@@ -507,9 +510,11 @@ func newAdminRouter(
 		// Alert management
 		r.Route("/alerts", func(r chi.Router) {
 			r.Get("/rules", monitoringHandler.ListAlertRules)
-			r.Post("/rules", monitoringHandler.CreateAlertRule)
-			r.Put("/rules/{id}", monitoringHandler.UpdateAlertRule)
-			r.Delete("/rules/{id}", monitoringHandler.DeleteAlertRule)
+			// Destructive: alert rules are the SOC's detection logic — mutating
+			// them (including disabling detections) requires fresh step-up.
+			r.With(freshAuth).Post("/rules", monitoringHandler.CreateAlertRule)
+			r.With(freshAuth).Put("/rules/{id}", monitoringHandler.UpdateAlertRule)
+			r.With(freshAuth).Delete("/rules/{id}", monitoringHandler.DeleteAlertRule)
 
 			r.Get("/history", monitoringHandler.GetAlertHistory)
 			r.Post("/{id}/acknowledge", monitoringHandler.AcknowledgeAlert)

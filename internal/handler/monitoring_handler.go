@@ -310,6 +310,107 @@ func (h *MonitoringHandler) GetThreatMetrics(w http.ResponseWriter, r *http.Requ
 }
 
 // ==========================================
+// Audit Integrity API (RFC-007)
+// ==========================================
+
+// GET /api/admin/security/audit-integrity
+//
+// Read-only tamper-evidence health for the security audit log over a period:
+// stamping/chaining coverage plus any integrity violations the scheduled
+// scanner has recorded. The signing key is intentionally NOT consulted here —
+// verification is the scanner's job; this endpoint surfaces its findings.
+func (h *MonitoringHandler) GetAuditIntegrity(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	period := r.URL.Query().Get("period")
+	if period == "" {
+		period = "24h"
+	}
+	var since time.Time
+	switch period {
+	case "15m":
+		since = time.Now().Add(-15 * time.Minute)
+	case "1h":
+		since = time.Now().Add(-1 * time.Hour)
+	case "24h":
+		since = time.Now().Add(-24 * time.Hour)
+	case "7d":
+		since = time.Now().AddDate(0, 0, -7)
+	case "30d":
+		since = time.Now().AddDate(0, 0, -30)
+	default:
+		since = time.Now().Add(-24 * time.Hour)
+		period = "24h"
+	}
+
+	var total, stamped, chained, violations int64
+	h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+		Where("created_at >= ?", since).Count(&total)
+	h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+		Where("created_at >= ? AND row_hash <> ''", since).Count(&stamped)
+	h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+		Where("created_at >= ? AND prev_hash <> ''", since).Count(&chained)
+	h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+		Where("created_at >= ? AND event_type = ?", since, model.SecurityEventAuditIntegrityViolation).
+		Count(&violations)
+
+	// Recent violation events (within the period) for context.
+	var rows []model.SecurityAuditLog
+	h.db.WithContext(ctx).
+		Where("created_at >= ? AND event_type = ?", since, model.SecurityEventAuditIntegrityViolation).
+		Order("created_at DESC").Limit(10).Find(&rows)
+
+	recent := make([]dto.AuditIntegrityViolation, len(rows))
+	var lastViolationAt *time.Time
+	for i, row := range rows {
+		kind := "unknown"
+		if row.Details != nil {
+			if _, ok := row.Details["tampered_row_id"]; ok {
+				kind = "hmac"
+			} else if _, ok := row.Details["chain_break_row_id"]; ok {
+				kind = "chain"
+			}
+		}
+		recent[i] = dto.AuditIntegrityViolation{
+			EventID:    row.ID,
+			Kind:       kind,
+			Details:    row.Details,
+			DetectedAt: row.CreatedAt,
+		}
+	}
+	if len(rows) > 0 {
+		t := rows[0].CreatedAt
+		lastViolationAt = &t
+	}
+
+	configured := stamped > 0
+	coverage := 0
+	if total > 0 {
+		coverage = int((stamped * 100) / total)
+	}
+	status := "verified"
+	switch {
+	case !configured:
+		status = "not_configured"
+	case violations > 0:
+		status = "violations_detected"
+	}
+
+	writeJSON(w, dto.AuditIntegrityResponse{
+		Period:           period,
+		Configured:       configured,
+		Status:           status,
+		TotalEvents:      total,
+		StampedEvents:    stamped,
+		ChainedEvents:    chained,
+		CoveragePercent:  coverage,
+		Violations:       violations,
+		LastViolationAt:  lastViolationAt,
+		RecentViolations: recent,
+	})
+}
+
+// ==========================================
 // Alert Rules API
 // ==========================================
 

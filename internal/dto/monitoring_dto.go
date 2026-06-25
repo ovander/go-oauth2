@@ -87,6 +87,35 @@ type ThreatMetricsResponse struct {
 }
 
 // ==========================================
+// Audit Integrity (RFC-007)
+// ==========================================
+
+// AuditIntegrityViolation summarises a single recorded integrity violation.
+type AuditIntegrityViolation struct {
+	EventID    uint                   `json:"event_id"`
+	Kind       string                 `json:"kind"` // "hmac" | "chain" | "unknown"
+	Details    map[string]interface{} `json:"details,omitempty"`
+	DetectedAt time.Time              `json:"detected_at"`
+}
+
+// AuditIntegrityResponse reports the tamper-evidence health of the security
+// audit log over a period: stamping/chaining coverage and any violations the
+// scheduled integrity scanner has recorded (RFC-007).
+type AuditIntegrityResponse struct {
+	Period string `json:"period"`
+	// Configured is true when integrity stamping is active (rows carry a row_hash).
+	Configured       bool                      `json:"configured"`
+	Status           string                    `json:"status"` // verified | violations_detected | not_configured
+	TotalEvents      int64                     `json:"total_events"`
+	StampedEvents    int64                     `json:"stamped_events"`
+	ChainedEvents    int64                     `json:"chained_events"`
+	CoveragePercent  int                       `json:"coverage_percent"`
+	Violations       int64                     `json:"violations"`
+	LastViolationAt  *time.Time                `json:"last_violation_at,omitempty"`
+	RecentViolations []AuditIntegrityViolation `json:"recent_violations"`
+}
+
+// ==========================================
 // Sessions
 // ==========================================
 

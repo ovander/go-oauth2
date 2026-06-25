@@ -77,6 +77,12 @@ const (
 	SecurityEventClientUpdated       SecurityEventType = "client_updated"
 	SecurityEventClientDeleted       SecurityEventType = "client_deleted"
 	SecurityEventClientSecretRotated SecurityEventType = "client_secret_rotated" //nolint:gosec // G101 false positive: event type enum constant, not a credential
+
+	// DPoP (RFC 9449): a sender-constraint proof presented at the token endpoint
+	// was present but invalid (bad signature, replay, htm/htu/iat mismatch). In
+	// observe mode the request still proceeds; in enforce it is rejected. Either
+	// way the failure is recorded so the SOC can see DPoP abuse/misconfiguration.
+	SecurityEventDPoPValidationFailed SecurityEventType = "dpop_validation_failed"
 )
 
 // SecuritySeverity indicates the severity level of the event

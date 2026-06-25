@@ -109,6 +109,48 @@ func TestDPoP_InvalidProofNeverBlocks(t *testing.T) {
 	}
 }
 
+func TestDPoP_OnRejectFiresForInvalidProof(t *testing.T) {
+	var called int
+	var gotBlocked bool
+	sink := func(_ *http.Request, reason string, blocked bool) {
+		called++
+		gotBlocked = blocked
+		if reason == "" {
+			t.Error("reject reason should be non-empty")
+		}
+	}
+	ran := false
+
+	// observe: onReject fires, request not blocked.
+	c1 := dpop.NewMemoryReplayCache(time.Minute)
+	defer c1.Stop()
+	rr := doPost(DPoP(c1, "observe", htuBase, sink)(dpopOKHandler(&ran)), "garbage-not-a-jwt")
+	if called != 1 || gotBlocked || rr.Code != http.StatusOK {
+		t.Fatalf("observe: called=%d blocked=%v code=%d", called, gotBlocked, rr.Code)
+	}
+
+	// enforce: onReject fires, request blocked (400).
+	called = 0
+	c2 := dpop.NewMemoryReplayCache(time.Minute)
+	defer c2.Stop()
+	rr = doPost(DPoP(c2, "enforce", htuBase, sink)(dpopOKHandler(&ran)), "garbage-not-a-jwt")
+	if called != 1 || !gotBlocked || rr.Code != http.StatusBadRequest {
+		t.Fatalf("enforce: called=%d blocked=%v code=%d", called, gotBlocked, rr.Code)
+	}
+}
+
+func TestDPoP_OnRejectNotCalledWithoutProof(t *testing.T) {
+	c := dpop.NewMemoryReplayCache(time.Minute)
+	defer c.Stop()
+	called := 0
+	sink := func(_ *http.Request, _ string, _ bool) { called++ }
+	ran := false
+	doPost(DPoP(c, "observe", htuBase, sink)(dpopOKHandler(&ran)), "") // no DPoP header
+	if called != 0 {
+		t.Fatalf("onReject must not fire when no proof is present: called=%d", called)
+	}
+}
+
 func TestDPoP_NoHeaderNeverBlocks(t *testing.T) {
 	cache := dpop.NewMemoryReplayCache(time.Minute)
 	defer cache.Stop()

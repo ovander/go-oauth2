@@ -77,6 +77,9 @@ type RouterConfig struct {
 	DPoPMode        string
 	DPoPReplayCache dpop.ReplayCache
 	DPoPHTUBase     string
+	// DPoPRejectSink, when set, records a dpop_validation_failed security event
+	// each time a present DPoP proof fails verification (so the SOC can see it).
+	DPoPRejectSink middleware.DPoPRejectFunc
 	// AdminElevationMaxAge is the freshness window for admin step-up: destructive
 	// admin routes require an auth_time within it. 0 disables the gate.
 	AdminElevationMaxAge time.Duration
@@ -195,7 +198,7 @@ func newOAuthRouter(
 		// Token endpoint - JSON
 		// MED-05: apply per-IP rate limiting to prevent brute-force attacks
 		// against authorization codes, refresh tokens, and client credentials.
-		dpopMW := middleware.DPoP(config.DPoPReplayCache, config.DPoPMode, config.DPoPHTUBase)
+		dpopMW := middleware.DPoP(config.DPoPReplayCache, config.DPoPMode, config.DPoPHTUBase, config.DPoPRejectSink)
 		if config.TokenRateLimiter != nil {
 			r.With(middleware.JSONContentType(), middleware.NoCacheHeaders(),
 				middleware.RateLimitMiddleware(config.TokenRateLimiter, config.TrustedProxyCIDRs), dpopMW).

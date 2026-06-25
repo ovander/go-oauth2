@@ -12,6 +12,11 @@ import (
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
+// DPoPRejectFunc is called when a present DPoP proof fails verification, so the
+// caller can record a security-audit event. blocked is true when the request was
+// rejected (enforce mode).
+type DPoPRejectFunc func(r *http.Request, reason string, blocked bool)
+
 // DPoP verifies a DPoP proof (RFC 9449) carried in the `DPoP` request header and
 // applies the configured sender-constraint behaviour:
 //
@@ -28,10 +33,17 @@ import (
 // htuBase is the canonical scheme://host of the server (the OAuth issuer); the
 // verified htu is htuBase + the request path, which matches the published
 // token-endpoint URL a client signs over, independent of proxy scheme rewriting.
-func DPoP(cache dpop.ReplayCache, mode, htuBase string) func(http.Handler) http.Handler {
+//
+// An optional onReject hook is invoked when a present proof fails verification,
+// letting the caller emit a dpop_validation_failed security event.
+func DPoP(cache dpop.ReplayCache, mode, htuBase string, onReject ...DPoPRejectFunc) func(http.Handler) http.Handler {
 	enabled := (mode == "observe" || mode == "enforce") && cache != nil
 	enforce := mode == "enforce"
 	base := strings.TrimRight(htuBase, "/")
+	var reject DPoPRejectFunc
+	if len(onReject) > 0 {
+		reject = onReject[0]
+	}
 
 	return func(next http.Handler) http.Handler {
 		if !enabled {
@@ -49,6 +61,9 @@ func DPoP(cache dpop.ReplayCache, mode, htuBase string) func(http.Handler) http.
 						"reason":  err.Error(),
 						"blocked": enforce,
 					}).Warn("dpop: proof rejected")
+					if reject != nil {
+						reject(r, err.Error(), enforce)
+					}
 					if enforce {
 						writeDPoPError(w)
 						return

@@ -35,6 +35,14 @@ type Config struct {
 	// session hardening.
 	AdminConsoleClientID string
 
+	// AdminScopeMode gates least-privilege OAuth-scope enforcement on the admin
+	// API (#201): "off" (default — admin routes are role-gated only, unchanged)
+	// or "enforce" (routes additionally require monitoring:read/write or the
+	// admin super-scope, confining a least-privilege client such as the
+	// monitoring BFF to its routes). Enable only after registering each console's
+	// client with the right scopes. ADMIN_SCOPE_MODE.
+	AdminScopeMode string
+
 	// AdminElevationMaxAge is the freshness window for admin step-up: the most
 	// destructive admin routes (delete client, rotate secret, create/delete
 	// superadmin, block user) require an authentication (auth_time) within this
@@ -250,6 +258,7 @@ func Load() *Config {
 		// Freshness window for admin step-up: the most destructive admin routes
 		// require an authentication (auth_time) no older than this. Default 300s
 		// (5 min); 0 disables the gate.
+		AdminScopeMode:       getEnv("ADMIN_SCOPE_MODE", "off"),
 		AdminElevationMaxAge: time.Duration(getEnvInt("ADMIN_ELEVATION_MAX_AGE", 300)) * time.Second,
 
 		AdminConsoleRedirectURIs:  getEnv("ADMIN_CONSOLE_REDIRECT_URIS", ""),

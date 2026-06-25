@@ -79,6 +79,12 @@ var validScopes = map[string]bool{
 	"profile":        true,
 	"offline_access": true,
 	"api":            true,
+	// Least-privilege scopes for the operational consoles (#201). "admin" is the
+	// full-privilege super-scope; "monitoring:read"/"monitoring:write" confine the
+	// monitoring console/BFF to its routes when ADMIN_SCOPE_MODE=enforce.
+	"admin":            true,
+	"monitoring:read":  true,
+	"monitoring:write": true,
 }
 
 // OAuthService defines the OAuth 2.0 service interface

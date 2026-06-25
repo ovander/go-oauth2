@@ -845,11 +845,18 @@ func (h *MonitoringHandler) GetTokenStats(w http.ResponseWriter, r *http.Request
 
 // GET /api/admin/events/stream
 func (h *MonitoringHandler) StreamEvents(w http.ResponseWriter, r *http.Request) {
-	// Set headers for SSE
+	// Set headers for SSE.
+	//
+	// CORS is intentionally NOT set here. The admin router's corsHandler
+	// middleware (H-06) already emits the correct, origin-scoped
+	// Access-Control-Allow-Origin based on the configured ALLOWED_ORIGINS.
+	// Hard-coding "*" on this handler previously overrode that policy on the
+	// most sensitive endpoint — the live security-telemetry stream — and a
+	// wildcard is invalid for the credentialed cross-origin fetch the SPA uses
+	// (Authorization header). Let the configured policy stand.
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	// Get flusher for streaming
 	flusher, ok := w.(http.Flusher)

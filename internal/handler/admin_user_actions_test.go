@@ -193,6 +193,7 @@ func newTestAdminHandler(us service.UserService) *AdminHandler {
 		&noopAdminLogService{},
 		nil, // AppActivityLogService — unused by these tests
 		nil, // EmailService — unused by these tests
+		nil, // SecurityAuditService — unused by these tests
 	)
 }
 

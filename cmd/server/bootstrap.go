@@ -504,7 +504,10 @@ func Bootstrap(cfg *config.Config) *App {
 	appUsersHandler := handler.NewAppUsersHandler(userService, userAppRoleService, appService, adminLogService, emailService, tokenService, cfg.OAuthIssuer)
 	profileHandler := handler.NewProfileHandler(userService)
 	mfaHandler := handler.NewMFAHandler(mfaService)
-	adminHandler := handler.NewAdminHandler(appService, userService, userAppRoleService, adminLogService, appActivityLogService, emailService)
+	// #203: AdminHandler emits client-lifecycle changes as alertable security
+	// events; give it a security audit service over the same repo.
+	adminSecurityAuditService := service.NewSecurityAuditService(securityAuditRepo)
+	adminHandler := handler.NewAdminHandler(appService, userService, userAppRoleService, adminLogService, appActivityLogService, emailService, adminSecurityAuditService)
 	adminAuthHandler := handler.NewAdminAuthHandler(authService, userService)
 	// Tier-0 step-up: wire the re-authentication backend for POST /api/admin/elevate.
 	if ra, ok := authService.(service.Reauthenticator); ok {

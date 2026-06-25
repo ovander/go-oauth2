@@ -643,6 +643,23 @@ func Bootstrap(cfg *config.Config) *App {
 	if dpopReplayCache != nil {
 		routerConfig.DPoPReplayCache = dpopReplayCache
 	}
+	// Record a dpop_validation_failed security event on every rejected proof so
+	// DPoP abuse / misconfiguration is visible to the monitoring console (#202).
+	if cfg.DPoPMode == "observe" || cfg.DPoPMode == "enforce" {
+		repo := securityAuditRepo
+		routerConfig.DPoPRejectSink = func(r *http.Request, reason string, blocked bool) {
+			_ = repo.Create(context.Background(), &model.SecurityAuditLog{
+				EventType:     model.SecurityEventDPoPValidationFailed,
+				Severity:      model.SecuritySeverityWarning,
+				IPAddress:     middleware.GetClientIP(r),
+				UserAgent:     r.UserAgent(),
+				CorrelationID: middleware.GetCorrelationID(r.Context()),
+				Success:       false,
+				Details:       map[string]interface{}{"reason": reason, "blocked": blocked, "path": r.URL.Path},
+				CreatedAt:     time.Now(),
+			})
+		}
+	}
 
 	// ==========================================
 	// Create Routers

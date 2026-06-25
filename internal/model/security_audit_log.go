@@ -66,6 +66,17 @@ const (
 	// Delegation (RFC 8693 / EPIC-16): a token-exchange request was processed
 	// (in shadow, audited but not issued; in enforce, an exchanged token issued).
 	SecurityEventTokenExchange SecurityEventType = "token_exchange"
+
+	// OAuth client lifecycle (#203 / audit §9): administrative changes to a
+	// registered client are promoted from the app-activity trail to alertable
+	// security events. A rogue client registration, a redirect-URI flipped to an
+	// attacker-controlled host, a grant/scope widening, or a secret rotation is a
+	// Tier-0 persistence / token-exfiltration vector the SOC must see — not just
+	// the app owner via the admin trail.
+	SecurityEventClientCreated       SecurityEventType = "client_created"
+	SecurityEventClientUpdated       SecurityEventType = "client_updated"
+	SecurityEventClientDeleted       SecurityEventType = "client_deleted"
+	SecurityEventClientSecretRotated SecurityEventType = "client_secret_rotated" //nolint:gosec // G101 false positive: event type enum constant, not a credential
 )
 
 // SecuritySeverity indicates the severity level of the event
@@ -115,6 +126,10 @@ func (SecurityAuditLog) TableName() string {
 func GetSeverityForEvent(eventType SecurityEventType, success bool) SecuritySeverity {
 	switch eventType {
 	case SecurityEventLoginFailed, SecurityEventInvalidTokenUsed, SecurityEventExpiredTokenUsed:
+		return SecuritySeverityWarning
+	case SecurityEventClientDeleted, SecurityEventClientSecretRotated:
+		// Destructive / credential-changing client-lifecycle actions warrant SOC
+		// attention even on the success path (create/update stay at info).
 		return SecuritySeverityWarning
 	case SecurityEventAccountLocked, SecurityEventRateLimitExceeded:
 		return SecuritySeverityError

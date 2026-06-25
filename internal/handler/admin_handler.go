@@ -15,12 +15,13 @@ import (
 )
 
 type AdminHandler struct {
-	appService         service.AppService
-	userService        service.UserService
-	userAppRoleService service.UserAppRoleService
-	adminLogService    service.AdminLogService
-	appActivityService service.AppActivityLogService
-	emailService       service.EmailService
+	appService           service.AppService
+	userService          service.UserService
+	userAppRoleService   service.UserAppRoleService
+	adminLogService      service.AdminLogService
+	appActivityService   service.AppActivityLogService
+	emailService         service.EmailService
+	securityAuditService service.SecurityAuditService
 }
 
 func NewAdminHandler(
@@ -30,15 +31,96 @@ func NewAdminHandler(
 	adminLogService service.AdminLogService,
 	appActivityService service.AppActivityLogService,
 	emailService service.EmailService,
+	securityAuditService service.SecurityAuditService,
 ) *AdminHandler {
 	return &AdminHandler{
-		appService:         appService,
-		userService:        userService,
-		userAppRoleService: userAppRoleService,
-		adminLogService:    adminLogService,
-		appActivityService: appActivityService,
-		emailService:       emailService,
+		appService:           appService,
+		userService:          userService,
+		userAppRoleService:   userAppRoleService,
+		adminLogService:      adminLogService,
+		appActivityService:   appActivityService,
+		emailService:         emailService,
+		securityAuditService: securityAuditService,
 	}
+}
+
+// logClientLifecycle records an OAuth client lifecycle change (#203) as an
+// alertable security audit event. It is fire-and-forget and nil-safe: a missing
+// audit service or a write failure never affects the admin response. IP, User-
+// Agent, and correlation ID are filled from the request by the audit service.
+func (h *AdminHandler) logClientLifecycle(r *http.Request, eventType model.SecurityEventType, actorID *uint, app *model.App, details map[string]interface{}) {
+	if h.securityAuditService == nil {
+		return
+	}
+	var appID *uint
+	if app != nil {
+		id := app.ID
+		appID = &id
+	}
+	_ = h.securityAuditService.LogFromRequest(r.Context(), r, service.SecurityEvent{
+		UserID:    actorID,
+		AppID:     appID,
+		EventType: eventType,
+		Success:   true,
+		Details:   details,
+	})
+}
+
+// appChangeSet compares a client before and after an update and returns the
+// security-relevant fields that changed. For the fields an attacker would
+// target (redirect URIs, active flag, delegation grants, audiences) it also
+// records old→new values so the SOC can reason about the change.
+func appChangeSet(before, after *model.App) (changed []string, detail map[string]interface{}) {
+	detail = map[string]interface{}{}
+	mark := func(field string) { changed = append(changed, field) }
+	markVal := func(field string, old, updated interface{}) {
+		changed = append(changed, field)
+		detail[field] = map[string]interface{}{"old": old, "new": updated}
+	}
+	if before.Name != after.Name {
+		mark("name")
+	}
+	if !stringPtrEqual(before.URL, after.URL) {
+		mark("url")
+	}
+	if !stringSliceEqual(before.RedirectURIs, after.RedirectURIs) {
+		markVal("redirect_uris", []string(before.RedirectURIs), []string(after.RedirectURIs))
+	}
+	if before.Active != after.Active {
+		markVal("active", before.Active, after.Active)
+	}
+	if before.RequireDPoP != after.RequireDPoP {
+		markVal("require_dpop", before.RequireDPoP, after.RequireDPoP)
+	}
+	if before.AllowTokenExchange != after.AllowTokenExchange {
+		markVal("allow_token_exchange", before.AllowTokenExchange, after.AllowTokenExchange)
+	}
+	if before.AllowImpersonation != after.AllowImpersonation {
+		markVal("allow_impersonation", before.AllowImpersonation, after.AllowImpersonation)
+	}
+	if !stringSliceEqual(before.Audiences, after.Audiences) {
+		markVal("audiences", []string(before.Audiences), []string(after.Audiences))
+	}
+	return changed, detail
+}
+
+func stringPtrEqual(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func stringSliceEqual(a, b model.StringArray) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // GET /api/admin/apps
@@ -144,6 +226,15 @@ func (h *AdminHandler) CreateApp(w http.ResponseWriter, r *http.Request) {
 		}).Info("📧 Public client — no credentials email sent")
 	}
 
+	// #203: a new client is new attack surface — surface it to the SOC as an
+	// alertable security event, not just to the app owner.
+	h.logClientLifecycle(r, model.SecurityEventClientCreated, &userID, app, map[string]interface{}{
+		"client_id":     app.ClientID,
+		"name":          app.Name,
+		"confidential":  clientSecret != "",
+		"redirect_uris": []string(app.RedirectURIs),
+	})
+
 	w.WriteHeader(http.StatusCreated)
 	//nolint:gosec // G117 intentional: one-time plaintext delivery of the newly-generated client_secret to the registering party
 	writeJSON(w, dto.AppWithSecretResponse{
@@ -187,10 +278,23 @@ func (h *AdminHandler) UpdateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Snapshot the pre-update state so we can record exactly what changed.
+	before := *app
+
 	updatedApp, err := h.appService.Update(r.Context(), uint(appID), req)
 	if err != nil {
 		writeError(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	// #203: record which security-relevant fields changed (redirect URIs, active
+	// flag, delegation grants are classic abuse targets) as an alertable event.
+	changed, changeDetail := appChangeSet(&before, updatedApp)
+	if len(changed) > 0 {
+		changeDetail["client_id"] = updatedApp.ClientID
+		changeDetail["name"] = updatedApp.Name
+		changeDetail["changed"] = changed
+		h.logClientLifecycle(r, model.SecurityEventClientUpdated, &userID, updatedApp, changeDetail)
 	}
 
 	writeJSON(w, appToResponse(*updatedApp))
@@ -234,6 +338,13 @@ func (h *AdminHandler) DeleteApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// #203: client deletion is destructive (cascades tokens/roles) — emit a
+	// warning-severity alertable event so the SOC sees it.
+	h.logClientLifecycle(r, model.SecurityEventClientDeleted, &userID, app, map[string]interface{}{
+		"client_id": app.ClientID,
+		"name":      app.Name,
+	})
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -272,12 +383,20 @@ func (h *AdminHandler) RotateSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Log the secret rotation
+	// Log the secret rotation to the app-activity (admin) trail …
 	if h.appActivityService != nil {
 		_ = h.appActivityService.LogEvent(r.Context(), uint(appID), &userID, model.EventTypeSecretRotated, model.EventCategoryAdmin, map[string]interface{}{
 			"rotated_by": userID,
 		}, middleware.GetClientIP(r), r.UserAgent(), true)
 	}
+
+	// … and promote it to an alertable security event (#203): a rotated client
+	// secret invalidates the old credential and is worth SOC visibility.
+	h.logClientLifecycle(r, model.SecurityEventClientSecretRotated, &userID, updatedApp, map[string]interface{}{
+		"client_id":  updatedApp.ClientID,
+		"name":       updatedApp.Name,
+		"rotated_by": userID,
+	})
 
 	// Send new credentials email to admin
 	if h.emailService != nil {

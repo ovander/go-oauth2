@@ -478,6 +478,7 @@ func newAdminRouter(
 			r.Get("/events", monitoringHandler.GetSecurityEvents)
 			r.Get("/threats", monitoringHandler.GetThreatMetrics)
 			r.Get("/geo", monitoringHandler.GetGeoAnalytics)
+			r.Get("/audit-integrity", monitoringHandler.GetAuditIntegrity)
 
 			// IP blocking
 			r.Get("/blocked-ips", monitoringHandler.ListBlockedIPs)

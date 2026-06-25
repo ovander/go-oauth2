@@ -1,0 +1,45 @@
+[Unit]
+Description=Socrate OAuth 2.1 / OIDC server (public OAuth :8080, admin API :8081 loopback)
+Documentation=https://github.com/ovander/go-oauth2
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=socrate
+Group=socrate
+WorkingDirectory=/opt/socrate
+EnvironmentFile=/opt/socrate/.env
+# Binary path matches `make deploy` (REMOTE_DIR=/opt/socrate).
+ExecStart=/opt/socrate/bin/oauth-server
+Restart=on-failure
+RestartSec=5
+
+# ── Hardening (Tier-0 control plane) ─────────────────────────────────────────
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+# RSA signing keys (make gen-keys) may be rotated at runtime — writable.
+# data/ (GeoIP) is read-only; the rest of /opt/socrate stays read-only.
+ReadWritePaths=/opt/socrate/keys
+
+[Install]
+WantedBy=multi-user.target

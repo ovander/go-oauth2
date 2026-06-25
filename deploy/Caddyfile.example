@@ -1,0 +1,21 @@
+# Caddy site for the Socrate backend (OAuth 2.1 / OIDC server).
+#
+# Socrate runs dual-port: public OAuth on :8080 and the admin API on :8081
+# bound to LOOPBACK (ADMIN_BIND_HOST=127.0.0.1). Only the OAuth server gets a
+# public subdomain here; the admin API is reached on-box by the consoles' BFFs
+# (see the oauth2-monitoring deploy kit), never directly from the internet.
+
+socrate.vandermoten.eu {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+	reverse_proxy 127.0.0.1:8080
+}
+
+# The admin API has NO public block — it stays on 127.0.0.1:8081.
+# admin.vandermoten.eu (admin SPA) and monitoring.vandermoten.eu (monitoring
+# SPA + BFF) are served by their own Caddy sites; see those repos' deploy kits.

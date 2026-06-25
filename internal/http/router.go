@@ -168,6 +168,8 @@ func newOAuthRouter(
 	r.With(middleware.JSONContentType()).Get("/health/liveness", healthHandler.Liveness)
 	r.With(middleware.JSONContentType()).Get("/health/readiness", healthHandler.Readiness)
 	r.With(middleware.JSONContentType()).Get("/version", healthHandler.Version)
+	// /api/version alias: the admin SPA probes this path for its version store.
+	r.With(middleware.JSONContentType()).Get("/api/version", healthHandler.Version)
 
 	// ==========================================
 	// OpenID Connect Discovery (JSON)
@@ -386,6 +388,8 @@ func newAdminRouter(
 	r.Get("/health/liveness", healthHandler.Liveness)
 	r.Get("/health/readiness", healthHandler.Readiness)
 	r.Get("/version", healthHandler.Version)
+	// /api/version alias: the admin SPA probes this path for its version store.
+	r.Get("/api/version", healthHandler.Version)
 
 	// ==========================================
 	// Admin Authentication (public - no auth required)

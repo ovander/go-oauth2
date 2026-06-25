@@ -15,10 +15,17 @@ import (
 // Config holds all application configuration
 type Config struct {
 	// Server
-	Port        string
-	AdminPort   string // Separate port for admin API (set to "" to disable)
-	Host        string
-	Environment string
+	Port      string
+	AdminPort string // Separate port for admin API (set to "" to disable)
+	// AdminBindHost is the interface the admin API binds to. Defaults to
+	// 127.0.0.1 (loopback) so the Tier-0 control plane is unreachable from the
+	// public internet without relying on an external firewall — a reverse proxy
+	// (Caddy) or BFF on the same host fronts it. Set to "0.0.0.0" (or "") only
+	// for multi-host/container deployments that reach the admin API across the
+	// network and enforce isolation by network policy instead.
+	AdminBindHost string
+	Host          string
+	Environment   string
 
 	// AdminConsoleClientID is the client_id of the first-party admin console — a
 	// public, PKCE client. When non-empty, the token endpoint delivers that
@@ -225,9 +232,10 @@ func Load() *Config {
 
 	cfg := &Config{
 		// Server
-		Port:      getEnv("PORT", "8080"),
-		AdminPort: getEnv("ADMIN_PORT", ""), // Empty = disabled (use single port mode)
-		Host:      getEnv("PHX_HOST", "localhost"),
+		Port:          getEnv("PORT", "8080"),
+		AdminPort:     getEnv("ADMIN_PORT", ""),               // Empty = disabled (use single port mode)
+		AdminBindHost: getEnv("ADMIN_BIND_HOST", "127.0.0.1"), // Loopback by default — internal-only Tier-0 control plane
+		Host:          getEnv("PHX_HOST", "localhost"),
 		// MED-04 fix: default to "production" so that a server accidentally
 		// started without an ENV variable does not silently operate in an
 		// insecure mode (e.g. leaking email verification tokens in API

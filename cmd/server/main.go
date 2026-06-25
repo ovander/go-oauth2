@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -90,9 +91,11 @@ func startDualPortMode(cfg *config.Config, app *App) {
 		MaxHeaderBytes: 16 * 1024, // L-04: 16 KB — generous for OAuth/OIDC, far below the 1 MB default
 	}
 
-	// Admin server (internal — slightly larger limit for dashboard/API payloads)
+	// Admin server (internal — slightly larger limit for dashboard/API payloads).
+	// Binds AdminBindHost (loopback by default) so the Tier-0 control plane is not
+	// publicly reachable; a same-host reverse proxy / BFF fronts it.
 	adminSrv := &http.Server{
-		Addr:           ":" + cfg.AdminPort,
+		Addr:           net.JoinHostPort(cfg.AdminBindHost, cfg.AdminPort),
 		Handler:        app.AdminRouter,
 		ReadTimeout:    15 * time.Second,
 		WriteTimeout:   15 * time.Second,
@@ -111,7 +114,10 @@ func startDualPortMode(cfg *config.Config, app *App) {
 
 	// Start Admin server
 	go func() {
-		logger.Warnf("🔒 Admin API listening on port %s (internal) — ensure it is firewalled from public access", cfg.AdminPort)
+		logger.Infof("🔒 Admin API listening on %s (internal control plane)", adminSrv.Addr)
+		if cfg.AdminBindHost != "127.0.0.1" && cfg.AdminBindHost != "::1" && cfg.AdminBindHost != "localhost" {
+			logger.Warnf("⚠️  Admin API bound to %q (not loopback) — ensure it is firewalled / network-isolated from public access", cfg.AdminBindHost)
+		}
 
 		if err := adminSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatalf("Failed to start Admin server: %v", err)

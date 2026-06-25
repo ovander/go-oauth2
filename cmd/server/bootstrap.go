@@ -661,6 +661,37 @@ func Bootstrap(cfg *config.Config) *App {
 		}
 	}
 
+	// Record a token-abuse security event whenever a present bearer token is
+	// rejected at a protected endpoint (#203). Invalid (forgery / malformed /
+	// unknown-user) and revoked (nuclear or per-JTI) tokens are high-signal and
+	// recorded; expired tokens are intentionally NOT recorded — a client hitting
+	// expiry then refreshing is normal behaviour and would flood the console.
+	{
+		repo := securityAuditRepo
+		routerConfig.AuthRejectSink = func(r *http.Request, reason middleware.AuthRejectReason, detail string) {
+			var eventType model.SecurityEventType
+			switch reason {
+			case middleware.AuthRejectRevoked:
+				eventType = model.SecurityEventRevokedTokenUsed
+			case middleware.AuthRejectInvalid:
+				eventType = model.SecurityEventInvalidTokenUsed
+			default:
+				// AuthRejectExpired (and any future reason) — not audited here.
+				return
+			}
+			_ = repo.Create(context.Background(), &model.SecurityAuditLog{
+				EventType:     eventType,
+				Severity:      model.GetSeverityForEvent(eventType, false),
+				IPAddress:     middleware.GetClientIP(r),
+				UserAgent:     r.UserAgent(),
+				CorrelationID: middleware.GetCorrelationID(r.Context()),
+				Success:       false,
+				Details:       map[string]interface{}{"reason": detail, "path": r.URL.Path},
+				CreatedAt:     time.Now(),
+			})
+		}
+	}
+
 	// ==========================================
 	// Create Routers
 	// ==========================================

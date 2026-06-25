@@ -80,6 +80,9 @@ type RouterConfig struct {
 	// AdminElevationMaxAge is the freshness window for admin step-up: destructive
 	// admin routes require an auth_time within it. 0 disables the gate.
 	AdminElevationMaxAge time.Duration
+	// ScopeEnforce turns on least-privilege OAuth-scope gating across the admin
+	// API (#201). False (default) leaves routes role-gated only.
+	ScopeEnforce bool
 }
 
 // Routers holds both the OAuth and Admin routers for separate port binding
@@ -413,15 +416,25 @@ func newAdminRouter(
 		// authentication (Tier-0 step-up). A zero window disables it.
 		freshAuth := middleware.RequireFreshAuth(config.AdminElevationMaxAge)
 
-		// Current admin profile
+		// Least-privilege OAuth-scope gates (#201). No-op unless
+		// ADMIN_SCOPE_MODE=enforce. "admin" is a super-scope (the admin console
+		// holds it); monitoring:read/write confine the monitoring console/BFF to
+		// its routes. Read endpoints require monitoring:read, mutations
+		// monitoring:write; privileged admin-console routes require admin.
+		monRead := middleware.RequireScope("monitoring:read", config.ScopeEnforce)
+		monWrite := middleware.RequireScope("monitoring:write", config.ScopeEnforce)
+		adminScope := middleware.RequireScope("admin", config.ScopeEnforce)
+
+		// Current admin profile (any authenticated admin; no scope gate).
 		r.Get("/profile", adminAuthHandler.GetProfile)
 
-		// Stats and activity
-		r.Get("/stats", adminHandler.GetStats)
-		r.Get("/activity", adminHandler.GetActivity)
+		// Stats and activity (admin console).
+		r.With(adminScope).Get("/stats", adminHandler.GetStats)
+		r.With(adminScope).Get("/activity", adminHandler.GetActivity)
 
-		// App management (OAuth clients)
+		// App management (OAuth clients) — admin console.
 		r.Route("/apps", func(r chi.Router) {
+			r.Use(adminScope)
 			r.Get("/", adminHandler.ListApps)
 			r.Post("/", adminHandler.CreateApp)
 
@@ -434,25 +447,27 @@ func newAdminRouter(
 			})
 		})
 
-		// User management (global admin only)
+		// User management — mostly admin console; two routes belong to monitoring.
 		r.Route("/users", func(r chi.Router) {
-			r.Get("/", adminHandler.ListUsers)
+			r.With(adminScope).Get("/", adminHandler.ListUsers)
 
 			r.Route("/{id}", func(r chi.Router) {
-				r.Get("/", adminHandler.GetUser)
-				r.Delete("/", adminHandler.DeleteUser)
-				r.Get("/apps", adminHandler.GetUserApps) // Get all apps user belongs to
-				r.Get("/sessions", monitoringHandler.GetUserSessions)
+				r.With(adminScope).Get("/", adminHandler.GetUser)
+				r.With(adminScope).Delete("/", adminHandler.DeleteUser)
+				r.With(adminScope).Get("/apps", adminHandler.GetUserApps)
+				// Monitoring console: inspect a user's sessions, revoke their tokens.
+				r.With(monRead).Get("/sessions", monitoringHandler.GetUserSessions)
 				// Destructive: require fresh step-up (revokes all of a user's tokens).
-				r.With(freshAuth).Post("/revoke-tokens", adminHandler.RevokeUserTokens)
-				r.Post("/unlock", adminHandler.UnlockUser)
+				r.With(freshAuth, monWrite).Post("/revoke-tokens", adminHandler.RevokeUserTokens)
+				r.With(adminScope).Post("/unlock", adminHandler.UnlockUser)
 				// Destructive: require fresh step-up.
-				r.With(freshAuth).Post("/block", adminHandler.BlockUser)
+				r.With(freshAuth, adminScope).Post("/block", adminHandler.BlockUser)
 			})
 		})
 
-		// Dashboard endpoints
+		// Dashboard endpoints (monitoring console).
 		r.Route("/dashboard", func(r chi.Router) {
+			r.Use(monRead)
 			r.Get("/stats", dashboardHandler.GetStats)
 			r.Get("/activity", dashboardHandler.GetActivity)
 			r.Get("/health", dashboardHandler.GetHealth)
@@ -460,8 +475,9 @@ func newAdminRouter(
 			r.Get("/app-usage", dashboardHandler.GetAppUsage)
 		})
 
-		// Superadmin management
+		// Superadmin management — admin console.
 		r.Route("/superadmins", func(r chi.Router) {
+			r.Use(adminScope)
 			r.Get("/", adminHandler.ListSuperadmins)
 			// Destructive: require fresh step-up.
 			r.With(freshAuth).Post("/", adminHandler.CreateSuperadmin)
@@ -474,8 +490,9 @@ func newAdminRouter(
 			})
 		})
 
-		// Security monitoring endpoints
+		// Security monitoring endpoints (monitoring console).
 		r.Route("/security", func(r chi.Router) {
+			r.Use(monRead)
 			r.Get("/events", monitoringHandler.GetSecurityEvents)
 			r.Get("/threats", monitoringHandler.GetThreatMetrics)
 			r.Get("/geo", monitoringHandler.GetGeoAnalytics)
@@ -484,49 +501,50 @@ func newAdminRouter(
 			// IP blocking
 			r.Get("/blocked-ips", monitoringHandler.ListBlockedIPs)
 			// Destructive: blocking/unblocking IPs alters the platform's defense
-			// posture — require fresh step-up.
-			r.With(freshAuth).Post("/blocked-ips", monitoringHandler.BlockIP)
-			r.With(freshAuth).Delete("/blocked-ips/{id}", monitoringHandler.UnblockIP)
+			// posture — require fresh step-up + monitoring:write.
+			r.With(freshAuth, monWrite).Post("/blocked-ips", monitoringHandler.BlockIP)
+			r.With(freshAuth, monWrite).Delete("/blocked-ips/{id}", monitoringHandler.UnblockIP)
 			r.Get("/ip-reputation/{ip}", monitoringHandler.GetIPReputation)
 		})
 
-		// Real-time event streams
+		// Real-time event streams (monitoring console).
 		r.Route("/events", func(r chi.Router) {
-			r.Get("/stream", monitoringHandler.StreamEvents)
+			r.With(monRead).Get("/stream", monitoringHandler.StreamEvents)
 		})
 
-		// Session management
+		// Session management (monitoring console).
 		r.Route("/sessions", func(r chi.Router) {
-			r.Get("/", monitoringHandler.ListSessions)
+			r.With(monRead).Get("/", monitoringHandler.ListSessions)
 		})
 
-		// Report generation
+		// Report generation (monitoring console).
 		r.Route("/reports", func(r chi.Router) {
-			r.Post("/security", monitoringHandler.GenerateSecurityReport)
-			r.Get("/{id}", monitoringHandler.GetReportStatus)
-			r.Get("/{id}/download", monitoringHandler.DownloadReport)
+			r.With(monWrite).Post("/security", monitoringHandler.GenerateSecurityReport)
+			r.With(monRead).Get("/{id}", monitoringHandler.GetReportStatus)
+			r.With(monRead).Get("/{id}/download", monitoringHandler.DownloadReport)
 		})
 
-		// Alert management
+		// Alert management (monitoring console).
 		r.Route("/alerts", func(r chi.Router) {
-			r.Get("/rules", monitoringHandler.ListAlertRules)
+			r.With(monRead).Get("/rules", monitoringHandler.ListAlertRules)
 			// Destructive: alert rules are the SOC's detection logic — mutating
 			// them (including disabling detections) requires fresh step-up.
-			r.With(freshAuth).Post("/rules", monitoringHandler.CreateAlertRule)
-			r.With(freshAuth).Put("/rules/{id}", monitoringHandler.UpdateAlertRule)
-			r.With(freshAuth).Delete("/rules/{id}", monitoringHandler.DeleteAlertRule)
+			r.With(freshAuth, monWrite).Post("/rules", monitoringHandler.CreateAlertRule)
+			r.With(freshAuth, monWrite).Put("/rules/{id}", monitoringHandler.UpdateAlertRule)
+			r.With(freshAuth, monWrite).Delete("/rules/{id}", monitoringHandler.DeleteAlertRule)
 
-			r.Get("/history", monitoringHandler.GetAlertHistory)
-			r.Post("/{id}/acknowledge", monitoringHandler.AcknowledgeAlert)
+			r.With(monRead).Get("/history", monitoringHandler.GetAlertHistory)
+			r.With(monWrite).Post("/{id}/acknowledge", monitoringHandler.AcknowledgeAlert)
 		})
 
-		// Token analytics
-		r.Get("/tokens/stats", monitoringHandler.GetTokenStats)
+		// Token analytics (monitoring console).
+		r.With(monRead).Get("/tokens/stats", monitoringHandler.GetTokenStats)
 
 		// ==========================================
-		// Admin Audit Logs
+		// Admin Audit Logs (surfaced by the monitoring console).
 		// ==========================================
 		r.Route("/logs", func(r chi.Router) {
+			r.Use(monRead)
 			// /export must be registered before /{id} so chi does not
 			// treat the literal "export" as a numeric ID parameter.
 			r.Get("/export", adminLogsHandler.ExportLogs)
@@ -535,9 +553,10 @@ func newAdminRouter(
 		})
 
 		// ==========================================
-		// Server Settings / Config
+		// Server Settings / Config (admin console).
 		// ==========================================
 		r.Route("/settings", func(r chi.Router) {
+			r.Use(adminScope)
 			r.Get("/config", settingsHandler.GetConfig)
 			r.Get("/test-db", settingsHandler.TestDB)
 			r.Get("/test-cache", settingsHandler.TestCache)

@@ -635,6 +635,7 @@ func Bootstrap(cfg *config.Config) *App {
 		DPoPMode:             cfg.DPoPMode,
 		DPoPHTUBase:          cfg.OAuthIssuer,
 		AdminElevationMaxAge: cfg.AdminElevationMaxAge, // Tier-0 step-up freshness window
+		ScopeEnforce:         cfg.AdminScopeMode == "enforce",
 	}
 	if dpopReplayCache != nil {
 		routerConfig.DPoPReplayCache = dpopReplayCache

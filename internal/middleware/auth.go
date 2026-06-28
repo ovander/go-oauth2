@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,6 +12,29 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 )
+
+// AuthRejectReason classifies why AuthMiddleware rejected a *present* bearer
+// token, so the audit sink can map it to the right token-abuse security event.
+type AuthRejectReason string
+
+const (
+	// AuthRejectInvalid: the token is malformed, has a bad signature, names an
+	// unknown user, or is otherwise unverifiable — a forgery / probing signal.
+	AuthRejectInvalid AuthRejectReason = "invalid"
+	// AuthRejectExpired: the token verified but is past its exp. Usually normal
+	// client behaviour (refresh-then-retry), so the wired sink does not record it.
+	AuthRejectExpired AuthRejectReason = "expired"
+	// AuthRejectRevoked: the token was invalidated by nuclear (token-version) or
+	// per-JTI revocation but is still being presented — a stolen/stale-credential
+	// replay signal.
+	AuthRejectRevoked AuthRejectReason = "revoked"
+)
+
+// AuthRejectFunc is invoked when AuthMiddleware rejects a *present* bearer token,
+// letting the caller record a token-abuse security event. It is never called
+// when the Authorization header is simply absent — an unauthenticated probe is
+// not a token-abuse signal and would only add noise.
+type AuthRejectFunc func(r *http.Request, reason AuthRejectReason, detail string)
 
 // isRevoked reports whether the token's JTI has been individually revoked via
 // /oauth/revoke (the JTI is blacklisted in used_tokens). Nil repo or an empty
@@ -27,36 +51,60 @@ func isRevoked(ctx context.Context, usedTokenRepo repository.UsedTokenRepository
 	return err == nil && revoked
 }
 
-// AuthMiddleware validates JWT tokens, verifies token version + revocation, and adds user info to context
-func AuthMiddleware(tokenService *auth.TokenService, userRepo repository.UserRepository, usedTokenRepo repository.UsedTokenRepository) func(http.Handler) http.Handler {
+// AuthMiddleware validates JWT tokens, verifies token version + revocation, and
+// adds user info to context.
+//
+// An optional onReject hook is invoked whenever a *present* bearer token is
+// rejected, classified as invalid / expired / revoked, so the caller can emit a
+// token-abuse security event. A request with no Authorization header never fires
+// the hook (an unauthenticated probe is not a token-abuse signal).
+func AuthMiddleware(tokenService *auth.TokenService, userRepo repository.UserRepository, usedTokenRepo repository.UsedTokenRepository, onReject ...AuthRejectFunc) func(http.Handler) http.Handler {
+	var reject AuthRejectFunc
+	if len(onReject) > 0 {
+		reject = onReject[0]
+	}
+	fire := func(r *http.Request, reason AuthRejectReason, detail string) {
+		if reject != nil {
+			reject(r, reason, detail)
+		}
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
+				// Absent credential — not a token-abuse signal; do not audit.
 				writeAuthError(w, "authorization header required", http.StatusUnauthorized)
 				return
 			}
 
 			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 			if tokenString == authHeader {
+				fire(r, AuthRejectInvalid, "malformed_authorization_header")
 				writeAuthError(w, "invalid authorization header format", http.StatusUnauthorized)
 				return
 			}
 
 			claims, err := tokenService.VerifyAccessToken(tokenString)
 			if err != nil {
+				if errors.Is(err, auth.ErrTokenExpired) {
+					fire(r, AuthRejectExpired, "token_expired")
+				} else {
+					fire(r, AuthRejectInvalid, "verify_failed")
+				}
 				writeAuthError(w, "invalid or expired token", http.StatusUnauthorized)
 				return
 			}
 
 			userID, err := strconv.ParseUint(claims.Subject, 10, 64)
 			if err != nil {
+				fire(r, AuthRejectInvalid, "bad_subject_claim")
 				writeAuthError(w, "invalid token claims", http.StatusUnauthorized)
 				return
 			}
 
 			user, err := userRepo.FindByID(r.Context(), uint(userID))
 			if err != nil {
+				fire(r, AuthRejectInvalid, "user_not_found")
 				writeAuthError(w, "user not found", http.StatusUnauthorized)
 				return
 			}
@@ -76,6 +124,7 @@ func AuthMiddleware(tokenService *auth.TokenService, userRepo repository.UserRep
 			// matches the Introspect implementation (NEW-03 fix) and correctly catches
 			// the 0→1, 1→2, and any N→N+k transitions.
 			if user.TokenVersion > claims.TokenVersion {
+				fire(r, AuthRejectRevoked, "token_version_superseded")
 				writeAuthError(w, "token has been revoked", http.StatusUnauthorized)
 				return
 			}
@@ -84,6 +133,7 @@ func AuthMiddleware(tokenService *auth.TokenService, userRepo repository.UserRep
 			// /oauth/revoke, so per-token revocation propagates to this hot path
 			// (previously only Introspect honored the blacklist).
 			if isRevoked(r.Context(), usedTokenRepo, claims.ID) {
+				fire(r, AuthRejectRevoked, "jti_revoked")
 				writeAuthError(w, "token has been revoked", http.StatusUnauthorized)
 				return
 			}

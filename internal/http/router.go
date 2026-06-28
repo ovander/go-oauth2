@@ -80,6 +80,10 @@ type RouterConfig struct {
 	// DPoPRejectSink, when set, records a dpop_validation_failed security event
 	// each time a present DPoP proof fails verification (so the SOC can see it).
 	DPoPRejectSink middleware.DPoPRejectFunc
+	// AuthRejectSink, when set, records a token-abuse security event each time a
+	// present bearer token is rejected at a protected endpoint (invalid / revoked;
+	// expired is intentionally not recorded — see bootstrap wiring).
+	AuthRejectSink middleware.AuthRejectFunc
 	// AdminElevationMaxAge is the freshness window for admin step-up: destructive
 	// admin routes require an auth_time within it. 0 disables the gate.
 	AdminElevationMaxAge time.Duration
@@ -208,9 +212,9 @@ func newOAuthRouter(
 				Post("/token", oauthHandler.Token)
 		}
 
-		r.With(middleware.JSONContentType(), middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo)).
+		r.With(middleware.JSONContentType(), middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo, config.AuthRejectSink)).
 			Get("/userinfo", oauthHandler.UserInfo)
-		r.With(middleware.JSONContentType(), middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo)).
+		r.With(middleware.JSONContentType(), middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo, config.AuthRejectSink)).
 			Post("/userinfo", oauthHandler.UserInfo)
 
 		r.With(middleware.JSONContentType()).Post("/introspect", oauthHandler.Introspect)
@@ -265,7 +269,7 @@ func newOAuthRouter(
 		r.Use(middleware.JSONContentType())
 
 		// UserInfo endpoint
-		r.With(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo)).
+		r.With(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo, config.AuthRejectSink)).
 			Get("/userinfo", authHandler.GetUserInfo)
 
 		// Auth Routes (Public)
@@ -292,7 +296,7 @@ func newOAuthRouter(
 				r.Post("/refresh", authHandler.Refresh)
 			}
 
-			r.With(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo)).
+			r.With(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo, config.AuthRejectSink)).
 				Post("/logout", authHandler.Logout)
 
 			// LOW-06 fix: request-password-reset triggers email sending; rate-limit
@@ -322,7 +326,7 @@ func newOAuthRouter(
 
 		// Profile Routes (Protected - user self-service)
 		r.Route("/profile", func(r chi.Router) {
-			r.Use(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo))
+			r.Use(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo, config.AuthRejectSink))
 			r.Get("/", profileHandler.GetProfile)
 			r.Put("/", profileHandler.UpdateProfile)
 			r.Patch("/", profileHandler.UpdateProfile)
@@ -407,7 +411,7 @@ func newAdminRouter(
 	// Admin API Routes (protected)
 	// ==========================================
 	r.Route("/api/admin", func(r chi.Router) {
-		r.Use(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo))
+		r.Use(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo, config.AuthRejectSink))
 		// Tier-0: an admin flagged MustChangePassword is blocked from every admin
 		// API route (403 password_change_required) until they change it. The
 		// change-password endpoint itself is exempt so it stays reachable.
@@ -574,7 +578,7 @@ func newAdminRouter(
 	// App-Scoped User Management (for app admins)
 	// ==========================================
 	r.Route("/api/apps/{app_id}", func(r chi.Router) {
-		r.Use(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo))
+		r.Use(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo, config.AuthRejectSink))
 		r.Use(middleware.RequireAppAccess(userAppRoleRepo))
 
 		r.Route("/users", func(r chi.Router) {

@@ -582,6 +582,12 @@ func newAdminRouter(
 		r.Use(middleware.RequireAppAccess(userAppRoleRepo))
 
 		r.Route("/users", func(r chi.Router) {
+			// H1: app-scoped user management is admin-only. Without this gate any
+			// app member (viewer/user/etc.) could create users, escalate roles to
+			// admin, remove users, and force password resets within their tenant.
+			// Mirrors the RequireAppAdmin precedent used by /logs below.
+			r.Use(middleware.RequireAppAdmin(userAppRoleRepo))
+
 			r.Get("/", appUsersHandler.ListUsers)
 			r.Post("/", appUsersHandler.CreateUser)
 

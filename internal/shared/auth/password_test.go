@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ---------------------------------------------------------------------------
@@ -170,5 +171,57 @@ func TestCheckClientSecret_LegacyPath_ConstantTime(t *testing.T) {
 	tampered := h[:len(h)-1] + "x"
 	if CheckClientSecret(correct, tampered) {
 		t.Error("tampered hash must return false")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// L1: CheckDummyPassword — timing-parity dummy bcrypt comparison
+// ---------------------------------------------------------------------------
+
+func TestCheckDummyPassword_AlwaysReturnsFalse(t *testing.T) {
+	if CheckDummyPassword() {
+		t.Error("CheckDummyPassword must always return false — it compares against a fixed placeholder, never a real password")
+	}
+}
+
+func TestCheckDummyPassword_PaysBcryptCost(t *testing.T) {
+	// bcrypt.DefaultCost work is inherently slow (tens of milliseconds on
+	// commodity hardware) — assert the call is not a fast no-op. This is a
+	// coarse, generous bound chosen to avoid flakiness on slow CI runners
+	// while still catching a regression to a cheap/short-circuited check.
+	start := time.Now()
+	CheckDummyPassword()
+	elapsed := time.Since(start)
+	if elapsed < time.Millisecond {
+		t.Errorf("CheckDummyPassword returned in %v — expected real bcrypt work (>=1ms)", elapsed)
+	}
+}
+
+func TestCheckDummyPassword_TimingParityWithCheckPassword(t *testing.T) {
+	// CheckDummyPassword should cost about the same as a real CheckPassword
+	// call (same bcrypt cost factor) — that parity is the whole point of L1.
+	// Wall-clock comparisons are inherently noisy, so average several
+	// iterations and allow a generous tolerance band.
+	const iterations = 8
+	hash, err := HashPassword("SomeReal!Passw0rd123")
+	if err != nil {
+		t.Fatalf("HashPassword: %v", err)
+	}
+
+	var realTotal, dummyTotal time.Duration
+	for i := 0; i < iterations; i++ {
+		start := time.Now()
+		CheckPassword("wrong-password-attempt", hash)
+		realTotal += time.Since(start)
+
+		start = time.Now()
+		CheckDummyPassword()
+		dummyTotal += time.Since(start)
+	}
+
+	ratio := float64(dummyTotal) / float64(realTotal)
+	if ratio < 0.3 || ratio > 3.0 {
+		t.Errorf("L1: CheckDummyPassword/CheckPassword timing ratio = %.2f (dummy=%v, real=%v over %d iterations) — expected roughly comparable cost",
+			ratio, dummyTotal, realTotal, iterations)
 	}
 }

@@ -295,6 +295,72 @@ func TestConfig_Validate_IsProduction_ProdShorthand(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// L4: OAUTH_ISSUER must be https:// in production
+// ---------------------------------------------------------------------------
+//
+// httpsRequired (redirect-URI HTTPS enforcement, handler.NewOAuthHandler) and
+// the Secure flag on CSRF/consent/refresh cookies are both derived from
+// strings.HasPrefix(issuer, "https://"). An http:// issuer in production
+// would silently disable both, so Validate() must reject it.
+
+func TestConfig_Validate_Production_HTTPIssuer_ReturnsError(t *testing.T) {
+	cfg := &Config{
+		Environment:   "production",
+		SecretKeyBase: "32-character-secret-key-base-xxxx",
+		DatabaseURL:   "postgres://prod.example.com/db",
+		OAuthIssuer:   "http://auth.example.com", // http, not https — must be rejected
+		KeysPath:      "/etc/myapp/keys",
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() must return an error when OAUTH_ISSUER is http:// in production")
+	}
+}
+
+func TestConfig_Validate_Production_HTTPSIssuer_OK(t *testing.T) {
+	cfg := &Config{
+		Environment:   "production",
+		SecretKeyBase: "32-character-secret-key-base-xxxx",
+		DatabaseURL:   "postgres://prod.example.com/db",
+		OAuthIssuer:   "https://auth.example.com",
+		KeysPath:      "/etc/myapp/keys",
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() returned error for an https:// issuer: %v", err)
+	}
+}
+
+func TestConfig_Validate_Development_HTTPIssuer_OK(t *testing.T) {
+	// The restriction only applies in production; local development commonly
+	// runs the server over plain HTTP on localhost.
+	cfg := &Config{
+		Environment: "development",
+		OAuthIssuer: "http://localhost:8080",
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() must not error for an http:// issuer in development: %v", err)
+	}
+}
+
+func TestConfig_Validate_Production_SchemelessIssuer_ReturnsError(t *testing.T) {
+	// An issuer with no scheme at all (e.g. a bare host) must also be
+	// rejected — it does not start with "https://" either.
+	cfg := &Config{
+		Environment:   "production",
+		SecretKeyBase: "32-character-secret-key-base-xxxx",
+		DatabaseURL:   "postgres://prod.example.com/db",
+		OAuthIssuer:   "auth.example.com",
+		KeysPath:      "/etc/myapp/keys",
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Error("Validate() must return an error when OAUTH_ISSUER has no https:// scheme in production")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

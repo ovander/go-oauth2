@@ -81,7 +81,7 @@ var _ service.AppService = (*critAppService)(nil)
 // and Introspect.  Revoke is a no-op; all other methods panic.
 type critOAuthService struct {
 	authorize  func(ctx context.Context, req dto.AuthorizeRequest, userID uint) (string, error)
-	introspect func(ctx context.Context, token string) (*dto.IntrospectResponse, error)
+	introspect func(ctx context.Context, token string, requestingClientID string) (*dto.IntrospectResponse, error)
 }
 
 func (m *critOAuthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, userID uint) (string, error) {
@@ -96,13 +96,13 @@ func (m *critOAuthService) Token(_ context.Context, _ dto.TokenRequest, _, _ str
 func (m *critOAuthService) ExchangeToken(_ context.Context, _ url.Values, _, _ string) (*dto.TokenResponse, error) {
 	panic("ExchangeToken called unexpectedly")
 }
-func (m *critOAuthService) Introspect(ctx context.Context, token string) (*dto.IntrospectResponse, error) {
+func (m *critOAuthService) Introspect(ctx context.Context, token string, requestingClientID string) (*dto.IntrospectResponse, error) {
 	if m.introspect != nil {
-		return m.introspect(ctx, token)
+		return m.introspect(ctx, token, requestingClientID)
 	}
 	return &dto.IntrospectResponse{Active: false}, nil
 }
-func (m *critOAuthService) Revoke(_ context.Context, _ string, _ uint) error { return nil }
+func (m *critOAuthService) Revoke(_ context.Context, _ string, _ uint, _ string) error { return nil }
 func (m *critOAuthService) GetUserInfo(_ context.Context, _ uint, _ string) (*dto.UserInfoResponse, error) {
 	panic("GetUserInfo called unexpectedly")
 }
@@ -268,7 +268,7 @@ func TestCRIT01_Introspect_ValidCredentials_Returns200(t *testing.T) {
 		},
 	}
 	oauthSvc := &critOAuthService{
-		introspect: func(_ context.Context, _ string) (*dto.IntrospectResponse, error) {
+		introspect: func(_ context.Context, _ string, _ string) (*dto.IntrospectResponse, error) {
 			return &dto.IntrospectResponse{Active: true}, nil
 		},
 	}

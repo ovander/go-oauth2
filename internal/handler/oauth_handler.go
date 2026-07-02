@@ -833,7 +833,10 @@ func (h *OAuthHandler) Introspect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response, err := h.oauthService.Introspect(r.Context(), req.Token)
+	// L2 fix: pass the authenticated caller's own client_id so Introspect can
+	// bind the response to it — a client should not learn the full claim set
+	// of a token that was not issued to/for it.
+	response, err := h.oauthService.Introspect(r.Context(), req.Token, clientID)
 	if err != nil {
 		writeJSON(w, dto.IntrospectResponse{Active: false})
 		return
@@ -874,7 +877,10 @@ func (h *OAuthHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if ok {
 		// RFC 7009: always return 200 for revocation, even on error.
-		_ = h.oauthService.Revoke(r.Context(), req.Token, userID)
+		// No requestingClientID here — the caller authenticated as a user via
+		// Bearer token, not as a client (L3 ownership check applies only to
+		// the client-credential path below).
+		_ = h.oauthService.Revoke(r.Context(), req.Token, userID, "")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -899,8 +905,10 @@ func (h *OAuthHandler) Revoke(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Valid client — revoke the token (userID=0: no specific user context).
-		// The service will still blacklist the token's JTI from the parsed token.
-		_ = h.oauthService.Revoke(r.Context(), req.Token, 0)
+		// L3 fix: pass clientID so Revoke can verify the presented token
+		// actually belongs to this client before blacklisting its JTI (a
+		// client must not be able to revoke a token it does not own).
+		_ = h.oauthService.Revoke(r.Context(), req.Token, 0, clientID)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -938,7 +946,7 @@ func (h *OAuthHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 
 	// If user is authenticated, revoke their tokens
 	if userID, ok := middleware.GetUserIDFromContext(r.Context()); ok {
-		_ = h.oauthService.Revoke(r.Context(), "", userID)
+		_ = h.oauthService.Revoke(r.Context(), "", userID, "")
 	}
 
 	// M-06 fix: when an id_token_hint is supplied and no explicit client_id is

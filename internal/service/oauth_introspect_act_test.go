@@ -23,7 +23,7 @@ func TestIntrospect_SurfacesActorChain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateExchangedToken: %v", err)
 	}
-	resp, err := svc.Introspect(context.Background(), exchanged)
+	resp, err := svc.Introspect(context.Background(), exchanged, "https://api")
 	if err != nil {
 		t.Fatalf("Introspect: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestIntrospect_NoActorForOrdinaryToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateTokenSet: %v", err)
 	}
-	resp, err := svc.Introspect(context.Background(), set.AccessToken)
+	resp, err := svc.Introspect(context.Background(), set.AccessToken, "app")
 	if err != nil {
 		t.Fatalf("Introspect: %v", err)
 	}

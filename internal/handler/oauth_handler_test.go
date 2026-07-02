@@ -65,7 +65,7 @@ type mockOAuthService struct {
 	revoke func(ctx context.Context, token string, userID uint) error
 }
 
-func (m *mockOAuthService) Revoke(ctx context.Context, token string, userID uint) error {
+func (m *mockOAuthService) Revoke(ctx context.Context, token string, userID uint, _ string) error {
 	if m.revoke != nil {
 		return m.revoke(ctx, token, userID)
 	}
@@ -78,7 +78,7 @@ func (m *mockOAuthService) Authorize(_ context.Context, _ dto.AuthorizeRequest, 
 func (m *mockOAuthService) Token(_ context.Context, _ dto.TokenRequest, _, _ string) (*dto.TokenResponse, error) {
 	panic("not implemented")
 }
-func (m *mockOAuthService) Introspect(_ context.Context, _ string) (*dto.IntrospectResponse, error) {
+func (m *mockOAuthService) Introspect(_ context.Context, _ string, _ string) (*dto.IntrospectResponse, error) {
 	panic("not implemented")
 }
 func (m *mockOAuthService) GetUserInfo(_ context.Context, _ uint, _ string) (*dto.UserInfoResponse, error) {

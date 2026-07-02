@@ -407,6 +407,10 @@ func (s *authService) VerifyEmail(ctx context.Context, token string) error {
 func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.LoginResponse, error) {
 	user, err := s.userRepo.FindByEmail(ctx, req.Email)
 	if err != nil {
+		// L1 fix: an unknown email must not return faster than a known email
+		// with a wrong password — pay the same bcrypt cost on both paths so
+		// response timing cannot be used to enumerate accounts.
+		auth.CheckDummyPassword()
 		return nil, ErrInvalidCredentials
 	}
 
@@ -523,6 +527,9 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 func (s *authService) AdminLogin(ctx context.Context, req dto.AdminLoginRequest) (*dto.LoginResponse, error) {
 	user, err := s.userRepo.FindByEmail(ctx, req.Email)
 	if err != nil {
+		// L1 fix: see Login — pay the same bcrypt cost as a real password
+		// check so an unknown email is not distinguishable by timing.
+		auth.CheckDummyPassword()
 		return nil, ErrInvalidCredentials
 	}
 

@@ -8,6 +8,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/dto"
 	"github.com/ovandermoten/go-oauth2/internal/middleware"
 	"github.com/ovandermoten/go-oauth2/internal/service"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
 // AdminAuthHandler handles authentication for the admin portal
@@ -124,25 +125,31 @@ func (h *AdminAuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			h.autoDefense.RecordFailedLogin(r.Context(), clientIP, userAgent)
 		}
 
-		switch err {
-		case service.ErrAccountLocked:
+		// M2 fix: errors.Is, not equality — AdminLogin wraps ErrAccountLocked
+		// and ErrUserNotVerified (fmt.Errorf("%w: ...")), which an equality
+		// switch misses, falling through to default and leaking err.Error().
+		// M1 fix: the default branch now returns a static message; the real
+		// error is logged, never forwarded to the client.
+		switch {
+		case errors.Is(err, service.ErrAccountLocked):
 			writeError(w, "account is locked", http.StatusForbidden)
-		case service.ErrUserNotVerified:
+		case errors.Is(err, service.ErrUserNotVerified):
 			writeError(w, "email not verified", http.StatusForbidden)
-		case service.ErrInvalidCredentials:
+		case errors.Is(err, service.ErrInvalidCredentials):
 			writeError(w, "invalid credentials", http.StatusUnauthorized)
-		case service.ErrNotAdmin:
+		case errors.Is(err, service.ErrNotAdmin):
 			writeError(w, "admin access required", http.StatusForbidden)
-		case service.ErrMFARequired:
+		case errors.Is(err, service.ErrMFARequired):
 			// Password was correct; the client must resubmit with mfa_code.
 			writeError(w, "mfa_required", http.StatusUnauthorized)
-		case service.ErrMFAInvalidCode:
+		case errors.Is(err, service.ErrMFAInvalidCode):
 			writeError(w, "invalid mfa code", http.StatusUnauthorized)
-		case service.ErrMFAEnrollmentRequired:
+		case errors.Is(err, service.ErrMFAEnrollmentRequired):
 			// Policy requires admins to enroll MFA before they can log in.
 			writeError(w, "mfa_enrollment_required", http.StatusForbidden)
 		default:
-			writeError(w, err.Error(), http.StatusBadRequest)
+			logger.Warnf("admin login failed: %v", err)
+			writeError(w, "login failed", http.StatusBadRequest)
 		}
 		return
 	}

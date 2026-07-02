@@ -52,10 +52,10 @@ func (f *fakeOAuthSvc) Token(_ context.Context, req dto.TokenRequest, _, _ strin
 func (f *fakeOAuthSvc) ExchangeToken(_ context.Context, _ url.Values, _, _ string) (*dto.TokenResponse, error) {
 	return f.tokenResp, f.tokenErr
 }
-func (f *fakeOAuthSvc) Introspect(_ context.Context, _ string) (*dto.IntrospectResponse, error) {
+func (f *fakeOAuthSvc) Introspect(_ context.Context, _ string, _ string) (*dto.IntrospectResponse, error) {
 	return f.introspect, nil
 }
-func (f *fakeOAuthSvc) Revoke(_ context.Context, _ string, _ uint) error { return nil }
+func (f *fakeOAuthSvc) Revoke(_ context.Context, _ string, _ uint, _ string) error { return nil }
 func (f *fakeOAuthSvc) GetUserInfo(_ context.Context, _ uint, _ string) (*dto.UserInfoResponse, error) {
 	return &dto.UserInfoResponse{}, nil
 }

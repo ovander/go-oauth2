@@ -372,6 +372,14 @@ func (c *Config) Validate() error {
 		if c.OAuthIssuer == "" || c.OAuthIssuer == "http://localhost:8080" {
 			return fmt.Errorf("OAUTH_ISSUER must be set to a production URL")
 		}
+		// L4 fix: httpsRequired (redirect-URI HTTPS enforcement) and the
+		// Secure flag on CSRF/consent/refresh cookies are all derived from
+		// strings.HasPrefix(issuer, "https://") — see handler.NewOAuthHandler
+		// and cmd/server/bootstrap.go. An http:// issuer in production would
+		// silently disable both, so require https:// explicitly here.
+		if !strings.HasPrefix(c.OAuthIssuer, "https://") {
+			return fmt.Errorf("OAUTH_ISSUER must use https:// in production (got %q)", c.OAuthIssuer)
+		}
 		// L-05 fix: a relative KEYS_PATH resolves against the working directory
 		// at startup time.  If the server is started from a different directory
 		// (e.g. via systemd with WorkingDirectory=/), the relative path silently

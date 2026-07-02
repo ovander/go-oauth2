@@ -23,7 +23,7 @@ func TestDebugTrace_Introspect_CarriesCorrelationID(t *testing.T) {
 	svc := newNew03Svc(t, &model.User{ID: 100, Email: "a@example.com", TokenVersion: 1})
 	ctx := context.WithValue(context.Background(), contextkeys.RequestIDKey, "corr-debug-1")
 
-	if _, err := svc.Introspect(ctx, "not-a-valid-token"); err != nil {
+	if _, err := svc.Introspect(ctx, "not-a-valid-token", ""); err != nil {
 		t.Fatalf("Introspect: %v", err)
 	}
 
@@ -47,7 +47,7 @@ func TestDebugTrace_SuppressedAtInfoLevel(t *testing.T) {
 	t.Cleanup(func() { logger.Logger.SetLevel(prev) })
 
 	svc := newNew03Svc(t, &model.User{ID: 100, Email: "a@example.com", TokenVersion: 1})
-	_, _ = svc.Introspect(context.Background(), "not-a-valid-token")
+	_, _ = svc.Introspect(context.Background(), "not-a-valid-token", "")
 
 	for _, e := range hook.AllEntries() {
 		if e.Level == logrus.DebugLevel {

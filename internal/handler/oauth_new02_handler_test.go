@@ -84,10 +84,10 @@ func (m *new02OAuthService) Token(_ context.Context, _ dto.TokenRequest, _, _ st
 func (m *new02OAuthService) ExchangeToken(_ context.Context, _ url.Values, _, _ string) (*dto.TokenResponse, error) {
 	panic("ExchangeToken called unexpectedly")
 }
-func (m *new02OAuthService) Introspect(_ context.Context, _ string) (*dto.IntrospectResponse, error) {
+func (m *new02OAuthService) Introspect(_ context.Context, _ string, _ string) (*dto.IntrospectResponse, error) {
 	panic("Introspect called unexpectedly")
 }
-func (m *new02OAuthService) Revoke(_ context.Context, _ string, _ uint) error { return nil }
+func (m *new02OAuthService) Revoke(_ context.Context, _ string, _ uint, _ string) error { return nil }
 func (m *new02OAuthService) GetUserInfo(_ context.Context, _ uint, _ string) (*dto.UserInfoResponse, error) {
 	panic("GetUserInfo called unexpectedly")
 }

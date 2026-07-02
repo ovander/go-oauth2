@@ -95,8 +95,22 @@ type OAuthService interface {
 	// it validates and audits the attempt but never issues a token; in "off" it
 	// reports the grant as unsupported.
 	ExchangeToken(ctx context.Context, form url.Values, clientID, clientSecret string) (*dto.TokenResponse, error)
-	Introspect(ctx context.Context, token string) (*dto.IntrospectResponse, error)
-	Revoke(ctx context.Context, token string, userID uint) error
+	// Introspect handles token introspection (RFC 7662). requestingClientID is
+	// the client_id that authenticated the introspection request (from
+	// AppService.ValidateClientCredentials in the handler). When non-empty and
+	// it does not appear in the token's own audience, the token is reported as
+	// active:false rather than returning its full claim set to a client it was
+	// not issued to/for (L2 — introspection is not audience-bound by default).
+	Introspect(ctx context.Context, token string, requestingClientID string) (*dto.IntrospectResponse, error)
+	// Revoke handles token revocation (RFC 7009). requestingClientID is the
+	// client_id that authenticated a client-credential revocation request
+	// (empty for the user-Bearer self-revocation path, which is unaffected).
+	// When non-empty and it does not appear in the presented token's audience,
+	// the token is left un-revoked — the call still returns nil so the caller
+	// can respond 200 without revealing whether the token was valid (RFC 7009
+	// §2.2), but the token itself is not blacklisted (L3 — a client must not
+	// be able to revoke a token that was not issued to/for it).
+	Revoke(ctx context.Context, token string, userID uint, requestingClientID string) error
 	GetUserInfo(ctx context.Context, userID uint, clientID string) (*dto.UserInfoResponse, error)
 	GetOpenIDConfiguration(issuer string) *dto.OpenIDConfiguration
 	GetJWKS() dto.JWKS
@@ -812,7 +826,7 @@ func (s *oauthService) handleClientCredentialsGrant(ctx context.Context, req dto
 }
 
 // Introspect handles token introspection (RFC 7662)
-func (s *oauthService) Introspect(ctx context.Context, token string) (*dto.IntrospectResponse, error) {
+func (s *oauthService) Introspect(ctx context.Context, token string, requestingClientID string) (*dto.IntrospectResponse, error) {
 	claims, err := s.tokenService.VerifyAccessToken(token)
 	if err != nil {
 		logger.FromContext(ctx).WithField("reason", "invalid").Debug("introspect: inactive")
@@ -827,6 +841,24 @@ func (s *oauthService) Introspect(ctx context.Context, token string) (*dto.Intro
 			logger.FromContext(ctx).WithFields(logger.Fields{"reason": "revoked", "jti": claims.ID}).Debug("introspect: inactive")
 			return &dto.IntrospectResponse{Active: false}, nil
 		}
+	}
+
+	// L2 fix: bind introspection to the requesting client's own audience.
+	// RFC 7662 permits any authenticated client to introspect any token, but
+	// unconditionally doing so lets one client learn another client's
+	// sub/username/scope/aud — an information-disclosure vector. RFC 7662 §2.2
+	// notes a resource server MAY restrict which clients can introspect a
+	// given token; when the introspecting client does not appear in the
+	// token's audience, report it as inactive rather than returning the full
+	// claim set. requestingClientID is empty only when the handler could not
+	// identify a caller, which should not happen once client auth is enforced.
+	if requestingClientID != "" && !audienceContains(claims.Audience, requestingClientID) {
+		logger.FromContext(ctx).WithFields(logger.Fields{
+			"reason":               "cross_client",
+			"requesting_client_id": requestingClientID,
+			"jti":                  claims.ID,
+		}).Warn("L2: introspection denied — token was not issued to the requesting client")
+		return &dto.IntrospectResponse{Active: false}, nil
 	}
 
 	userID, _ := strconv.ParseUint(claims.Subject, 10, 64)
@@ -894,6 +926,18 @@ func amrContains(amr []string, method string) bool {
 	return false
 }
 
+// audienceContains reports whether clientID appears in aud. Used to check
+// that a token was issued to/for a given client (L2 introspection audience
+// binding, L3 revoke ownership check).
+func audienceContains(aud []string, clientID string) bool {
+	for _, a := range aud {
+		if a == clientID {
+			return true
+		}
+	}
+	return false
+}
+
 // mapActClaim converts the auth actor claim to its introspection DTO,
 // preserving the (possibly nested) delegation chain. Returns nil for nil input.
 func mapActClaim(a *auth.ActClaim) *dto.ActClaim {
@@ -922,11 +966,28 @@ func mapActClaim(a *auth.ActClaim) *dto.ActClaim {
 //     safety net (only when a userID is supplied).
 //   - Introspect() now checks whether the JTI is blacklisted, so a revoked
 //     token immediately shows `active: false`.
-func (s *oauthService) Revoke(ctx context.Context, token string, userID uint) error {
+//
+// L3 fix: on the client-credential path (requestingClientID non-empty), a
+// confidential client must only be able to revoke a token issued to/for
+// itself. Without this check, any authenticated client presenting a token
+// value it does not own (e.g. one it observed or was handed) could blacklist
+// that token's JTI — a targeted DoS against another party's session. Per RFC
+// 7009 §2.2 the endpoint must still behave as if revocation succeeded (the
+// caller always gets 200), so an ownership mismatch is logged and the call
+// returns nil without touching the used-token blacklist.
+func (s *oauthService) Revoke(ctx context.Context, token string, userID uint, requestingClientID string) error {
 	// Attempt per-token revocation via JTI blacklist.
 	if token != "" && s.usedTokenRepo != nil {
 		claims, err := s.tokenService.VerifyAccessToken(token)
 		if err == nil && claims.ID != "" {
+			if requestingClientID != "" && !audienceContains(claims.Audience, requestingClientID) {
+				logger.FromContext(ctx).WithFields(logger.Fields{
+					"reason":               "client_mismatch",
+					"requesting_client_id": requestingClientID,
+					"jti":                  claims.ID,
+				}).Warn("L3: revoke denied — token was not issued to the requesting client")
+				return nil
+			}
 			// Token is valid and carries a JTI — blacklist it.
 			exp := claims.ExpiresAt.Time
 			if markErr := s.usedTokenRepo.MarkAsUsed(ctx, claims.ID, "revoked", userID, exp); markErr != nil &&
@@ -944,6 +1005,14 @@ func (s *oauthService) Revoke(ctx context.Context, token string, userID uint) er
 		// Try refresh token if access token parse failed.
 		rClaims, rErr := s.tokenService.VerifyRefreshToken(token)
 		if rErr == nil && rClaims.ID != "" {
+			if requestingClientID != "" && !audienceContains(rClaims.Audience, requestingClientID) {
+				logger.FromContext(ctx).WithFields(logger.Fields{
+					"reason":               "client_mismatch",
+					"requesting_client_id": requestingClientID,
+					"jti":                  rClaims.ID,
+				}).Warn("L3: revoke denied — refresh token was not issued to the requesting client")
+				return nil
+			}
 			exp := rClaims.ExpiresAt.Time
 			if markErr := s.usedTokenRepo.MarkAsUsed(ctx, rClaims.ID, "revoked", userID, exp); markErr != nil &&
 				!errors.Is(markErr, repository.ErrTokenAlreadyUsed) {

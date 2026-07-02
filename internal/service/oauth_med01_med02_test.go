@@ -106,7 +106,7 @@ func TestMED01_Revoke_BlacklistsJTI(t *testing.T) {
 		t.Fatal("JTI already in used repo before Revoke()")
 	}
 
-	_ = svc.Revoke(context.Background(), tokenSet.AccessToken, user.ID)
+	_ = svc.Revoke(context.Background(), tokenSet.AccessToken, user.ID, "")
 
 	// JTI MUST be in used repo after revocation.
 	used, _ = usedRepo.IsUsed(context.Background(), claims.ID)
@@ -132,7 +132,7 @@ func TestMED01_Revoke_RefreshToken_BlacklistsJTI(t *testing.T) {
 		t.Fatalf("VerifyRefreshToken: %v", err)
 	}
 
-	_ = svc.Revoke(context.Background(), tokenSet.RefreshToken, user.ID)
+	_ = svc.Revoke(context.Background(), tokenSet.RefreshToken, user.ID, "")
 
 	used, _ := usedRepo.IsUsed(context.Background(), rClaims.ID)
 	if !used {
@@ -153,9 +153,9 @@ func TestMED01_Introspect_ReturnsFalse_ForRevokedToken(t *testing.T) {
 		t.Fatalf("GenerateTokenSet: %v", err)
 	}
 
-	_ = svc.Revoke(context.Background(), tokenSet.AccessToken, user.ID)
+	_ = svc.Revoke(context.Background(), tokenSet.AccessToken, user.ID, "")
 
-	resp, err := svc.Introspect(context.Background(), tokenSet.AccessToken)
+	resp, err := svc.Introspect(context.Background(), tokenSet.AccessToken, "app-c")
 	if err != nil {
 		t.Fatalf("Introspect error: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestMED01_Introspect_ReturnsTrue_ForNonRevokedToken(t *testing.T) {
 		t.Fatalf("GenerateTokenSet: %v", err)
 	}
 
-	resp, err := svc.Introspect(context.Background(), tokenSet.AccessToken)
+	resp, err := svc.Introspect(context.Background(), tokenSet.AccessToken, "app-d")
 	if err != nil {
 		t.Fatalf("Introspect error: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestMED01_Revoke_MalformedToken_FallsBackToNuclear(t *testing.T) {
 		usedTokenRepo: usedRepo, issuer: "https://auth.example.com",
 	}
 
-	_ = svc.Revoke(context.Background(), "not.a.valid.jwt", user.ID)
+	_ = svc.Revoke(context.Background(), "not.a.valid.jwt", user.ID, "")
 
 	if !incrementCalled {
 		t.Error("MED-01: fallback IncrementTokenVersion not called for malformed token")

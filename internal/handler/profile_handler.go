@@ -2,11 +2,13 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/ovandermoten/go-oauth2/internal/dto"
 	"github.com/ovandermoten/go-oauth2/internal/middleware"
 	"github.com/ovandermoten/go-oauth2/internal/service"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
 type ProfileHandler struct {
@@ -35,7 +37,14 @@ func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.userService.UpdateProfile(r.Context(), userID, req)
 	if err != nil {
-		writeError(w, err.Error(), http.StatusBadRequest)
+		// M1 fix: UpdateProfile can wrap a raw repository/GORM error; never
+		// forward that to the client. Log it server-side instead.
+		if errors.Is(err, service.ErrUserNotFound) {
+			writeError(w, "user not found", http.StatusNotFound)
+			return
+		}
+		logger.Warnf("update profile failed for user %d: %v", userID, err)
+		writeError(w, "failed to update profile", http.StatusBadRequest)
 		return
 	}
 

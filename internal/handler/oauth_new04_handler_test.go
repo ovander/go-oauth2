@@ -94,10 +94,10 @@ func (m *new04OAuthService) Token(_ context.Context, _ dto.TokenRequest, _, _ st
 func (m *new04OAuthService) ExchangeToken(_ context.Context, _ url.Values, _, _ string) (*dto.TokenResponse, error) {
 	panic("ExchangeToken called unexpectedly")
 }
-func (m *new04OAuthService) Introspect(_ context.Context, _ string) (*dto.IntrospectResponse, error) {
+func (m *new04OAuthService) Introspect(_ context.Context, _ string, _ string) (*dto.IntrospectResponse, error) {
 	panic("Introspect called unexpectedly")
 }
-func (m *new04OAuthService) Revoke(_ context.Context, _ string, userID uint) error {
+func (m *new04OAuthService) Revoke(_ context.Context, _ string, userID uint, _ string) error {
 	m.revokeCalls.Add(1)
 	m.lastUserID.Store(uint64(userID))
 	return nil

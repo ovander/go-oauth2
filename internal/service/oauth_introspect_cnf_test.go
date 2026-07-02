@@ -20,7 +20,7 @@ func TestIntrospect_SurfacesDPoPConfirmation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateBoundAccessToken: %v", err)
 	}
-	resp, err := svc.Introspect(context.Background(), bound)
+	resp, err := svc.Introspect(context.Background(), bound, "app-cnf")
 	if err != nil {
 		t.Fatalf("Introspect: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestIntrospect_NoConfirmationForBearerToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateTokenSet: %v", err)
 	}
-	resp, err := svc.Introspect(context.Background(), set.AccessToken)
+	resp, err := svc.Introspect(context.Background(), set.AccessToken, "app-cnf")
 	if err != nil {
 		t.Fatalf("Introspect: %v", err)
 	}

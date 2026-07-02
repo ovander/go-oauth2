@@ -92,6 +92,33 @@ func CheckPassword(password, hash string) bool {
 	return err == nil
 }
 
+// dummyPasswordHash is a bcrypt hash of a fixed, non-secret placeholder value,
+// computed once at process start. It is never derived from any attempted
+// password and is not associated with any real account.
+var dummyPasswordHash = mustHashDummyPassword()
+
+// mustHashDummyPassword computes dummyPasswordHash. bcrypt.GenerateFromPassword
+// only errors on an invalid cost or a >72-byte password, neither of which can
+// happen with the fixed input here, so a failure indicates a broken build.
+func mustHashDummyPassword() string {
+	hash, err := bcrypt.GenerateFromPassword([]byte("go-oauth2-timing-parity-dummy-password"), bcrypt.DefaultCost)
+	if err != nil {
+		panic("auth: failed to precompute dummy password hash: " + err.Error())
+	}
+	return string(hash)
+}
+
+// CheckDummyPassword performs a bcrypt comparison against a fixed,
+// precomputed hash that is unrelated to any real account. Callers use it on a
+// "user not found" login path so that path pays the same bcrypt cost as a
+// real CheckPassword call against a wrong password — without it, an unknown
+// email returns far faster than a known one, letting an attacker enumerate
+// accounts by response timing (L1). The return value is never meaningful (the
+// comparison is expected to fail) and is intentionally discarded by callers.
+func CheckDummyPassword() bool {
+	return CheckPassword("", dummyPasswordHash)
+}
+
 // HashClientSecret hashes a client secret using bcrypt.
 //
 // H-03 fix: SHA-256 is a fast hash — an attacker who obtains the hash table

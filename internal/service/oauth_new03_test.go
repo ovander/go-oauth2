@@ -126,7 +126,7 @@ func TestNEW03_Introspect_SameVersion_ReturnsActive(t *testing.T) {
 	}
 
 	// Token was issued with TokenVersion=3; user still has TokenVersion=3.
-	resp, err := svc.Introspect(context.Background(), tokenSet.AccessToken)
+	resp, err := svc.Introspect(context.Background(), tokenSet.AccessToken, "app-new03")
 	if err != nil {
 		t.Fatalf("Introspect error: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestNEW03_Introspect_StaleVersion_ReturnsInactive(t *testing.T) {
 	svc.userRepo.(*new03UserRepo).user.TokenVersion = 3
 
 	// Step 3+4: Introspect the pre-revocation token.
-	resp, err := svc.Introspect(context.Background(), tokenSet.AccessToken)
+	resp, err := svc.Introspect(context.Background(), tokenSet.AccessToken, "app-new03b")
 	if err != nil {
 		t.Fatalf("Introspect error: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestNEW03_Introspect_DefaultVersion_ReturnsActive(t *testing.T) {
 		t.Fatalf("GenerateTokenSet: %v", err)
 	}
 
-	resp, err := svc.Introspect(context.Background(), tokenSet.AccessToken)
+	resp, err := svc.Introspect(context.Background(), tokenSet.AccessToken, "app-new03c")
 	if err != nil {
 		t.Fatalf("Introspect error: %v", err)
 	}
@@ -227,13 +227,13 @@ func TestNEW03_Introspect_MultipleVersionBumps(t *testing.T) {
 	svc.userRepo.(*new03UserRepo).user.TokenVersion = 3
 
 	// v1 token: revoked (version 1 < current 3).
-	r1, _ := svc.Introspect(context.Background(), tokenV1Set.AccessToken)
+	r1, _ := svc.Introspect(context.Background(), tokenV1Set.AccessToken, "app-new03d")
 	if r1.Active {
 		t.Error("NEW-03: v1 token still active after two version bumps")
 	}
 
 	// v2 token: also revoked (version 2 < current 3).
-	r2, _ := svc.Introspect(context.Background(), tokenV2Set.AccessToken)
+	r2, _ := svc.Introspect(context.Background(), tokenV2Set.AccessToken, "app-new03d")
 	if r2.Active {
 		t.Error("NEW-03: v2 token still active after one version bump")
 	}
@@ -245,7 +245,7 @@ func TestNEW03_Introspect_MultipleVersionBumps(t *testing.T) {
 		t.Fatalf("GenerateTokenSet v3: %v", err)
 	}
 
-	r3, _ := svc.Introspect(context.Background(), tokenV3Set.AccessToken)
+	r3, _ := svc.Introspect(context.Background(), tokenV3Set.AccessToken, "app-new03d")
 	if !r3.Active {
 		t.Error("NEW-03: freshly issued v3 token should be active")
 	}
@@ -271,9 +271,9 @@ func TestNEW03_Introspect_JTIBlacklist_IndependentOfVersionCheck(t *testing.T) {
 	}
 
 	// Blacklist the token JTI (MED-01 path), version unchanged.
-	_ = svc.Revoke(context.Background(), tokenSet.AccessToken, user.ID)
+	_ = svc.Revoke(context.Background(), tokenSet.AccessToken, user.ID, "")
 
-	resp, err := svc.Introspect(context.Background(), tokenSet.AccessToken)
+	resp, err := svc.Introspect(context.Background(), tokenSet.AccessToken, "app-new03e")
 	if err != nil {
 		t.Fatalf("Introspect error: %v", err)
 	}

@@ -2,13 +2,41 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/ovandermoten/go-oauth2/internal/dto"
 	"github.com/ovandermoten/go-oauth2/internal/middleware"
 	"github.com/ovandermoten/go-oauth2/internal/service"
+	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
+
+// passwordValidationErrors are the auth.ValidatePassword sentinels. Their
+// error text is a fixed, safe description of what the caller must fix (e.g.
+// "password must be at least 12 characters") — unlike a wrapped internal or
+// GORM error, it carries no request-specific or system detail, so it is safe
+// to return to the client as-is (M1).
+var passwordValidationErrors = []error{
+	auth.ErrPasswordTooShort,
+	auth.ErrPasswordTooLong,
+	auth.ErrPasswordNoLowercase,
+	auth.ErrPasswordNoUppercase,
+	auth.ErrPasswordNoDigit,
+	auth.ErrPasswordNoSpecial,
+	auth.ErrPasswordCommon,
+}
+
+// isPasswordValidationError reports whether err wraps one of the
+// auth.ValidatePassword sentinels.
+func isPasswordValidationError(err error) bool {
+	for _, sentinel := range passwordValidationErrors {
+		if errors.Is(err, sentinel) {
+			return true
+		}
+	}
+	return false
+}
 
 type AuthHandler struct {
 	authService  service.AuthService
@@ -76,7 +104,21 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 
 	user, verifyToken, err := h.authService.Signup(r.Context(), req)
 	if err != nil {
-		writeError(w, err.Error(), http.StatusBadRequest)
+		// M1 fix: map known sentinel errors to static, safe messages and log
+		// the real error server-side; never forward a wrapped internal/GORM
+		// error (e.g. "app not found: client_id=...") to an unauthenticated
+		// caller. Password-validation feedback is safe to pass through as-is.
+		switch {
+		case errors.Is(err, service.ErrEmailAlreadyExists):
+			writeError(w, "email already exists", http.StatusBadRequest)
+		case errors.Is(err, service.ErrAppNotFound):
+			writeError(w, "unknown client_id", http.StatusBadRequest)
+		case isPasswordValidationError(err):
+			writeError(w, err.Error(), http.StatusBadRequest)
+		default:
+			logger.Warnf("signup failed: %v", err)
+			writeError(w, "signup failed", http.StatusBadRequest)
+		}
 		return
 	}
 
@@ -107,7 +149,17 @@ func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.authService.VerifyEmail(r.Context(), token); err != nil {
-		writeError(w, err.Error(), http.StatusBadRequest)
+		// M1 fix: static messages only; the real error (which may wrap a
+		// GORM/repository detail) is logged, not forwarded.
+		switch {
+		case errors.Is(err, service.ErrTokenAlreadyUsed):
+			writeError(w, "token has already been used", http.StatusBadRequest)
+		case errors.Is(err, service.ErrInvalidToken), errors.Is(err, service.ErrUserNotFound):
+			writeError(w, "invalid or expired token", http.StatusBadRequest)
+		default:
+			logger.Warnf("verify-email failed: %v", err)
+			writeError(w, "email verification failed", http.StatusBadRequest)
+		}
 		return
 	}
 
@@ -137,20 +189,31 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			h.autoDefense.RecordFailedLogin(r.Context(), clientIP, userAgent)
 		}
 
-		switch err {
-		case service.ErrAccountLocked:
+		// M2 fix: errors.Is, not equality — Login returns several *wrapped*
+		// errors (ErrAccountLocked, ErrUserNotVerified, ErrAppNotFound,
+		// ErrRoleNotFound), which an equality switch misses, falling through
+		// to default and leaking err.Error() with the wrong status code.
+		// M1 fix: every branch (including default) returns a static message;
+		// the real error is logged, never forwarded to the client.
+		switch {
+		case errors.Is(err, service.ErrAccountLocked):
 			writeError(w, "account is locked", http.StatusForbidden)
-		case service.ErrUserNotVerified:
+		case errors.Is(err, service.ErrUserNotVerified):
 			writeError(w, "email not verified", http.StatusForbidden)
-		case service.ErrInvalidCredentials:
+		case errors.Is(err, service.ErrInvalidCredentials):
 			writeError(w, "invalid credentials", http.StatusUnauthorized)
-		case service.ErrMFARequired:
+		case errors.Is(err, service.ErrMFARequired):
 			// Password was correct; the client must resubmit with mfa_code.
 			writeError(w, "mfa_required", http.StatusUnauthorized)
-		case service.ErrMFAInvalidCode:
+		case errors.Is(err, service.ErrMFAInvalidCode):
 			writeError(w, "invalid mfa code", http.StatusUnauthorized)
+		case errors.Is(err, service.ErrAppNotFound):
+			writeError(w, "unknown client_id", http.StatusBadRequest)
+		case errors.Is(err, service.ErrRoleNotFound):
+			writeError(w, "you do not have access to this application", http.StatusForbidden)
 		default:
-			writeError(w, err.Error(), http.StatusBadRequest)
+			logger.Warnf("login failed: %v", err)
+			writeError(w, "login failed", http.StatusBadRequest)
 		}
 		return
 	}
@@ -194,7 +257,8 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.authService.Logout(r.Context(), userID); err != nil {
-		writeError(w, err.Error(), http.StatusInternalServerError)
+		logger.Warnf("logout failed for user %d: %v", userID, err)
+		writeError(w, "logout failed", http.StatusInternalServerError)
 		return
 	}
 
@@ -258,7 +322,17 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.authService.ResetPassword(r.Context(), req.Token, req.Password); err != nil {
-		writeError(w, err.Error(), http.StatusBadRequest)
+		switch {
+		case errors.Is(err, service.ErrTokenAlreadyUsed):
+			writeError(w, "token has already been used", http.StatusBadRequest)
+		case errors.Is(err, service.ErrInvalidToken), errors.Is(err, service.ErrUserNotFound):
+			writeError(w, "invalid or expired token", http.StatusBadRequest)
+		case isPasswordValidationError(err):
+			writeError(w, err.Error(), http.StatusBadRequest)
+		default:
+			logger.Warnf("reset-password failed: %v", err)
+			writeError(w, "password reset failed", http.StatusBadRequest)
+		}
 		return
 	}
 
@@ -275,7 +349,8 @@ func (h *AuthHandler) ValidateInvite(w http.ResponseWriter, r *http.Request) {
 
 	response, err := h.authService.ValidateInviteToken(r.Context(), token)
 	if err != nil {
-		writeError(w, err.Error(), http.StatusBadRequest)
+		logger.Warnf("validate-invite failed: %v", err)
+		writeError(w, "unable to validate invite", http.StatusBadRequest)
 		return
 	}
 
@@ -297,7 +372,19 @@ func (h *AuthHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 
 	response, err := h.authService.AcceptInvite(r.Context(), req.Token, req.Name, req.Password)
 	if err != nil {
-		writeError(w, err.Error(), http.StatusBadRequest)
+		switch {
+		case errors.Is(err, service.ErrTokenAlreadyUsed):
+			writeError(w, "token has already been used", http.StatusBadRequest)
+		case errors.Is(err, service.ErrInvalidToken):
+			writeError(w, "invalid or expired token", http.StatusBadRequest)
+		case errors.Is(err, service.ErrAppNotFound):
+			writeError(w, "unknown application", http.StatusBadRequest)
+		case isPasswordValidationError(err):
+			writeError(w, err.Error(), http.StatusBadRequest)
+		default:
+			logger.Warnf("accept-invite failed: %v", err)
+			writeError(w, "unable to accept invite", http.StatusBadRequest)
+		}
 		return
 	}
 

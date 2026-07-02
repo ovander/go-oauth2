@@ -19,7 +19,7 @@ func TestIntrospect_SurfacesAudience(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateTokenSet: %v", err)
 	}
-	resp, err := svc.Introspect(context.Background(), set.AccessToken)
+	resp, err := svc.Introspect(context.Background(), set.AccessToken, "app")
 	if err != nil {
 		t.Fatalf("Introspect: %v", err)
 	}

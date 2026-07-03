@@ -1,150 +1,167 @@
 # Socrate Suite — Remediation Plan & Production GO Checklist
 
-**Date:** 2026-07-02
-**Companion to:** `docs/CR-socrate-suite-security-pass1.md` (the audit).
-**Goal:** a single, sequenced path from the current state to an overall **GO for
-production** across the four repositories.
+**Updated:** 2026-07-03 (rev. 2, after pass-2 verification)
+**Companions:** `docs/CR-socrate-suite-security-pass1.md` (original audit),
+`docs/CR-socrate-suite-security-pass2.md` (post-remediation re-audit, which this
+revision reflects).
 
-This plan reflects work already landed in this remediation round (branch
-`claude/socrate-suite-audit-3wqcnp` in each repo) and the concrete steps that
-remain. Each item lists severity, owner repo, effort, and its gate status.
+This revision replaces the original P0/P1/P2 list, which is now fully closed
+(§1). It records the fresh findings from pass-2 (§2) and an updated GO
+checklist (§3).
 
 ---
 
-## 1. What landed in this round (done)
+## 1. Original remediation round — complete
 
-| ID | Repo | Fix | Commit |
+All P0 and P1 items from rev. 1 are merged, independently re-verified against
+current code in pass-2, and confirmed to have survived the two BFF
+consolidation migrations without regression.
+
+| Repo | Item | PR | Pass-2 status |
 |---|---|---|---|
-| **H1** | go-oauth2 | App-scoped `/api/apps/{id}/users` now gated by `RequireAppAdmin` (was any-member `RequireAppAccess`); regression tests added. | `aa6e205` |
-| **X-1 / M-1** | oauth2-admin (bff) | Proxy is **fail-closed**: no valid session ⇒ 401, no pass-through; inbound `Authorization` stripped. Legacy pass-through gated behind `BFF_ALLOW_PASSTHROUGH` (default false). | `1d8e7de` |
-| **X-3** | oauth2-admin (bff) | Logout best-effort revokes refresh + access tokens at the issuer before clearing local state. | `1d8e7de` |
-| **F1 / X-1** | oauth2-monitoring (bff) | Same fail-closed proxy + `BFF_ALLOW_PASSTHROUGH` flag + inbound-auth stripping. | `acc15e0` |
-| **F2** | oauth2-monitoring (bff) | Per-session mutex closes the data race on the shared `*Session` pointer; `-race` test added. | `acc15e0` |
-| **F5** | oauth2-monitoring (bff) | `sanitizeReturnTo` rejects backslash + control-char open-redirect vectors. | `acc15e0` |
-| **X-3 / F7** | oauth2-monitoring (bff) | Logout revokes tokens upstream **and** enforces CSRF. | `acc15e0` |
-| **X-4 (foundation)** | backendkit | New shared, tested `bff` package (fail-closed `Gateway.ProxyWithSession`, race-safe `Session`/store, `SanitizeReturnTo`, PKCE/CSRF/`__Host-` helpers) consuming the `socrate` client — the consolidation target for both consoles. | `feat(bff)` |
+| go-oauth2 | H1 — app-user RBAC | #218 | ✅ verified |
+| go-oauth2 | pgx SQLi (GO-2026-5004) | #218 | ✅ verified |
+| go-oauth2 | M1/M2 — error hygiene, `errors.Is` | #219 | ✅ verified (scope gap found, §2.1) |
+| go-oauth2 | L1 — login timing side-channel | #219 | ✅ verified |
+| go-oauth2 | L2 — introspection audience-binding | #219 | ✅ verified |
+| go-oauth2 | L3 — revoke ownership check | #219 | ✅ verified (documented gap unchanged, as intended) |
+| go-oauth2 | L4 — require https:// issuer in prod | #219 | ✅ verified |
+| backendkit | H-1 — JWKS-refetch DoS guard | #39 | ✅ verified |
+| backendkit | M-1 — path-escaping | #39 | ✅ verified (query-string gap found, §2.1) |
+| backendkit | M-2 — exp required + leeway | #39 | ✅ verified |
+| backendkit | `bff` shared package (X-4 consolidation) | #38 | ⚠️ new findings, §2.2 |
+| backendkit | `Session.Snapshot()`/rehydration | #41 | ✅ verified |
+| backendkit | `v1.10.0` tag published | manual | ✅ verified genuine (a stale-tag claim was investigated and refuted, see pass-2 §3.5) |
+| oauth2-admin | X-1 — fail-closed proxy | #13 | ✅ verified |
+| oauth2-admin | X-3 — logout revocation | #13 | ✅ verified |
+| oauth2-admin | C-1 — base-path (blank SPA) | #14 | ✅ verified with a real build |
+| oauth2-admin | H-1/M-4 — Caddy headers | #14 | ✅ verified |
+| oauth2-admin | H-2 — BFF tests in CI | #14 | ✅ verified |
+| oauth2-admin | X-2 — rate limiting | #15 | ✅ verified |
+| oauth2-admin | BFF migration onto `backendkit/bff` | #16 | ✅ verified, no regressions (new findings, §2.3) |
+| oauth2-admin | e2e cookie-jar test | #12 | ✅ merged, green |
+| oauth2-admin | pin to real `v1.10.0` tag | direct commit | ✅ verified |
+| oauth2-monitoring | F1/X-1 — fail-closed proxy | #24 | ✅ verified |
+| oauth2-monitoring | F2 — session data race | #24 | ✅ verified, re-run under `-race` 5× |
+| oauth2-monitoring | F5 — backslash redirect | #24 | ✅ verified |
+| oauth2-monitoring | X-3/F7 — logout revoke + CSRF | #24 | ✅ verified |
+| oauth2-monitoring | pgx SQLi | #25 | ✅ verified |
+| oauth2-monitoring | X-2 — rate limiting | #26 | ✅ verified |
+| oauth2-monitoring | CI (previously none) | #26 | ✅ verified, both jobs run |
+| oauth2-monitoring | BFF migration onto `backendkit/bff` (incl. Postgres store) | #27 | ✅ verified, no regressions (new findings, §2.4) |
+| oauth2-monitoring | pin to real `v1.10.0` tag | #28 | ✅ verified |
 
-All four repos build, vet, and pass `go test -race` (Go) / existing suites after these changes.
-
-**Net effect on GO:** the single exploitable server bug (H1) and the systemic
-fail-open BFF pattern (the two highest suite-wide risks) are closed. The
-remaining work below is required for a *clean* GO but is lower-risk and largely
-mechanical.
+**28 items closed. Zero regressions found across two independent BFF
+architecture migrations** — the highest-risk change in the whole round.
 
 ---
 
-## 2. Remaining work to reach GO
+## 2. Pass-2 findings — new remediation items
 
-### P0 — production blockers (must fix before any deploy)
+### 2.1 go-oauth2
 
-| ID | Repo | Item | Effort | Status |
-|---|---|---|---|---|
-| **C-1** | oauth2-admin | Vite `base: '/admin/'` vs Caddy root mount ⇒ built SPA loads blank in prod. Set `base: '/'` (or serve under `/admin/` consistently in Caddy) and verify the built `index.html` asset paths resolve. | S | **TODO** |
-| **bk-H-1** | backendkit | Unauthenticated JWKS-refetch DoS: a token with an unknown `kid` forces one synchronous outbound fetch per request. Add `golang.org/x/sync/singleflight` + a minimum-refetch cooldown + negative-cache of unknown kids. | M | **TODO** |
-| **bk-M-1** | backendkit | Complete the F-7 path-escaping fix: apply `url.PathEscape` to the ~17 remaining `socrate` methods in `admin.go`/`monitoring.go`/`alerts.go`/`reports.go`; correct the false "Fixed" claim in `SECURITY-AUDIT.md`/CHANGELOG. | M | **TODO** |
-
-### P1 — required before "security reviewed / production ready" claims hold
-
-| ID | Repo | Item | Effort | Status |
-|---|---|---|---|---|
-| **H-1 (deploy)** | oauth2-admin | Caddy is missing `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy`. Add them; reconcile prod CSP (`default-src`) with the tested `src/security/csp.ts` module (M-4). | S | **TODO** |
-| **H-2 (CI)** | oauth2-admin | CI never runs the BFF Go tests. Add a `cd bff && go test -race ./...` job. | S | **TODO** |
-| **bk-M-2** | backendkit | Set `jwt.WithExpirationRequired()` (+ small `jwt.WithLeeway`) so a token minted without `exp` cannot validate forever. | S | **TODO** |
-| **X-2** | go-oauth2 / both BFFs | Add per-IP / per-session rate limiting to `/bff/login` and `/bff/elevate` (server already rate-limits its own login/token endpoints; the BFF hop is currently unthrottled). Fix backendkit `httpware` per-tenant limiter no-op for the no-tenant default. | M | **TODO** |
-| **bk-tests** | backendkit | Add the missing negative JWT tests (expired, `alg=none`, HS256-with-RSA-key, wrong issuer, unknown/missing `kid`, key rollover); raise `socrate` client coverage (currently 26%). | M | **TODO** |
-| **H-3 (e2e)** | oauth2-admin | Playwright suite tests a dead browser-PKCE architecture. Rewrite against the BFF cookie flow (or retire and replace with BFF integration tests). | M | **TODO** |
-
-### P2 — hardening, hygiene, and debt
-
-| ID | Repo | Item | Effort |
+| ID | Severity | Item | Effort |
 |---|---|---|---|
-| M1 / M2 | go-oauth2 | Static client-facing error strings + `errors.Is` in `auth_handler.go` (stop leaking wrapped/GORM internals; fix mis-classified locked/role/app errors). | S |
-| L1–L4 | go-oauth2 | Dummy-bcrypt on login not-found (timing); audience-bind introspection; client-owns-token check on revoke; require `https://` issuer in prod config. | M |
-| F6 | oauth2-monitoring | Remove committed `.env.production` hardcoded host `golfperformance.fr` + now-dead VITE vars; add to `.gitignore`. | S |
-| F8 | oauth2-monitoring | SPA Dockerfile: drop dead pre-BFF ARGs, run nginx as non-root, digest-pin bases. | S |
-| F9 | oauth2-monitoring | SSE reconnection: add jitter, recover after network restoration (don't give up permanently), add heartbeat watchdog. | M |
-| F11 | oauth2-monitoring | Implement the CSP report endpoint or drop the `report-uri`; plan Trusted-Types enforcement flip. | M |
-| bk-M3..M6, L* | backendkit | aigateway model/allowlist enforcement (M-5); bounded JWKS staleness (M-6); `resolvedAppID` race (M-4); `X-Request-ID` sanitisation (L-7); `Flusher`/`Hijacker` pass-through in logger (L-5); et al. | M |
-| **X-5** | all | Delete or date-stamp the stale/overstated self-audit docs (`oauth2-monitoring/AUDIT.md` et al., `oauth2-admin/SECURITY.md`, backendkit F-7 ledger) so they stop misrepresenting the code. | S |
+| P2-1 | Medium | M1 sweep missed `internal/web/handler.go` (Signup/AcceptInvite server-rendered forms leak raw `err.Error()` to unauthenticated browsers) | S |
+| P2-2 | Low | `app_users_handler.go` still leaks `err.Error()` at ~10 call sites (now behind H1's admin gate, lower severity than pass-1's framing) | S |
+| P2-3 | Medium | Failed-login attribution (`GetClientIP`, never resolves XFF) vs. block enforcement (`GetClientIPSafe`, resolves XFF from trusted proxies) collapses all users behind a trusted reverse proxy into one auto-defense bucket — dilutes lockout / risks a shared-IP block. Switch `auth_handler.go`/`admin_auth_handler.go`/`bootstrap.go`'s audit-log sinks to `GetClientIPSafe(r, trustedCIDRs)` | S |
+| P2-4 | Low | `GetClientIP`'s doc comment is factually wrong ("always trusts proxy headers") — fix the comment; this is what caused P2-3 to initially be mis-rated High | S |
+| P2-5 | Medium | `handleClientCredentialsGrant` skips `validateScope` and `requireDPoP`, unlike the other two grant types. Not reachable via this server's own `/api/admin` routes today, but unrestricted for any external resource server trusting this issuer's client-credentials tokens | S |
 
-### Consolidation follow-through (the approved BFF refactor)
+### 2.2 backendkit — `bff` package (new shared infrastructure, first review)
 
-The shared `backendkit/bff` package now exists and is tested. To realise the
-dedup and make X-1/F2/F5-class bugs fix-once:
+| ID | Severity | Item | Effort |
+|---|---|---|---|
+| P2-6 | **High** | Empty CSRF token silently disables CSRF protection (`MatchCSRF("", "")` → `true` via `ConstantTimeCompare` on two empty slices) — reproduced. Fix: reject empty `want` in `MatchCSRF` | S |
+| P2-7 | Medium/High | `Gateway.AuthEnabled`'s zero value (`false`) is a fully-open pass-through, contradicting the package's documented "fail-closed by default." Not triggered by current consumers (both set the field explicitly) but a footgun for the next one. Fix: `NewGateway(...)` constructor defaulting `AuthEnabled: true`, or invert to `DisableAuth bool` | S |
+| P2-8 | Medium | Concurrent `EnsureFresh` calls near token expiry race a single-use rotating refresh token; the losing request's session gets deleted (reproduced: 7/8 concurrent requests 401'd + session deleted in one of 50 trials). Fix: wrap the refresh call in `singleflight` keyed by session ID, mirroring the `jwtauth` H-1 fix already in this module | M |
+| P2-9 | Low | `AllowPassthrough` + unset `AuthEnabled` compounds P2-7 — tighten the API (constructor/flag inversion in P2-7 substantially addresses this too) | — |
+| P2-10 | Low | Query-string values (not path segments) in `socrate/monitoring.go` (`StreamSecurityEvents`'s `Severity`/`EventType`/`LastEventID`, `GetGeoAnalytics`/`GetTokenStats`'s `period`) aren't `url.QueryEscape`d — same bug class as the M-1 fix, missed because it's a query string not a path segment | S |
 
-1. **Tag a backendkit release** (e.g. `v1.10.0`) that includes the `bff` package
-   (and ideally the P0/P1 backendkit fixes above).
-2. **oauth2-admin/bff** and **oauth2-monitoring/bff**: replace the hand-rolled
-   session store, cookie/CSRF, PKCE, `sanitizeReturnTo`, and proxy code with
-   `bff.Gateway` + `bff.MemoryStore`; keep only app-specific wiring (routes,
-   config, the SSE/elevate/issuer-proxy specifics). Both already consume, or
-   should switch to, the existing `socrate` client for `ExchangeCode` /
-   `RefreshToken` / `RevokeToken` instead of duplicating those calls.
-3. Add a Postgres `SessionStore` implementation behind the `bff.SessionStore`
-   interface (monitoring already has one to port) as a separate adapter so
-   in-memory consumers don't pull a DB driver.
-4. Delete the duplicated code once both consoles are green on the shared package.
+See pass-2 §4 for suggested fix code for P2-6/P2-7/P2-8.
 
-This is **debt reduction, not a GO blocker** — the in-place fixes above already
-make the deployed BFFs safe. Sequence it right after P0/P1 so the security
-fixes don't have to be maintained in two places for long.
+### 2.3 oauth2-admin
+
+| ID | Severity | Item | Effort |
+|---|---|---|---|
+| P2-11 | Medium | `elevate.go`'s expiry-absorption is fail-open on a malformed/already-past `exp` claim — silently *extends* the session's access-token validity window instead of reverting to non-elevated. No test covers this input. Fix: on unparseable/past `exp`, set `accessExpiry` to `now` or reject the elevate call | S |
+| P2-12 | Low | CSRF header name hardcoded in `elevate.go` instead of reading the Gateway's configured header (landmine if `Gateway.CSRFHeader` is ever overridden) | S |
+| P2-13 | Info | Phase 1 (`BFF_CLIENT_ID` unset) is a fully open bearer pass-through with no CSRF — intentional/documented, but worth a startup assertion so a misconfiguration can't silently select it in production | S |
+
+### 2.4 oauth2-monitoring
+
+| ID | Severity | Item | Effort |
+|---|---|---|---|
+| P2-14 | Low | `PostgresSessionStore.Get` silently swallows transient DB errors (no logging) — indistinguishable from ordinary session expiry in logs, slows incident diagnosis | S |
+| P2-15 | Low | `PostgresSessionStore.Put` silently drops a `json.Marshal` failure (no logging) — same gap, low likelihood | S |
+| P2-16 | Low | `handleElevate`'s `EnsureFresh`-failure path deletes the session but doesn't clear the cookie (inconsistent with `ProxyWithSession`'s equivalent path; not a vulnerability) | S |
+
+### 2.5 Cross-cutting (both consoles, not a regression)
+
+Roles are frozen in `Session.User()` at login and never refreshed on token
+refresh (`SetTokens`/`applyTokens` never touch `user`). Confirmed pre-existing
+in both consoles (diffed against pre-migration code), not introduced by the
+`backendkit/bff` migration. If a user is de-privileged upstream mid-session,
+the BFF's cached role list (surfaced via `/bff/session`, used for SPA-side UI
+gating) stays stale until re-login. Bounded risk assuming the admin API
+independently validates roles from each fresh bearer token rather than
+trusting anything the BFF asserts — worth a one-line confirmation from
+whoever owns that service, and a backlog item to have `Gateway.EnsureFresh`
+optionally re-derive `UserInfo` on refresh if that assumption doesn't hold.
 
 ---
 
-## 3. Production GO checklist
+## 3. Production GO checklist (revised)
 
-A repo is **GO** when every box below is checked. The suite is GO when all four are.
+**go-oauth2**
+- [x] H1, M1 (JSON API), M2, L1, L2, L3 (documented gap), L4, pgx CVE
+- [ ] P2-1 web-handler error sweep
+- [ ] P2-3/P2-4 IP-attribution consistency + stale comment
+- [ ] P2-5 client_credentials scope/DPoP enforcement
+- [ ] P2-2 app_users_handler cleanup (P2)
 
-**go-oauth2 (identity server)**
-- [x] H1 access-control fix merged + tested
-- [ ] M1/M2 error-handling (no raw internal errors to clients)
-- [ ] L4 prod config requires `https://` issuer
-- [ ] `go test -race ./...`, `go vet`, govulncheck green in CI (already wired)
-- [ ] Coverage gate holds; Tier-A floor reviewed
+**backendkit**
+- [x] H-1, M-1 (path segments), M-2, Session.Snapshot, `v1.10.0` tag
+- [ ] **P2-6 empty-CSRF bypass (recommend before next release)**
+- [ ] **P2-7 Gateway fail-open zero value (recommend before next release)**
+- [ ] **P2-8 concurrent-refresh session-kill race (recommend before next release)**
+- [ ] P2-10 query-string escaping (P2)
 
-**backendkit (library)**
-- [ ] bk-H-1 JWKS refetch hardened (singleflight + cooldown + negative cache)
-- [ ] bk-M-1 path-escaping completed across all `socrate` methods; docs corrected
-- [ ] bk-M-2 `WithExpirationRequired` + leeway set
-- [ ] Negative JWT tests added; `socrate` coverage raised
-- [ ] Tag release including the `bff` package
+**oauth2-admin**
+- [x] X-1, X-3, C-1 (verified with a real build), H-1/M-4, H-2, X-2, migration, e2e test, tag pin
+- [ ] P2-11 elevate expiry fail-open
+- [ ] P2-12 CSRF header hardcode (P2)
+- [ ] P2-13 Phase-1 startup assertion (P2)
 
-**oauth2-admin (portal)**
-- [x] BFF fail-closed + logout revocation merged
-- [ ] C-1 base-path fixed; SPA verified to load under Caddy in a staging deploy
-- [ ] Caddy security headers complete; CSP reconciled with the module
-- [ ] BFF Go tests run in CI
-- [ ] e2e suite rewritten against the BFF flow (or replaced)
-- [ ] `SECURITY.md` rewritten to match the BFF architecture
-
-**oauth2-monitoring (SOC dashboard)**
-- [x] BFF fail-closed + session race + backslash redirect + logout revoke/CSRF merged
-- [ ] F6 committed prod host/env removed
-- [ ] F8 SPA container hardened (non-root, digest-pinned)
-- [ ] F9 SSE reconnection hardened
-- [ ] Stale audit docs retired
+**oauth2-monitoring**
+- [x] F1/X-1, F2, F5, X-3/F7, pgx CVE, X-2, CI, migration (incl. Postgres store), tag pin
+- [ ] P2-14/P2-15 silent-error logging (P2)
+- [ ] P2-16 elevate cookie-clear consistency (P2)
 
 **Suite-wide**
-- [ ] X-2 BFF rate limiting in place (login + elevate)
-- [ ] All four repos: dependency scan (govulncheck / `npm audit`) clean at release
-- [ ] Consolidation onto `backendkit/bff` completed (post-GO acceptable, but track it)
-- [ ] X-5 stale/overstated audit docs pruned suite-wide
+- [x] No open PRs from the audit/remediation round remain unmerged
+- [x] Two claims independently investigated and refuted rather than
+      accepted at face value (IP-spoofing severity, backendkit tag integrity)
+- [ ] Decide on P2-6/P2-7/P2-8 fix-and-release timing for `backendkit`
+      (both consoles would need a follow-up dependency bump once released)
+- [ ] Cross-cutting roles-frozen-on-refresh: confirm admin API doesn't trust
+      BFF-asserted roles (§2.5)
 
 ---
 
 ## 4. Suggested sequencing
 
-1. **Now → GO-critical:** finish P0 (C-1, bk-H-1, bk-M-1). These are the last
-   items that are either exploitable or ship-broken.
-2. **GO-gate:** P1 (deploy headers, BFF-tests-in-CI, `exp`-required, rate
-   limiting, negative JWT tests, e2e rewrite). Flip the GO checklist.
-3. **Immediately post-GO:** consolidation follow-through (tag backendkit,
-   migrate both BFFs onto `bff.Gateway`, add the Postgres store adapter) so the
-   two consoles stop carrying duplicated security-critical code.
-4. **Rolling:** P2 hardening + doc cleanup.
+1. **`backendkit` P2-6/P2-7/P2-8** first — shared infrastructure, cheap fixes
+   (see pass-2 §4 for sketched code), and every day they're open is a day two
+   production consoles depend on them.
+2. **go-oauth2 P2-1/P2-3** next — both are real (if not currently critical)
+   gaps in controls the original audit specifically targeted (error hygiene,
+   brute-force defense).
+3. Everything else (P2-2, P2-4, P2-5, P2-9 through P2-16) is Low/Info and can
+   be batched into routine hardening work — none are release-blockers.
 
-**Assessment:** with this round's fixes, the suite has moved from "strong core
-with one exploitable bug and a systemic fail-open" to "no known exploitable
-break; a short, mostly-mechanical list stands between here and a clean GO." The
-critical-path items (C-1, bk-H-1, bk-M-1) are all small-to-medium and
-well-understood.
+**Assessment:** the suite went into this round with one exploitable bug and a
+systemic architectural gap (the fail-open BFF pattern); it comes out with
+neither, plus independently-reproduced confidence that the remediation itself
+didn't introduce new ones — except in the one place that hadn't been reviewed
+yet (the new shared package), which is exactly what a second pass is for.

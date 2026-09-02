@@ -148,7 +148,11 @@ func newOAuthRouter(
 
 	// Global Middleware
 	r.Use(chimiddleware.RequestID)
-	r.Use(chimiddleware.RealIP)
+	// ClientIP replaces chi's RealIP (P3-2 / GO-2026-5775, GO-2026-5777), which
+	// rewrote RemoteAddr from client-supplied headers for any peer. It resolves
+	// the IP once, honouring X-Forwarded-For only from TRUSTED_PROXIES, and must
+	// run before anything that rate-limits, blocks, or audits by IP.
+	r.Use(middleware.ClientIP(config.TrustedProxyCIDRs))
 	// CorrelationID must run before the request logger so the correlation ID
 	// is present in the context the logger reads (RFC-008).
 	r.Use(middleware.CorrelationID())
@@ -371,7 +375,11 @@ func newAdminRouter(
 
 	// Global Middleware
 	r.Use(chimiddleware.RequestID)
-	r.Use(chimiddleware.RealIP)
+	// ClientIP replaces chi's RealIP (P3-2 / GO-2026-5775, GO-2026-5777), which
+	// rewrote RemoteAddr from client-supplied headers for any peer. It resolves
+	// the IP once, honouring X-Forwarded-For only from TRUSTED_PROXIES, and must
+	// run before anything that rate-limits, blocks, or audits by IP.
+	r.Use(middleware.ClientIP(config.TrustedProxyCIDRs))
 	// CorrelationID must run before the request logger so the correlation ID
 	// is present in the context the logger reads (RFC-008).
 	r.Use(middleware.CorrelationID())
@@ -653,7 +661,11 @@ func NewRouter(
 
 	// Global Middleware
 	r.Use(chimiddleware.RequestID)
-	r.Use(chimiddleware.RealIP)
+	// ClientIP replaces chi's RealIP (P3-2 / GO-2026-5775, GO-2026-5777), which
+	// rewrote RemoteAddr from client-supplied headers for any peer. It resolves
+	// the IP once, honouring X-Forwarded-For only from TRUSTED_PROXIES, and must
+	// run before anything that rate-limits, blocks, or audits by IP.
+	r.Use(middleware.ClientIP(config.TrustedProxyCIDRs))
 	// CorrelationID must run before the request logger so the correlation ID
 	// is present in the context the logger reads (RFC-008).
 	r.Use(middleware.CorrelationID())

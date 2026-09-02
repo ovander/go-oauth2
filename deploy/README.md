@@ -101,6 +101,13 @@ docker run -p 8080:8080 -p 127.0.0.1:8081:8081 \
 ## Security notes
 
 - Admin API is **loopback-only** — the public surface is just Caddy on 443.
+- Client IPs (rate limits, IP blocks, auto-defense, audit) are taken from
+  `X-Forwarded-For` **only** when the peer is in `TRUSTED_PROXIES` (default:
+  loopback, i.e. Caddy and the consoles' BFFs on this box). Caddy replaces any
+  client-supplied `X-Forwarded-For` for peers outside its own `trusted_proxies`
+  (none configured here), so the leftmost entry is the real client. If you move
+  the proxy off-box, set `TRUSTED_PROXIES` to its address — never to a range
+  clients can reach you from.
 - The systemd unit runs as a no-login `socrate` user with `ProtectSystem=strict`,
   `NoNewPrivileges`, an empty capability set, and a syscall allowlist; only
   `/var/lib/socrate/keys` is writable.

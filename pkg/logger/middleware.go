@@ -33,6 +33,12 @@ func RequestLoggerMiddleware(next http.Handler) http.Handler {
 			"path":   r.URL.Path,
 			"remote": r.RemoteAddr,
 		}
+		// client_ip is the spoofing-resistant address resolved by
+		// middleware.ClientIP (proxy headers honoured only from TRUSTED_PROXIES);
+		// "remote" stays the raw TCP peer so the two can be compared in logs.
+		if ip, ok := r.Context().Value(contextkeys.IPAddressKey).(string); ok && ip != "" {
+			fields["client_ip"] = ip
+		}
 		if cid, ok := r.Context().Value(contextkeys.RequestIDKey).(string); ok && cid != "" {
 			fields["correlation_id"] = cid
 		}

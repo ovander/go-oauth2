@@ -1,6 +1,6 @@
 # Socrate Suite — Remediation Plan & Production GO Checklist
 
-**Updated:** 2026-07-03 (rev. 3, after pass-3 audit)
+**Updated:** 2026-09-02 (rev. 3, after pass-3 audit)
 **Companions:** `docs/CR-socrate-suite-security-pass1.md`,
 `docs/CR-socrate-suite-security-pass2.md`,
 `docs/CR-socrate-suite-security-pass3.md` (which this revision reflects).

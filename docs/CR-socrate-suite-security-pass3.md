@@ -1,6 +1,6 @@
 # Socrate Suite — Security Audit, Pass 3
 
-**Date:** 2026-07-03
+**Date:** 2026-09-02
 **Scope:** `go-oauth2` (main @ `649c922`), `backendkit` (main @ `4d146cf`,
 tags `v1.11.0`/`v1.11.1`-pending), `oauth2-admin` (main @ `7b7a139`),
 `oauth2-monitoring` (main @ `8ff4f93`).

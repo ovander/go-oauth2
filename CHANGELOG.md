@@ -10,6 +10,20 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+### Security
+
+- **deps: clear the current `govulncheck` findings.** Go toolchain `1.25.11` →
+  `1.25.13` (GO-2026-6088/6089/6090/6091, GO-2026-5972, GO-2026-5856 in
+  `html/template`, `net/http`, `crypto/tls`, `encoding/xml`, `encoding/asn1`),
+  `golang.org/x/text` `v0.29.0` → `v0.39.0` (GO-2026-5970), and
+  `github.com/go-chi/chi/v5` `v5.1.0` → `v5.3.0` (GO-2026-5775/5777, `RealIP`
+  IP spoofing). **Note:** chi v5.3.0 only *deprecates* `middleware.RealIP`; it
+  still rewrites `RemoteAddr` from `True-Client-IP` / `X-Real-IP` / `XFF` for
+  any peer. This bump satisfies the scanner but does not close the spoofing
+  exposure — that requires removing `RealIP` from the routers and attributing
+  via `GetClientIPSafe(r, TRUSTED_PROXIES)` (tracked as P3-2 in
+  `docs/CR-socrate-suite-security-pass3.md`).
+
 ## [1.2.0] - 2026-06-25
 
 Minor release on the **v1.x — Foundations & Additive Capabilities** line

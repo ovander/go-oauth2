@@ -9,6 +9,7 @@ import (
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/ovandermoten/go-oauth2/internal/handler"
+	"github.com/ovandermoten/go-oauth2/internal/metrics"
 	"github.com/ovandermoten/go-oauth2/internal/middleware"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
@@ -158,6 +159,7 @@ func newOAuthRouter(
 	r.Use(middleware.CorrelationID())
 	r.Use(logger.RequestLoggerMiddleware)
 	r.Use(chimiddleware.Recoverer)
+	r.Use(metrics.HTTP("oauth"))
 	r.Use(chimiddleware.Timeout(60 * time.Second))
 	// P4-3: cap every request body before any handler decodes it.
 	r.Use(middleware.MaxRequestBody(middleware.DefaultMaxRequestBody))
@@ -396,6 +398,7 @@ func newAdminRouter(
 	r.Use(middleware.CorrelationID())
 	r.Use(logger.RequestLoggerMiddleware)
 	r.Use(chimiddleware.Recoverer)
+	r.Use(metrics.HTTP("admin"))
 	r.Use(chimiddleware.Timeout(60 * time.Second))
 	// P4-3: cap every request body before any handler decodes it.
 	r.Use(middleware.MaxRequestBody(middleware.DefaultMaxRequestBody))
@@ -421,6 +424,9 @@ func newAdminRouter(
 	r.Get("/version", healthHandler.Version)
 	// /api/version alias: the admin SPA probes this path for its version store.
 	r.Get("/api/version", healthHandler.Version)
+	// B1: Prometheus exposition — admin port only (loopback). Caddy must never
+	// route /metrics from a public host; the runbook says so.
+	r.Handle("/metrics", metrics.Handler())
 
 	// ==========================================
 	// Admin Authentication (public - no auth required)
@@ -695,6 +701,7 @@ func NewRouter(
 	r.Use(middleware.CorrelationID())
 	r.Use(logger.RequestLoggerMiddleware)
 	r.Use(chimiddleware.Recoverer)
+	r.Use(metrics.HTTP("unified"))
 	r.Use(chimiddleware.Timeout(60 * time.Second))
 	// P4-3: cap every request body before any handler decodes it.
 	r.Use(middleware.MaxRequestBody(middleware.DefaultMaxRequestBody))

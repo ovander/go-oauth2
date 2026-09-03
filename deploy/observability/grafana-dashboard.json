@@ -1,0 +1,320 @@
+{
+  "title": "Socrate \u2014 identity overview",
+  "uid": "socrate-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "tags": [
+    "socrate",
+    "identity"
+  ],
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "label": "Prometheus"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Requests / s by router",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (router) (rate(socrate_http_requests_total[5m]))",
+          "legendFormat": "{{router}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "5xx ratio (public router)",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(socrate_http_requests_total{router=\"oauth\",status=\"5xx\"}[5m])) / clamp_min(sum(rate(socrate_http_requests_total{router=\"oauth\"}[5m])),1e-9)",
+          "legendFormat": "5xx ratio"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Token endpoint latency p50 / p99",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(socrate_http_request_duration_seconds_bucket{route=\"/oauth/token\"}[5m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(socrate_http_request_duration_seconds_bucket{route=\"/oauth/token\"}[5m])))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Tokens issued by grant / outcome",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (grant, outcome) (rate(socrate_tokens_issued_total[5m]))",
+          "legendFormat": "{{grant}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Logins: success vs failed",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(socrate_security_events_total{event_type=\"login_success\"}[5m]))",
+          "legendFormat": "success"
+        },
+        {
+          "refId": "A",
+          "expr": "sum(rate(socrate_security_events_total{event_type=\"login_failed\"}[5m]))",
+          "legendFormat": "failed"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Security signals (15 m increase)",
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(socrate_security_events_total{event_type=\"refresh_token_reuse\"}[15m])",
+          "legendFormat": "refresh reuse"
+        },
+        {
+          "refId": "A",
+          "expr": "increase(socrate_security_events_total{event_type=\"dpop_validation_failed\"}[15m])",
+          "legendFormat": "DPoP rejects"
+        },
+        {
+          "refId": "A",
+          "expr": "increase(socrate_security_events_total{event_type=\"pkce_validation_failed\"}[15m])",
+          "legendFormat": "PKCE fails"
+        },
+        {
+          "refId": "A",
+          "expr": "increase(socrate_security_events_total{event_type=\"scope_denied\"}[15m])",
+          "legendFormat": "scope denied"
+        },
+        {
+          "refId": "A",
+          "expr": "increase(socrate_ip_blocks_total[15m])",
+          "legendFormat": "IP blocks"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Rate-limit hits by route",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (route) (rate(socrate_rate_limit_hits_total[5m]))",
+          "legendFormat": "{{route}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Signing key age",
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 6,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "socrate_signing_key_age_seconds",
+          "legendFormat": "age"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "DB pool",
+      "gridPos": {
+        "x": 18,
+        "y": 24,
+        "w": 6,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "socrate_db_pool_open_connections",
+          "legendFormat": "open"
+        },
+        {
+          "refId": "A",
+          "expr": "socrate_db_pool_in_use",
+          "legendFormat": "in use"
+        },
+        {
+          "refId": "A",
+          "expr": "socrate_db_pool_idle",
+          "legendFormat": "idle"
+        }
+      ]
+    }
+  ]
+}

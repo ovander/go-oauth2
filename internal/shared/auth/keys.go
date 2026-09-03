@@ -28,6 +28,17 @@ type keyEntry struct {
 	privateKey *rsa.PrivateKey
 	publicKey  *rsa.PublicKey
 	keyID      string
+	// createdAt is when the key material was generated (or, for keys loaded
+	// from disk, the private key file's modification time). Feeds the
+	// socrate_signing_key_age_seconds gauge (B1).
+	createdAt time.Time
+}
+
+// CurrentKeyCreatedAt reports when the active signing key was created.
+func (km *KeyManager) CurrentKeyCreatedAt() time.Time {
+	km.mu.RLock()
+	defer km.mu.RUnlock()
+	return km.current.createdAt
 }
 
 // KeyManager holds the active signing key and a ring of retired public keys
@@ -157,6 +168,7 @@ func (km *KeyManager) generateKeys(privatePath, publicPath, keyIDPath string) er
 		privateKey: privateKey,
 		publicKey:  &privateKey.PublicKey,
 		keyID:      keyID,
+		createdAt:  time.Now(),
 	}
 	return nil
 }
@@ -226,6 +238,7 @@ func (km *KeyManager) loadKeys(privatePath, publicPath, keyIDPath string) error 
 		privateKey: privateKey,
 		publicKey:  publicKey,
 		keyID:      keyID,
+		createdAt:  fileModTime(privatePath),
 	}
 	return nil
 }
@@ -523,4 +536,14 @@ func loadPublicKeyFromFile(path string) (*rsa.PublicKey, error) {
 
 func base64URLEncode(data []byte) string {
 	return base64.RawURLEncoding.EncodeToString(data)
+}
+
+// fileModTime returns the file's modification time, or the zero time when it
+// cannot be read (the gauge then reports 0 rather than failing startup).
+func fileModTime(path string) time.Time {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return time.Time{}
+	}
+	return fi.ModTime()
 }

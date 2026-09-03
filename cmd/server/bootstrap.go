@@ -11,6 +11,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/database/migrate"
 	"github.com/ovandermoten/go-oauth2/internal/handler"
 	internalhttp "github.com/ovandermoten/go-oauth2/internal/http"
+	"github.com/ovandermoten/go-oauth2/internal/metrics"
 	"github.com/ovandermoten/go-oauth2/internal/middleware"
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
@@ -234,6 +235,10 @@ func Bootstrap(cfg *config.Config) *App {
 		dbCfg.ConnMaxIdleTime = cfg.DBTimeout
 	}
 	db := database.ConnectWithConfig(cfg.DatabaseURL, dbCfg)
+	metrics.SetBuildInfo(version.Version, version.Commit)
+	if sqlDB, dbErr := db.DB(); dbErr == nil {
+		metrics.RegisterDBStats(sqlDB.Stats)
+	}
 
 	// ==========================================
 	// Versioned schema migrations (always run — idempotent)
@@ -286,6 +291,9 @@ func Bootstrap(cfg *config.Config) *App {
 	// Key Manager
 	// ==========================================
 	keyManager, err := auth.NewKeyManager(cfg.KeysPath)
+	if err == nil {
+		metrics.SetSigningKeyCreatedAt(keyManager.CurrentKeyCreatedAt)
+	}
 	if err != nil {
 		panic("failed to initialize key manager: " + err.Error())
 	}
@@ -334,7 +342,8 @@ func Bootstrap(cfg *config.Config) *App {
 	usedTokenRepo := repository.NewUsedTokenRepository(db)
 	// RFC-007: stamp a tamper-evidence HMAC on each audit row, keyed by
 	// SECRET_KEY_BASE (held in config, never in the DB). Empty secret disables it.
-	securityAuditRepo := repository.NewSecurityAuditLogRepositoryWithIntegrity(db, []byte(cfg.SecretKeyBase))
+	// B1: every persisted security event is also a Prometheus counter.
+	securityAuditRepo := metrics.InstrumentAuditRepo(repository.NewSecurityAuditLogRepositoryWithIntegrity(db, []byte(cfg.SecretKeyBase)))
 
 	// RFC-007: optionally run the audit-row integrity scan on a timer. Disabled
 	// by default (AuditIntegrityScanInterval == 0).

@@ -11,6 +11,7 @@ import (
 
 	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
 	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovandermoten/go-oauth2/internal/metrics"
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
@@ -423,15 +424,44 @@ func (s *oauthService) Token(ctx context.Context, req dto.TokenRequest, clientID
 		"grant_type": req.GrantType,
 		"client_id":  clientID,
 	}).Debug("token endpoint: grant dispatch")
+	var (
+		resp *dto.TokenResponse
+		err  error
+	)
 	switch req.GrantType {
 	case "authorization_code":
-		return s.handleAuthorizationCodeGrant(ctx, req, clientID, clientSecret)
+		resp, err = s.handleAuthorizationCodeGrant(ctx, req, clientID, clientSecret)
 	case "refresh_token":
-		return s.handleRefreshTokenGrant(ctx, req, clientID, clientSecret)
+		resp, err = s.handleRefreshTokenGrant(ctx, req, clientID, clientSecret)
 	case "client_credentials":
-		return s.handleClientCredentialsGrant(ctx, req, clientID, clientSecret)
+		resp, err = s.handleClientCredentialsGrant(ctx, req, clientID, clientSecret)
 	default:
-		return nil, fmt.Errorf("%w: %s", ErrInvalidGrantType, req.GrantType)
+		err = fmt.Errorf("%w: %s", ErrInvalidGrantType, req.GrantType)
+	}
+	metrics.TokenIssued(req.GrantType, tokenOutcome(err))
+	return resp, err
+}
+
+// tokenOutcome maps a grant error onto a bounded outcome label for metrics:
+// the RFC 6749 error class, never the message.
+func tokenOutcome(err error) string {
+	switch {
+	case err == nil:
+		return "success"
+	case errors.Is(err, ErrInvalidGrantType):
+		return "unsupported_grant_type"
+	case errors.Is(err, ErrInvalidCredentials), errors.Is(err, ErrAppNotFound):
+		return "invalid_client"
+	case errors.Is(err, ErrInvalidScope):
+		return "invalid_scope"
+	case errors.Is(err, ErrAppInactive):
+		return "unauthorized_client"
+	case errors.Is(err, ErrInvalidCode), errors.Is(err, ErrCodeExpired), errors.Is(err, ErrCodeAlreadyUsed),
+		errors.Is(err, ErrInvalidToken), errors.Is(err, ErrPKCERequired), errors.Is(err, ErrPKCEVerificationFail),
+		errors.Is(err, ErrAccountLocked), errors.Is(err, ErrDPoPRequired):
+		return "invalid_grant"
+	default:
+		return "error"
 	}
 }
 

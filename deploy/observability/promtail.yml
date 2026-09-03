@@ -1,0 +1,22 @@
+# Promtail starting point: ship the Socrate journal (JSON lines) to Loki.
+server:
+  http_listen_port: 9080
+positions:
+  filename: /var/lib/promtail/positions.yaml
+clients:
+  - url: http://127.0.0.1:3100/loki/api/v1/push
+scrape_configs:
+  - job_name: socrate-journal
+    journal:
+      max_age: 12h
+      labels: { job: socrate }
+    relabel_configs:
+      - source_labels: ["__journal__systemd_unit"]
+        regex: "(socrate|socrate-admin-bff|socrate-monitoring-bff)\\.service"
+        action: keep
+      - source_labels: ["__journal__systemd_unit"]
+        target_label: unit
+    pipeline_stages:
+      - json:
+          expressions: { level: level, correlation_id: correlation_id, route: path, status: status }
+      - labels: { level: }

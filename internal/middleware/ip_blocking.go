@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"github.com/ovandermoten/go-oauth2/internal/metrics"
 	"net"
 	"net/http"
 	"sync"
@@ -193,6 +194,7 @@ func IPBlockMiddleware(checker *IPBlockChecker, trustedCIDRs []*net.IPNet) func(
 			}
 
 			if blocked {
+				metrics.IPBlocked()
 				logger.Warnf("Blocked request from banned IP: %s", ip)
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusForbidden)

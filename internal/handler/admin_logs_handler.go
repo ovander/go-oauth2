@@ -156,15 +156,17 @@ func (h *AdminLogsHandler) ExportLogs(w http.ResponseWriter, r *http.Request) {
 			targetID = strconv.FormatUint(uint64(*row.TargetID), 10)
 		}
 		//nolint:errcheck // G104: see above
+		// P4-2: every free-text column is user-influenced (emails, app names,
+		// user agents) and must not be able to start a spreadsheet formula.
 		_ = cw.Write([]string{
 			strconv.FormatUint(uint64(row.ID), 10),
 			strconv.FormatUint(uint64(row.AdminID), 10),
-			row.AdminEmail,
-			row.Action,
-			row.TargetType,
+			csvSafe(row.AdminEmail),
+			csvSafe(row.Action),
+			csvSafe(row.TargetType),
 			targetID,
-			row.TargetName,
-			row.IPAddress,
+			csvSafe(row.TargetName),
+			csvSafe(row.IPAddress),
 			row.CreatedAt.Format(time.RFC3339),
 		})
 	}

@@ -10,6 +10,44 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+> **Upgrade note (P3-2):** client-IP attribution no longer trusts headers from
+> arbitrary peers. `TRUSTED_PROXIES` now **defaults to loopback**
+> (`127.0.0.1/32,::1/128`), which matches the documented same-host Caddy/BFF
+> topology. If your reverse proxy connects from another address, set
+> `TRUSTED_PROXIES` to it or rate limits, IP blocks and auto-defense will key
+> on the proxy's address instead of the client's. Set `TRUSTED_PROXIES=none`
+> only when Socrate is exposed directly with no proxy.
+
+### Security
+
+- **Client-IP spoofing via chi `RealIP` closed (P3-2; GO-2026-5775 /
+  GO-2026-5777).** `chimiddleware.RealIP` was installed unconditionally on all
+  three routers and rewrote `RemoteAddr` from `True-Client-IP` / `X-Real-IP` /
+  leftmost `X-Forwarded-For` for **any** peer, so the login/token rate
+  limiters, IP blocking, auto-defense (which could be made to block an
+  arbitrary IP of the attacker's choosing) and security-audit attribution all
+  trusted a client-chosen address — exploitable through Caddy, which passes
+  `True-Client-IP`/`X-Real-IP` through untouched. `RealIP` is removed and
+  replaced by `middleware.ClientIP(trustedCIDRs)`, which resolves the IP once
+  per request via `GetClientIPSafe` (proxy headers honoured **only** when the
+  TCP peer is in `TRUSTED_PROXIES`) into the request context, never mutates
+  `RemoteAddr`, and feeds `GetClientIP` for every attribution sink (auth /
+  admin-login auto-defense, token-abuse and DPoP audit sinks, secret-rotation
+  activity log). `GetClientIP`'s doc comment, which claimed it "always trusts
+  proxy headers" (P2-4), is corrected. The request logger gains a `client_ip`
+  field alongside the raw `remote`. Regression tests prove an untrusted peer
+  cannot escape the rate limiter by rotating any of the three headers, and
+  that a trusted loopback proxy's `X-Forwarded-For` still keys per client.
+  Supersedes pass-2 items P2-3/P2-4. Traceability:
+  `docs/CR-socrate-suite-security-pass3.md` §1.3.
+
+- **deps: clear the current `govulncheck` findings.** Go toolchain `1.25.11` →
+  `1.25.13` (GO-2026-6088/6089/6090/6091, GO-2026-5972, GO-2026-5856 in
+  `html/template`, `net/http`, `crypto/tls`, `encoding/xml`, `encoding/asn1`),
+  `golang.org/x/text` `v0.29.0` → `v0.39.0` (GO-2026-5970), and
+  `github.com/go-chi/chi/v5` `v5.1.0` → `v5.3.0` (GO-2026-5775/5777; note the
+  chi release only *deprecates* `RealIP` — the actual fix is the item above).
+
 ## [1.2.0] - 2026-06-25
 
 Minor release on the **v1.x — Foundations & Additive Capabilities** line

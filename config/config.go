@@ -212,7 +212,12 @@ type Config struct {
 	// Trusted Proxies
 	// Comma-separated IPs or CIDR ranges whose X-Forwarded-For / X-Real-IP
 	// headers are trusted for real-IP extraction (e.g. "10.0.0.0/8,172.16.0.0/12").
-	// Leave empty when the server is exposed directly to the internet.
+	// Defaults to loopback ("127.0.0.1/32,::1/128"): the documented topology
+	// fronts both listeners with a same-host Caddy / BFF, and the admin API is
+	// loopback-bound, so every peer it sees IS the proxy — without trusting it,
+	// rate limits, IP blocks and audit attribution collapse onto 127.0.0.1.
+	// Internet peers never connect from loopback, so the default is inert when
+	// the server is exposed directly. Set to "none" to trust no proxy at all.
 	TrustedProxies string
 
 	// CORS
@@ -339,7 +344,7 @@ func Load() *Config {
 		UsedTokenCleanupInterval:   time.Duration(getEnvInt("USED_TOKEN_CLEANUP_INTERVAL_SECONDS", 3600)) * time.Second,
 
 		// Trusted Proxies
-		TrustedProxies: getEnv("TRUSTED_PROXIES", ""),
+		TrustedProxies: getEnv("TRUSTED_PROXIES", "127.0.0.1/32,::1/128"),
 
 		// CORS
 		AllowedOrigins: getEnv("ALLOWED_ORIGINS", ""),

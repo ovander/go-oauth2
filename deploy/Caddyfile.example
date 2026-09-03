@@ -4,6 +4,12 @@
 # bound to LOOPBACK (ADMIN_BIND_HOST=127.0.0.1). Only the OAuth server gets a
 # public subdomain here; the admin API is reached on-box by the consoles' BFFs
 # (see the oauth2-monitoring deploy kit), never directly from the internet.
+#
+# Client-IP attribution: Socrate trusts X-Forwarded-For only from
+# TRUSTED_PROXIES (default loopback = this Caddy). Do NOT add `trusted_proxies`
+# to reverse_proxy here unless a further upstream proxy really exists — with it,
+# Caddy would keep client-supplied X-Forwarded-For values instead of replacing
+# them, and Socrate would then trust an attacker-chosen leftmost entry.
 
 socrate.vandermoten.eu {
 	encode zstd gzip

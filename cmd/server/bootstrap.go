@@ -72,17 +72,22 @@ func keyRetentionFor(retention, refreshTTL time.Duration) time.Duration {
 
 // mustParseTrustedProxies parses the comma-separated TRUSTED_PROXIES config value
 // into a slice of *net.IPNet.  The server fatals on invalid input.
-// Returns nil (safe default) when the setting is empty — proxy headers are then
-// never trusted and RemoteAddr is always used as-is.
+// Returns nil when the setting is empty or "none" — proxy headers are then
+// never trusted and RemoteAddr is always used as-is. Note that behind the
+// documented Caddy/BFF topology that means every request attributes to the
+// proxy's own address (rate limits and IP blocks become global), so the
+// config default is loopback rather than empty.
 func mustParseTrustedProxies(raw string) []*net.IPNet {
 	cidrs, err := middleware.ParseTrustedProxyCIDRs(raw)
 	if err != nil {
 		logger.Fatalf("Invalid TRUSTED_PROXIES setting: %v", err)
 	}
 	if len(cidrs) > 0 {
-		logger.Infof("Trusting %d proxy CIDR(s) for X-Forwarded-For/X-Real-IP", len(cidrs))
+		logger.WithFields(logger.Fields{"trusted_proxies": raw}).
+			Info("Trusting proxy CIDR(s) for X-Forwarded-For/X-Real-IP; all other peers attribute to RemoteAddr")
 	} else {
-		logger.Info("No trusted proxies configured — using RemoteAddr for client IP (safe default)")
+		logger.Warn("TRUSTED_PROXIES is none/empty — using RemoteAddr for every client IP; " +
+			"behind a reverse proxy this collapses rate limits, IP blocks and audit attribution onto the proxy address")
 	}
 	return cidrs
 }

@@ -316,13 +316,6 @@ func GetClientIPSafe(r *http.Request, trustedCIDRs []*net.IPNet) string {
 	return remoteIP
 }
 
-// GetClientIP is kept for backward-compatibility; it always trusts proxy
-// headers regardless of origin.  Prefer GetClientIPSafe with explicit
-// trusted CIDRs in security-sensitive contexts.
-func GetClientIP(r *http.Request) string {
-	return GetClientIPSafe(r, nil)
-}
-
 // extractRemoteIP strips the port from a "host:port" address.
 func extractRemoteIP(addr string) string {
 	if host, _, err := net.SplitHostPort(addr); err == nil {
@@ -347,8 +340,11 @@ func isIPInCIDRs(ipStr string, cidrs []*net.IPNet) bool {
 
 // ParseTrustedProxyCIDRs parses a comma-separated list of IPs / CIDR blocks
 // into []*net.IPNet.  Plain IPs are treated as /32 (IPv4) or /128 (IPv6).
+// An empty value or the literal "none" (case-insensitive) yields nil — no
+// proxy is trusted and RemoteAddr is always used as-is.
 func ParseTrustedProxyCIDRs(raw string) ([]*net.IPNet, error) {
-	if strings.TrimSpace(raw) == "" {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.EqualFold(raw, "none") {
 		return nil, nil
 	}
 	var cidrs []*net.IPNet

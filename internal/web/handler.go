@@ -2,6 +2,7 @@ package web
 
 import (
 	"embed"
+	"errors"
 	"html/template"
 	"net/http"
 	"strings"
@@ -400,7 +401,7 @@ func (h *WebHandler) AcceptInviteSubmit(w http.ResponseWriter, r *http.Request) 
 			"Token":   token,
 			"Email":   claims.Email,
 			"AppName": appName,
-			"Error":   err.Error(),
+			"Error":   safeFormError(err, "Unable to accept the invitation. Please try again or request a new invite."),
 		}
 		h.render(w, "accept_invite.html", data)
 		return
@@ -606,7 +607,7 @@ func (h *WebHandler) SignupSubmit(w http.ResponseWriter, r *http.Request) {
 		ClientID: r.FormValue("client_id"),
 	})
 	if err != nil {
-		data["Error"] = err.Error()
+		data["Error"] = safeFormError(err, "Signup failed. Please check your details and try again.")
 		h.render(w, "signup.html", data)
 		return
 	}
@@ -618,6 +619,44 @@ func (h *WebHandler) SignupSubmit(w http.ResponseWriter, r *http.Request) {
 // ==========================================
 // Template Rendering
 // ==========================================
+
+// passwordValidationErrors are the auth.ValidatePassword sentinels; their text
+// is a fixed, safe instruction ("password must be at least 12 characters")
+// and may be shown verbatim. Mirrors the JSON API's M1 handling.
+var passwordValidationErrors = []error{
+	auth.ErrPasswordTooShort,
+	auth.ErrPasswordTooLong,
+	auth.ErrPasswordNoLowercase,
+	auth.ErrPasswordNoUppercase,
+	auth.ErrPasswordNoDigit,
+	auth.ErrPasswordNoSpecial,
+	auth.ErrPasswordCommon,
+}
+
+// safeFormError maps a service error to a message that can be rendered to an
+// unauthenticated browser (P2-1). Known sentinels get a static message; the
+// password-policy errors pass through; anything else — a wrapped GORM/driver
+// error, an SMTP failure, a path — is logged server-side and replaced by
+// fallback so no internal detail reaches the page.
+func safeFormError(err error, fallback string) string {
+	switch {
+	case errors.Is(err, service.ErrEmailAlreadyExists):
+		return "An account with this email already exists."
+	case errors.Is(err, service.ErrAppNotFound), errors.Is(err, service.ErrAppInactive):
+		return "This application is not available for signup."
+	case errors.Is(err, service.ErrTokenAlreadyUsed):
+		return "This invitation has already been used."
+	case errors.Is(err, service.ErrInvalidToken):
+		return "This invitation is invalid or has expired."
+	}
+	for _, sentinel := range passwordValidationErrors {
+		if errors.Is(err, sentinel) {
+			return err.Error()
+		}
+	}
+	logger.Warnf("web form request failed: %v", err)
+	return fallback
+}
 
 func (h *WebHandler) render(w http.ResponseWriter, name string, data map[string]interface{}) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

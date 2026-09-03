@@ -27,6 +27,9 @@ type memUserRepo struct {
 	lockCalled bool
 	lockUserID uint
 	lockUntil  *time.Time
+	// versionBumped records IncrementTokenVersion calls (P3-3: Block must
+	// revoke outstanding tokens, not just lock the row).
+	versionBumped []uint
 }
 
 func newMemUserRepo(us ...*model.User) *memUserRepo {
@@ -73,8 +76,12 @@ func (r *memUserRepo) CountByRole(_ context.Context, _ model.UserRole) (int64, e
 func (r *memUserRepo) Create(_ context.Context, _ *model.User) error { panic("not implemented") }
 func (r *memUserRepo) Update(_ context.Context, _ *model.User) error { panic("not implemented") }
 func (r *memUserRepo) Delete(_ context.Context, _ uint) error        { panic("not implemented") }
-func (r *memUserRepo) IncrementTokenVersion(_ context.Context, _ uint) error {
-	panic("not implemented")
+func (r *memUserRepo) IncrementTokenVersion(_ context.Context, id uint) error {
+	r.versionBumped = append(r.versionBumped, id)
+	if u, ok := r.users[id]; ok {
+		u.TokenVersion++
+	}
+	return nil
 }
 func (r *memUserRepo) IncrementFailedLoginAttempts(_ context.Context, _ uint) error {
 	panic("not implemented")
@@ -105,6 +112,10 @@ func TestBlock_HappyPath(t *testing.T) {
 	}
 	if repo.lockUserID != targetID {
 		t.Errorf("LockAccount called with user %d, want %d", repo.lockUserID, targetID)
+	}
+	// P3-3: blocking must revoke every outstanding token, not just lock the row.
+	if len(repo.versionBumped) != 1 || repo.versionBumped[0] != targetID {
+		t.Errorf("IncrementTokenVersion calls = %v, want exactly [%d]", repo.versionBumped, targetID)
 	}
 	if repo.lockUntil == nil {
 		t.Fatal("expected a non-nil lock timestamp")

@@ -104,6 +104,7 @@ func TestLOW02_MaxAge_StaleSession_ReturnsErrReauthRequired(t *testing.T) {
 	app := &model.App{
 		ID:           32,
 		ClientID:     "low02-stale-app",
+		Active:       true,
 		RedirectURIs: model.StringArray{"https://app.example.com/cb"},
 	}
 	svc, _ := newMedSvc(t, newMemUsedTokenRepo(), app, user)
@@ -133,6 +134,7 @@ func TestLOW02_MaxAge_Zero_AlwaysRequiresReauth(t *testing.T) {
 	app := &model.App{
 		ID:           33,
 		ClientID:     "low02-zero-app",
+		Active:       true,
 		RedirectURIs: model.StringArray{"https://app.example.com/cb"},
 	}
 	svc, _ := newMedSvc(t, newMemUsedTokenRepo(), app, user)

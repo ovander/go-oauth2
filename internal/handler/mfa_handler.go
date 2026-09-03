@@ -8,6 +8,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/dto"
 	"github.com/ovandermoten/go-oauth2/internal/middleware"
 	"github.com/ovandermoten/go-oauth2/internal/service"
+	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
@@ -20,14 +21,16 @@ import (
 //	GET  /api/profile/mfa          – report whether MFA is enabled
 //	POST /api/profile/mfa/enroll   – begin enrollment (returns secret + otpauth URI)
 //	POST /api/profile/mfa/confirm  – confirm enrollment with a code
-//	POST /api/profile/mfa/disable  – disable MFA
+//	POST /api/profile/mfa/disable  – disable MFA (requires password + code, P3-9)
 type MFAHandler struct {
-	mfaService service.MFAService
+	mfaService  service.MFAService
+	userService service.UserService // password re-verification for Disable
 }
 
-// NewMFAHandler creates the handler.
-func NewMFAHandler(mfaService service.MFAService) *MFAHandler {
-	return &MFAHandler{mfaService: mfaService}
+// NewMFAHandler creates the handler. userService is used to re-verify the
+// account password before MFA is disabled; if nil, Disable fails closed.
+func NewMFAHandler(mfaService service.MFAService, userService service.UserService) *MFAHandler {
+	return &MFAHandler{mfaService: mfaService, userService: userService}
 }
 
 // Status handles GET /api/profile/mfa.
@@ -133,10 +136,67 @@ func (h *MFAHandler) RecoveryCodes(w http.ResponseWriter, r *http.Request) {
 }
 
 // Disable handles POST /api/profile/mfa/disable.
+//
+// P3-9: a bearer token alone (which may have been minted long ago, or stolen)
+// must not be enough to strip the second factor. The caller re-proves the
+// account: the current password when the account has one, plus a valid TOTP
+// code or an unused recovery code. Every failure returns the same 401 so the
+// response does not reveal which factor was wrong.
 func (h *MFAHandler) Disable(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req dto.MFADisableRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if req.Code == "" {
+		writeError(w, "code is required", http.StatusBadRequest)
+		return
+	}
+
+	if h.userService == nil {
+		logger.Warnf("mfa: disable for user %d: no user service wired, refusing", userID)
+		writeError(w, "could not disable MFA", http.StatusInternalServerError)
+		return
+	}
+	user, err := h.userService.GetByID(r.Context(), userID)
+	if err != nil {
+		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	// Accounts created through invite/magic-link flows may have no password;
+	// those still have to present a second-factor code below.
+	if user.HashedPassword != "" && !auth.CheckPassword(req.Password, user.HashedPassword) {
+		writeError(w, "re-authentication failed", http.StatusUnauthorized)
+		return
+	}
+
+	switch err := h.mfaService.Verify(r.Context(), userID, req.Code); {
+	case err == nil:
+		// TOTP code accepted.
+	case errors.Is(err, service.ErrMFANotEnrolled):
+		writeError(w, "MFA is not enabled", http.StatusConflict)
+		return
+	case errors.Is(err, service.ErrMFAInvalidCode):
+		// Fall back to a recovery code (consumed on success).
+		redeemed, rerr := h.mfaService.RedeemRecoveryCode(r.Context(), userID, req.Code)
+		if rerr != nil {
+			logger.Warnf("mfa: redeem recovery code for user %d: %v", userID, rerr)
+			writeError(w, "could not disable MFA", http.StatusInternalServerError)
+			return
+		}
+		if !redeemed {
+			writeError(w, "re-authentication failed", http.StatusUnauthorized)
+			return
+		}
+	default:
+		logger.Warnf("mfa: verify before disable for user %d: %v", userID, err)
+		writeError(w, "could not disable MFA", http.StatusInternalServerError)
 		return
 	}
 

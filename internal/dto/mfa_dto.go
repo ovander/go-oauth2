@@ -16,6 +16,15 @@ type MFAConfirmRequest struct {
 	Code string `json:"code"`
 }
 
+// MFADisableRequest is the body of POST /api/profile/mfa/disable. Turning MFA
+// off is a security-sensitive change, so the caller must re-prove possession
+// of the account (P3-9): the current password (when the account has one) and
+// a current TOTP code or an unused recovery code.
+type MFADisableRequest struct {
+	Password string `json:"password"`
+	Code     string `json:"code"`
+}
+
 // MFAStatusResponse reports whether MFA is currently enabled for the user and
 // how many recovery codes remain (so a client can prompt to regenerate before
 // they run out). It never includes the secret.

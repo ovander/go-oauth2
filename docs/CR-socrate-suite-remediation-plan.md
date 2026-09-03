@@ -1,17 +1,20 @@
 # Socrate Suite — Remediation Plan & Production GO Checklist
 
-**Updated:** 2026-09-03 (rev. 4, after the pass-3 remediation round)
+**Updated:** 2026-09-03 (rev. 5, after the Low/Info hardening round)
 **Companions:** `docs/CR-socrate-suite-security-pass1.md`,
 `docs/CR-socrate-suite-security-pass2.md`,
 `docs/CR-socrate-suite-security-pass3.md`.
 
-Rev. 4 replaces rev. 3. §1 is the closed ledger (now including every pass-3
-release-blocker), §2 lists what remains open, §3 is the GO checklist, §4 the
-verification notes for this round.
+Rev. 5 replaces rev. 4. §1 is the closed ledger, §2 what is still open after
+this round, §3 the GO checklist, §4 the verification notes, §5 the deployment
+GO statement for the documented single-VPS topology.
 
-**Bottom line: with the four console PRs below merged, the suite is GO on
-every finding rated Medium or above.** What remains is Low/Info hardening
-and one product decision (self-signup on first-party clients).
+**Bottom line: every Medium+ finding from passes 1–3 is merged in go-oauth2,
+backendkit and oauth2-monitoring. oauth2-admin still has two open PRs (#17,
+#18) that carry its Medium/High items — they are the last human step. The
+Low/Info hardening is in three open PRs (go-oauth2 #226, admin #20,
+monitoring #31).** What remains after those is one product decision
+(self-signup / per-client scope policy) and two documented residuals.
 
 ---
 
@@ -34,12 +37,13 @@ regressions.
 | P2-8 | concurrent-refresh race | backendkit #42 + #44 → `v1.11.1` | ✅ tagged (see P3-10/11 for what it uncovered, also closed) |
 | P2-10 | query-string escaping | backendkit #45 → `v1.12.0` | ✅ tagged |
 | P2-13 | Phase 1 shipped by default | re-rated High → **P3-26** | ✅ see below |
-| P2-14/15 | Postgres store swallows errors | superseded by P3-28 | open (Low) |
+| P2-14/15 | Postgres store swallows errors | superseded by P3-28 → monitoring #31 | ✅ in open PR |
 | P2-16 | elevate failure path doesn't clear cookie | monitoring #29 | ✅ in open PR |
 | P2-3 / P2-4 | IP attribution | superseded by **P3-2** | ✅ see below |
 | P2-9 | AllowPassthrough compounding | moot once P2-7 closed | ✅ |
-| P2-1, P2-2, P2-5 | go-oauth2 error hygiene / client_credentials gates | — | open (§2) |
-| P2-11, P2-12 | admin elevate `exp` absorption (Low), CSRF header hardcode | — | open (§2) |
+| P2-1, P2-5 | go-oauth2 web error hygiene / client_credentials gates | go-oauth2 #225 | ✅ merged |
+| P2-2 | `app_users_handler.go` error leaks | go-oauth2 #226 | ✅ in open PR |
+| P2-11, P2-12 | admin elevate `exp` absorption (Low), CSRF header hardcode | admin #20 | ✅ in open PR |
 
 ### 1.3 Pass-3 items — release-blockers and shared infrastructure
 
@@ -56,7 +60,7 @@ regressions.
 | **P3-15** | Medium | pending login not bound to the browser (login CSRF / account swap), both consoles | backendkit #45 (`LoginBinding`); admin #17, monitoring #29 | ✅ tagged; adoption in open PRs, with negative tests |
 | P3-16 | Low/Med | BFF forwarded `X-Real-IP` / `True-Client-IP` / `Forwarded` upstream | backendkit #45 (`NewSingleHostProxy` Director) | ✅ inherited by both consoles via the bump |
 | P3-24 | Info | config cross-checks (`COOKIE_SECURE=false` on https; `SESSION_IDLE=0s`) | admin #18, monitoring #30 | ✅ in open PRs |
-| P3-25 | Info | docs/deploy drift ("Phase 1 (this build)") | admin #18, monitoring #30 (partial: README/main.go/deploy README wording) | ✅ wording; Dockerfile Go pins still open |
+| P3-25 | Info | docs/deploy drift ("Phase 1 (this build)"), Dockerfile Go pins, stale root deploy files, SPA dir ownership, `SECURITY.md` | admin #18 / #20, monitoring #30 / #31 | ✅ wording merged (monitoring) / in open PRs |
 | — | — | `govulncheck` drift (Go 1.25.13 / 1.26.6, chi 5.3.0, x/text 0.39.0) | go-oauth2 #222, backendkit #45 | ✅ |
 
 **Open PRs to merge (any order within a repo; no overlapping files):**
@@ -65,78 +69,63 @@ oauth2-admin **#17** (bump + adoption) and **#18** (P3-26); oauth2-monitoring
 
 ---
 
-## 2. Still open (none release-blocking)
+## 2. Closed in this round — the Low/Info hardening PRs
 
-### 2.1 go-oauth2
+### 2.1 go-oauth2 — #225 (merged) and #226 (open)
 
-| ID | Sev | Item | Effort |
+| ID | Sev | Item | Where |
 |---|---|---|---|
-| P3-3 | Medium | refresh grant ignores account lock / client `Active`; `Authorize`/code grant ignore `Active`; `BlockUser` doesn't bump `token_version` — a blocked user keeps minting JWTs for external resource servers until the refresh TTL | S |
-| P2-1 | Medium | `internal/web/handler.go` renders raw `err.Error()` to unauthenticated browsers | S |
-| P2-5 | Medium | `client_credentials` grant skips `validateScope` / `requireDPoP` | S |
-| P3-4 | Low | omitted `code_challenge_method` ⇒ plain PKCE; require S256 at `Authorize` | S |
-| P3-5 | Low | hosted login + `/auth/login` never feed auto-defense | S |
-| P3-6 | Low | dead `POST /auth/login` path — remove | S |
-| P3-7 | Low | app-admin can send reset/verify mails for any user ID | S |
-| P3-8 | Low | no per-client allowed-scopes policy | M |
-| P2-2 | Low | `app_users_handler.go` error leaks (now behind the P3-1 gate) | S |
-| P3-9 | Info | MFA disable without re-auth; legacy secret compare not constant-time | S |
+| P3-3 | Medium | lock / `Active` on refresh, authorize and code grant; `Block` bumps `token_version` | #225 ✅ merged |
+| P2-1 | Medium | web handler rendered `err.Error()` | #225 ✅ merged |
+| P2-5 | Medium | `client_credentials` skipped `validateScope` / `requireDPoP` | #225 ✅ merged |
+| P3-4 | Low | omitted `code_challenge_method` ⇒ plain PKCE — `Authorize` requires S256, `VerifyPKCE` rejects `""` | #226 |
+| P3-5 | Low | hosted login feeds auto-defense | #226 |
+| P3-6 | Low | dead `POST /auth/login` removed; `GET /auth/login` forwards to `/oauth/authorize` | #226 |
+| P3-7 | Low | mail-triggering admin actions limited to app members | #226 |
+| P2-2 | Low | `app_users_handler.go` error leaks | #226 |
+| P3-9 | Info | MFA disable needs password + TOTP/recovery code; legacy secret compare constant-time | #226 |
 
-### 2.2 oauth2-admin
+### 2.2 oauth2-admin — #20 (open; stacked on #17 + #18)
 
-| ID | Sev | Item | Effort |
-|---|---|---|---|
-| P3-17 | Low | BFF limiter keys on unconditional leftmost XFF — honour only when `RemoteAddr` is loopback; document the Caddy assumption | S |
-| P3-18 | Low | encoded dot-segments pass the allowlist — `path.Clean` prefix check | S |
-| P3-19 | Low | `/bff/logout` has no CSRF check | S |
-| P3-20 | Low | `/bff/session` lacks `Cache-Control: no-store` | S |
-| P3-21 | Low | `/bff/elevate` forwards upstream error bodies verbatim | S |
-| P3-22 | Low | SPA: a 401 doesn't clear `authStore.user` (stuck after BFF restart) | S |
-| P3-23 | Low | `/api/version` unrouted; password-reset posts to the wrong origin and "succeeds" | S |
-| P3-27 | Low | CI `npm audit --audit-level=high` red on `main` — `npm audit fix` | S |
-| P2-11 | Low | elevate `exp` absorption → poisoned session (not privilege) | S |
-| P2-12 | Low | CSRF header name hardcoded in `elevate.go` | S |
-| P3-25 | Info | `SECURITY.md` describes the retired architecture; `bff/Dockerfile` Go pin; `dist/` ownership | S |
+P3-17, P3-18, P3-19, P3-20, P3-21, P3-22, P3-23, P3-25, P2-11, P2-12 — all in
+#20. P3-27 merged as #19. **#17 (v1.12.0 bump, P3-15, P3-12) and #18 (P3-26,
+P3-24) are still open** — their only red check was the npm-audit gate that #19
+fixed; both were rebased onto `main` so CI re-runs. Merge order: #17 → #18 →
+#20.
 
-### 2.3 oauth2-monitoring
+### 2.3 oauth2-monitoring — #31 (open)
 
-| ID | Sev | Item | Effort |
-|---|---|---|---|
-| P3-17 / P3-18 | Low | as admin | S |
-| P3-28 | Low | every `Exec` result in `PostgresSessionStore` discarded (supersedes P2-14/15) — log errors; surface `Delete` failure on logout | S |
-| P3-29 | Low | `/bff/session` re-`Put` races logout's `Delete` (resurrection) — `UPDATE` for touch, `INSERT` only at callback | S |
-| P3-30 | Info | tokens at rest plaintext in DB backups — document; consider AES-GCM wrap or excluding `bff_sessions` from dumps | M |
-| P3-31 | Info | `tailwindcss` under `dependencies` → npm audit noise; add `--omit=dev` audit to CI | S |
-| P3-25 | Info | stale root `Dockerfile`/`nginx.conf`/`.env.production`; `bff/Dockerfile` Go pin | S |
+P3-17, P3-18, P3-20, P3-21, P3-22, P3-25, P3-28, P3-29, P3-30, P3-31 — all in
+#31 (`npm audit fix` also cleared the 10 open advisories there).
 
-### 2.4 Cross-cutting
+### 2.4 Still open after this round
 
-- **Self-signup on first-party console clients.** `POST /api/auth/signup`
-  accepts any `client_id` with no per-app allow flag. P3-1 removed the
-  privilege consequence; a per-app `AllowSignup` (default off for the two
-  console clients) would remove the reachability too. Product decision.
-- **Roles frozen at login.** Bounded now that the admin API enforces roles
-  per bearer (P3-1); SPA-side gating may lag a de-privilege until re-login.
-  Backlog: re-derive `UserInfo` on refresh in the shared gateway.
+| Item | Kind | Note |
+|---|---|---|
+| P3-8 — per-client allowed-scopes policy | product decision | `admin` / `monitoring:*` remain grantable to any client; `ADMIN_SCOPE_MODE=enforce` is a routing hint, not a boundary. Bounded by P3-1 (role gate per bearer). Needs a per-app `AllowedScopes` model + admin UI. |
+| Self-signup on first-party console clients | product decision | `POST /api/auth/signup` accepts any `client_id`. P3-1 removed the privilege consequence; a per-app `AllowSignup` (default off for the console clients) would remove the reachability. |
+| Roles frozen at login | backlog | bounded by P3-1; SPA-side gating may lag a de-privilege until re-login. Re-derive `UserInfo` on refresh in the shared gateway. |
+| Shared gateway touch goes through `Put` | residual (Low) | backendkit's throttled touch inside `ProxyWithSession` is an upsert; the consoles' `/bff/session` path now uses an UPDATE-only `Touch` (P3-29), but the proxy path still has the narrow read-races-logout window. Add an optional `Toucher` interface to `bff.Gateway`. |
+| Tokens at rest in the monitoring Postgres store | residual (Info) | documented; dumps exclude the rows (P3-30). AES-GCM envelope encryption is the next step if the database is shared. |
 
 ---
 
-## 3. Production GO checklist (rev. 4)
+## 3. Production GO checklist (rev. 5)
 
-**Release-blocking — all closed**
+**Release-blocking — all closed except the admin merges**
 - [x] P3-1 admin role gate — go-oauth2 #223 (merged)
 - [x] P3-2 client-IP spoofing — go-oauth2 #222 (merged)
 - [x] backendkit `v1.11.1` and `v1.12.0` tagged, verified via the module proxy
-- [ ] **Merge** admin #17 + #18 and monitoring #29 + #30 (P3-26, bumps, P3-15, P3-12 adoption, P2-16). Everything is verified in the PRs; this is the last human step for GO.
+- [x] monitoring #29 + #30 merged (P3-10 store fix, P3-15, P3-12, P2-16, P3-26)
+- [ ] **Merge admin #17 + #18** (P3-15, P3-12, P3-26, P3-24, v1.12.0 bump). Until then the deployed admin BFF (if built from `main`) runs on backendkit v1.10.0 — pre-P2-7/P2-8, no login binding, Phase 1 seeded by default. **This is the one remaining GO gate.**
 
 **Recommended before the next release**
-- [ ] go-oauth2 P3-3 (lock/`Active` on refresh and authorize) and P2-1 / P2-5
-- [ ] Decide on per-app `AllowSignup` for the console clients (§2.4)
+- [x] go-oauth2 P3-3, P2-1, P2-5 — #225 (merged)
+- [ ] Merge the hardening PRs: go-oauth2 #226, admin #20, monitoring #31
+- [ ] Decide on per-app `AllowSignup` and per-client scope policy (§2.4)
 
-**Routine hardening (Low/Info)**
-- [ ] go-oauth2: P3-4, P3-5, P3-6, P3-7, P3-8, P3-9, P2-2
-- [ ] admin: P3-17, P3-18, P3-19, P3-20, P3-21, P3-22, P3-23, P3-27, P2-11, P2-12, P3-25
-- [ ] monitoring: P3-17, P3-18, P3-28, P3-29, P3-30, P3-31, P3-25
+**Routine hardening (Low/Info)** — all delivered in the three PRs above; only
+the §2.4 residuals remain.
 
 **Suite-wide**
 - [x] Every High+ claim from pass 3 was re-verified by the coordinator before being fixed; two pass-2 claims were corrected in writing (P2-3 downgrade, P2-8 severity)
@@ -171,10 +160,64 @@ oauth2-admin **#17** (bump + adoption) and **#18** (P3-26); oauth2-monitoring
   the http-dev exception are tested in both consoles.
 - All go-oauth2 and backendkit changes pass `golangci-lint` built with the
   CI toolchain; `govulncheck` verified green in CI after the toolchain bumps.
+- **Hardening round (this revision)** — every item carries a negative test:
+  P3-4 (`""`/`plain`/`s256` rejected, `S256` accepted; `VerifyPKCE(v, v, "")`
+  errors), P3-5 (fake defense records the hosted form's failure/success with
+  the client IP), P3-6 (302 to `/oauth/authorize` with parameters preserved;
+  no password form otherwise), P3-7 (outsider → 404 before the app lookup,
+  member passes), P3-9 (bearer alone / wrong password / wrong code → no
+  disable; TOTP or recovery code + password → 204; passwordless account still
+  needs a code; nil user service fails closed), P2-2 (`pq:`/`SQLSTATE` never
+  echoed). Consoles: XFF trust table and key-rotation from a non-loopback
+  peer; `%2e%2e` never reaches the upstream while canonical paths still proxy;
+  logout without CSRF keeps the session and revokes nothing (admin); elevate
+  5xx body not forwarded; elevate token without `exp` / without
+  `access_token` not absorbed; `/bff/session` uses Touch not Put; a failing
+  delete surfaces `logout_incomplete`; public issuer posts strip
+  cookie/Authorization and hit the 429 budget.
 
 **Assessment:** the round that started as "audit the suite" ends with the
 identity server enforcing authorisation on its control plane, IP attribution
 that an attacker cannot steer, BFFs that refuse to run open by accident, a
 shared gateway whose refresh path is correct for durable stores, and logins
-bound to the browser that started them. The remaining list is real but
-routine.
+bound to the browser that started them. The Low/Info list has been worked
+through; what is left is product policy and two documented residuals.
+
+---
+
+## 5. Deployment GO — Linux VPS, Postgres, Caddy
+
+**Verdict: GO, conditional on merging admin #17 + #18** (and, recommended,
+the three hardening PRs). On security grounds nothing else blocks the
+documented topology — one Linux VPS, Caddy as the only public listener,
+Postgres on loopback, Socrate on `127.0.0.1:8080`, the admin API on
+`127.0.0.1:8081`, the two BFFs on `127.0.0.1:8090/8091`, the SPAs served as
+static files.
+
+Operator checklist for that topology (all already in the deploy kits):
+
+1. **go-oauth2** — `TRUSTED_PROXIES` left at its default (loopback) is correct
+   for same-host Caddy and the BFFs; set `ADMIN_BIND_HOST=127.0.0.1`; grant the
+   console operators a global `admin`/`superadmin` role (P3-1 — plain `user`
+   accounts get 403 on `/api/admin`); production `Validate()` must pass
+   (HTTPS issuer, non-default `SECRET_KEY_BASE`, token rate limit on).
+2. **Both BFFs** — Phase 2 on (`BFF_CLIENT_ID` + `BFF_CLIENT_SECRET` of a
+   *confidential* client; the process refuses to start otherwise),
+   `BFF_COOKIE_SECURE=true`, `BFF_PUBLIC_ORIGIN` / `BFF_OAUTH_PUBLIC_URL` on
+   `https://`, no `BFF_ALLOW_PASSTHROUGH`. Built against backendkit
+   ≥ `v1.12.0` — mandatory if `BFF_SESSION_DSN` (Postgres sessions) is used.
+3. **Caddy** — the site blocks from `deploy/Caddyfile` in each console repo;
+   do **not** set `trusted_proxies` unless another proxy sits in front of
+   Caddy (both BFFs and go-oauth2 rely on Caddy replacing client-supplied
+   `X-Forwarded-For`); security headers + CSP as shipped; HSTS on.
+4. **Postgres** — loopback only; the BFF's DB role limited to its two tables;
+   `backup-db.sh` (excludes session rows) scheduled; signing keys backed up
+   offline.
+5. **Filesystem** — SPA `dist/` directories root-owned; env files
+   `0640 root:socrate`; the systemd units' hardening left as shipped.
+
+What GO does *not* mean: the §2.4 items are open by design — any registered
+client can still request `admin`/`monitoring:*` scopes (the role gate, not the
+scope, is the boundary), and self-signup on the console clients remains
+reachable (harmless without a role, but noisy). Decide both before opening
+registration to third parties.

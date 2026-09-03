@@ -5,7 +5,6 @@ import (
 	"errors"
 	"html/template"
 	"net/http"
-	"strings"
 
 	"github.com/ovandermoten/go-oauth2/internal/dto"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
@@ -429,99 +428,30 @@ func (h *WebHandler) AcceptInviteSubmit(w http.ResponseWriter, r *http.Request) 
 // Login Flow
 // ==========================================
 
-// LoginPage renders the login page
+// LoginPage handles GET /auth/login.
+//
+// P3-6: the standalone login form (and its POST /auth/login handler) was a dead
+// path — it authenticated without an app context, set an `access_token` cookie
+// nothing consumed, and still counted against the victim's failed-login
+// lockout. Interactive sign-in lives on the hosted /oauth/authorize page, so a
+// request that carries OAuth parameters is forwarded there and everything else
+// gets an informational page pointing back to the application.
 func (h *WebHandler) LoginPage(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	if q.Get("client_id") != "" && q.Get("redirect_uri") != "" {
+		http.Redirect(w, r, h.baseURL+"/oauth/authorize?"+q.Encode(), http.StatusFound)
+		return
+	}
+
 	data := map[string]interface{}{
-		"Title":               "Sign In",
-		"ClientID":            r.URL.Query().Get("client_id"),
-		"RedirectURI":         r.URL.Query().Get("redirect_uri"),
-		"State":               r.URL.Query().Get("state"),
-		"Scope":               r.URL.Query().Get("scope"),
-		"ResponseType":        r.URL.Query().Get("response_type"),
-		"CodeChallenge":       r.URL.Query().Get("code_challenge"),
-		"CodeChallengeMethod": r.URL.Query().Get("code_challenge_method"),
-		"Nonce":               r.URL.Query().Get("nonce"),
+		"Title":    "Sign In",
+		"ClientID": q.Get("client_id"),
 	}
-
-	// Parse scopes for display
-	if scope := r.URL.Query().Get("scope"); scope != "" {
-		data["Scopes"] = parseScopeDescriptions(scope)
-	}
-
-	h.render(w, "login.html", data)
-}
-
-// LoginSubmit handles login form submission
-func (h *WebHandler) LoginSubmit(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // G120
-	if err := r.ParseForm(); err != nil {
-		h.render(w, "login.html", map[string]interface{}{
-			"Title": "Sign In",
-			"Error": "Invalid form data",
-		})
-		return
-	}
-
-	email := r.FormValue("email")
-	password := r.FormValue("password")
-
-	// Preserve OAuth parameters for error display
-	data := map[string]interface{}{
-		"Title":               "Sign In",
-		"Email":               email,
-		"ClientID":            r.FormValue("client_id"),
-		"RedirectURI":         r.FormValue("redirect_uri"),
-		"State":               r.FormValue("state"),
-		"Scope":               r.FormValue("scope"),
-		"ResponseType":        r.FormValue("response_type"),
-		"CodeChallenge":       r.FormValue("code_challenge"),
-		"CodeChallengeMethod": r.FormValue("code_challenge_method"),
-		"Nonce":               r.FormValue("nonce"),
-	}
-
-	// Authenticate user
-	tokens, err := h.authService.Login(r.Context(), dto.LoginRequest{
-		Email:    email,
-		Password: password,
-	})
-	if err != nil {
-		data["Error"] = "Invalid email or password"
-		h.render(w, "login.html", data)
-		return
-	}
-
-	// If there's a redirect_uri, redirect back to OAuth flow
-	redirectURI := r.FormValue("redirect_uri")
-	if redirectURI != "" {
-		// Build OAuth authorize URL with authentication
-		authURL := h.baseURL + "/oauth/authorize?" +
-			"client_id=" + r.FormValue("client_id") +
-			"&redirect_uri=" + r.FormValue("redirect_uri") +
-			"&response_type=" + r.FormValue("response_type") +
-			"&scope=" + r.FormValue("scope") +
-			"&state=" + r.FormValue("state")
-		if cc := r.FormValue("code_challenge"); cc != "" {
-			authURL += "&code_challenge=" + cc + "&code_challenge_method=" + r.FormValue("code_challenge_method")
+	if clientID := q.Get("client_id"); clientID != "" && h.appRepo != nil {
+		if app, err := h.appRepo.FindByClientID(r.Context(), clientID); err == nil {
+			data["AppName"] = app.Name
 		}
-		if nonce := r.FormValue("nonce"); nonce != "" {
-			authURL += "&nonce=" + nonce
-		}
-
-		// Set auth cookie and redirect
-		http.SetCookie(w, &http.Cookie{
-			Name:     "access_token",
-			Value:    tokens.AccessToken,
-			Path:     "/",
-			HttpOnly: true,
-			Secure:   true,
-			SameSite: http.SameSiteLaxMode,
-		})
-		http.Redirect(w, r, authURL, http.StatusFound)
-		return
 	}
-
-	// No OAuth flow, just show success
-	data["Success"] = true
 	h.render(w, "login.html", data)
 }
 
@@ -671,26 +601,4 @@ func (h *WebHandler) render(w http.ResponseWriter, name string, data map[string]
 		http.Error(w, "Template error", http.StatusInternalServerError)
 		return
 	}
-}
-
-// parseScopeDescriptions converts scope strings to human-readable descriptions
-func parseScopeDescriptions(scope string) []string {
-	scopes := strings.Fields(scope)
-	descriptions := make([]string, 0, len(scopes))
-
-	scopeMap := map[string]string{
-		"openid":         "Verify your identity",
-		"profile":        "Access your profile information",
-		"email":          "Access your email address",
-		"offline_access": "Maintain access when you're not using the app",
-		"api":            "Access API on your behalf",
-	}
-
-	for _, s := range scopes {
-		if desc, ok := scopeMap[s]; ok {
-			descriptions = append(descriptions, desc)
-		}
-	}
-
-	return descriptions
 }

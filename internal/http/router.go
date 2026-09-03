@@ -159,6 +159,8 @@ func newOAuthRouter(
 	r.Use(logger.RequestLoggerMiddleware)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.Timeout(60 * time.Second))
+	// P4-3: cap every request body before any handler decodes it.
+	r.Use(middleware.MaxRequestBody(middleware.DefaultMaxRequestBody))
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.AppVersion)
 
@@ -221,10 +223,19 @@ func newOAuthRouter(
 		r.With(middleware.JSONContentType(), middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo, config.AuthRejectSink)).
 			Post("/userinfo", oauthHandler.UserInfo)
 
-		r.With(middleware.JSONContentType()).Post("/introspect", oauthHandler.Introspect)
+		// P4-4: introspect and revoke authenticate the client with its secret
+		// exactly like the token endpoint, so they share its per-IP budget —
+		// otherwise they are an unthrottled oracle for secret guessing and a
+		// bcrypt-per-request CPU sink. Same nil handling as /api/auth/refresh.
+		clientAuthMW := []func(http.Handler) http.Handler{middleware.JSONContentType()}
+		if config.TokenRateLimiter != nil {
+			clientAuthMW = append(clientAuthMW, middleware.RateLimitMiddleware(config.TokenRateLimiter, config.TrustedProxyCIDRs))
+		}
+		r.With(clientAuthMW...).Post("/introspect", oauthHandler.Introspect)
 
-		r.With(middleware.JSONContentType(), middleware.OptionalAuthMiddleware(tokenService, userRepo, usedTokenRepo)).
-			Post("/revoke", oauthHandler.Revoke)
+		revokeMW := append(append([]func(http.Handler) http.Handler{}, clientAuthMW...),
+			middleware.OptionalAuthMiddleware(tokenService, userRepo, usedTokenRepo))
+		r.With(revokeMW...).Post("/revoke", oauthHandler.Revoke)
 
 		r.With(middleware.OptionalAuthMiddleware(tokenService, userRepo, usedTokenRepo)).
 			Get("/logout", oauthHandler.EndSession)
@@ -386,6 +397,8 @@ func newAdminRouter(
 	r.Use(logger.RequestLoggerMiddleware)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.Timeout(60 * time.Second))
+	// P4-3: cap every request body before any handler decodes it.
+	r.Use(middleware.MaxRequestBody(middleware.DefaultMaxRequestBody))
 	r.Use(middleware.SecurityHeaders())
 	r.Use(middleware.AppVersion)
 
@@ -683,6 +696,8 @@ func NewRouter(
 	r.Use(logger.RequestLoggerMiddleware)
 	r.Use(chimiddleware.Recoverer)
 	r.Use(chimiddleware.Timeout(60 * time.Second))
+	// P4-3: cap every request body before any handler decodes it.
+	r.Use(middleware.MaxRequestBody(middleware.DefaultMaxRequestBody))
 	r.Use(middleware.SecurityHeaders())
 
 	// CORS for combined router (H-06: wildcard + credentials disallowed)

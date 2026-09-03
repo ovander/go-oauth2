@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovandermoten/go-oauth2/internal/hooks"
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
@@ -121,6 +122,7 @@ func (s *userService) Create(ctx context.Context, req dto.CreateUserRequest) (*m
 	if err := s.repo.Create(ctx, user); err != nil {
 		return nil, err
 	}
+	hooks.RunUserProvisioned(ctx, hooks.UserProvisioned{User: user, Source: "admin"})
 
 	return user, nil
 }
@@ -363,6 +365,7 @@ func (s *userService) CreateSuperadmin(ctx context.Context, req dto.CreateSupera
 	if err := s.repo.Create(ctx, user); err != nil {
 		return nil, err
 	}
+	hooks.RunUserProvisioned(ctx, hooks.UserProvisioned{User: user, Source: "superadmin"})
 
 	return user, nil
 }

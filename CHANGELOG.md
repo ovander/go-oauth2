@@ -36,6 +36,12 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ### Added
 
+- **In-process hooks (A6).** `internal/hooks`: `OnBeforeTokenIssue` (veto or
+  observe every grant — authorization code, refresh, client_credentials, JSON
+  password login, magic link; the first error or a panic fails closed and the
+  token endpoint answers `403 access_denied`), `OnAfterLogin` and
+  `OnUserProvisioned` (observers; panics recovered). See
+  `docs/EXTENSIBILITY.md`.
 - **Prometheus metrics (plan B1 / EPIC-4).** `GET /metrics` on the admin port
   (loopback only): RED counters/histograms per router and chi route pattern,
   `socrate_tokens_issued_total{grant,outcome}`,

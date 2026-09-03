@@ -11,6 +11,7 @@ import (
 
 	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
 	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovandermoten/go-oauth2/internal/hooks"
 	"github.com/ovandermoten/go-oauth2/internal/metrics"
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
@@ -63,6 +64,8 @@ var (
 	// does not permit (A1). It wraps ErrInvalidScope so every existing mapping
 	// answers invalid_scope.
 	ErrScopeNotAllowed = fmt.Errorf("%w: not allowed for this client", ErrInvalidScope)
+	// ErrTokenVetoed: a BeforeTokenIssue hook (A6) refused the grant.
+	ErrTokenVetoed = hooks.ErrVetoed
 	// ErrDPoPRequired indicates the client requires DPoP (RFC 9449) but the token
 	// request carried no valid DPoP proof.
 	ErrDPoPRequired = errors.New("DPoP proof required for this client")
@@ -448,6 +451,8 @@ func tokenOutcome(err error) string {
 	switch {
 	case err == nil:
 		return "success"
+	case errors.Is(err, ErrTokenVetoed):
+		return "access_denied"
 	case errors.Is(err, ErrInvalidGrantType):
 		return "unsupported_grant_type"
 	case errors.Is(err, ErrInvalidCredentials), errors.Is(err, ErrAppNotFound):
@@ -584,6 +589,10 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 
 	// Generate tokens
 	now := time.Now()
+	// A6: in-process veto/observe hook before minting.
+	if err := hooks.RunBeforeTokenIssue(ctx, &hooks.TokenIssue{User: user, App: app, Grant: "authorization_code", Scope: authCode.Scope}); err != nil {
+		return nil, err
+	}
 	tokenSet, err := s.tokenService.GenerateTokenSetWithDPoP(
 		user,
 		app,
@@ -796,6 +805,9 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 		"jti":       jti,
 		"scope":     claims.Scope,
 	}).Debug("refresh_token: validated, rotating")
+	if err := hooks.RunBeforeTokenIssue(ctx, &hooks.TokenIssue{User: user, App: app, Grant: "refresh_token", Scope: claims.Scope}); err != nil {
+		return nil, err
+	}
 	tokenSet, err := s.tokenService.GenerateTokenSetWithDPoP(
 		user,
 		app,
@@ -930,6 +942,9 @@ func (s *oauthService) handleClientCredentialsGrant(ctx context.Context, req dto
 		return nil, err
 	}
 
+	if err := hooks.RunBeforeTokenIssue(ctx, &hooks.TokenIssue{App: app, Grant: "client_credentials", Scope: scope}); err != nil {
+		return nil, err
+	}
 	accessToken, err := s.tokenService.GenerateClientCredentialsToken(app, scope)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)

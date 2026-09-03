@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovandermoten/go-oauth2/internal/hooks"
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
@@ -305,6 +306,7 @@ func (s *authService) Signup(ctx context.Context, req dto.SignupRequest) (*model
 	if err := s.userRepo.Create(ctx, user); err != nil {
 		return nil, "", fmt.Errorf("failed to create user: %w", err)
 	}
+	hooks.RunUserProvisioned(ctx, hooks.UserProvisioned{User: user, App: app, Source: "signup"})
 
 	userAppRole := &model.UserAppRole{
 		UserID:    user.ID,
@@ -495,6 +497,9 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 	}
 
 	amr, acr := loginAuthnContext(user.MFAEnabled)
+	if err := hooks.RunBeforeTokenIssue(ctx, &hooks.TokenIssue{User: user, App: app, Grant: "password", Scope: "openid email profile offline_access"}); err != nil {
+		return nil, err
+	}
 	tokenSet, err := s.tokenService.GenerateTokenSetWithAuth(
 		user, app, string(userAppRole.Role),
 		"openid email profile offline_access",
@@ -508,6 +513,7 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 	s.logSecurityEvent(ctx, model.SecurityEventLoginSuccess, &user.ID, &app.ID, true, map[string]interface{}{
 		"email": user.Email,
 	})
+	hooks.RunAfterLogin(ctx, hooks.Login{User: user, App: app, Method: "password", MFA: user.MFAEnabled})
 
 	return &dto.LoginResponse{
 		AccessToken:        tokenSet.AccessToken,
@@ -629,6 +635,7 @@ func (s *authService) AdminLogin(ctx context.Context, req dto.AdminLoginRequest)
 		"email":      user.Email,
 		"login_type": "admin_portal",
 	})
+	hooks.RunAfterLogin(ctx, hooks.Login{User: user, Method: "admin_password", MFA: user.MFAEnabled})
 
 	return &dto.LoginResponse{
 		AccessToken:        tokenSet.AccessToken,
@@ -708,6 +715,7 @@ func (s *authService) ReAuthenticate(ctx context.Context, userID uint, password,
 		"email":      user.Email,
 		"login_type": "admin_elevate",
 	})
+	hooks.RunAfterLogin(ctx, hooks.Login{User: user, Method: "admin_elevate", MFA: user.MFAEnabled})
 
 	return &dto.LoginResponse{
 		AccessToken:  tokenSet.AccessToken,
@@ -958,6 +966,7 @@ func (s *authService) AcceptInvite(ctx context.Context, token, name, password st
 		if err := s.userRepo.Create(ctx, user); err != nil {
 			return nil, fmt.Errorf("failed to create user: %w", err)
 		}
+		hooks.RunUserProvisioned(ctx, hooks.UserProvisioned{User: user, Source: "invite"})
 	} else {
 		// Update existing user
 		user.HashedPassword = hashedPassword

@@ -89,14 +89,16 @@ gen-keys:
 	echo "key-$$(date +%s)" > keys/key_id
 
 # Database migrations (using goose)
+# Schema migrations are Go code (internal/database/migrate) applied by the
+# server when AUTO_MIGRATE=true; there is no goose/SQL directory.
 migrate-up:
-	goose -dir migrations postgres "$(DATABASE_URL)" up
+	@echo "Run the server once with AUTO_MIGRATE=true (e.g. 'AUTO_MIGRATE=true make run'), then drop the flag."
 
 migrate-down:
-	goose -dir migrations postgres "$(DATABASE_URL)" down
+	@echo "Down-migrations are not supported; restore a database dump (see docs/DEPLOYMENT-VPS-MULTI-APP.md §8.3)."
 
 migrate-status:
-	goose -dir migrations postgres "$(DATABASE_URL)" status
+	@echo "Migration state lives in the schema itself; see internal/database/migrate."
 
 # Deploy to VPS
 # Usage: make deploy VPS=olivier@golfperformance.fr REMOTE_DIR=/home/olivier/socrate

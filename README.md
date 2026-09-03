@@ -9,12 +9,12 @@
 Enterprise-grade identity for secure multi-tenant SaaS.
 
 [![CI](https://github.com/ovander/go-oauth2/actions/workflows/ci.yml/badge.svg)](https://github.com/ovander/go-oauth2/actions/workflows/ci.yml)
-[![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](go.mod)
-[![Release](https://img.shields.io/badge/release-v1.0.0-blue)](CHANGELOG.md)
+[![Go](https://img.shields.io/badge/Go-1.25%2B%20(toolchain%201.26)-00ADD8?logo=go&logoColor=white)](go.mod)
+[![Release](https://img.shields.io/badge/release-v1.2.0-blue)](CHANGELOG.md)
 [![Coverage](https://img.shields.io/badge/Tier_A_coverage-ratchet-success)](docs/program/TEST-STRATEGY.md)
 [![Go Report](https://img.shields.io/badge/go_report-A-brightgreen)](https://goreportcard.com/report/github.com/ovandermoten/go-oauth2)
 [![OpenSSF Scorecard](https://img.shields.io/badge/OpenSSF-scorecard-informational)](https://securityscorecards.dev)
-[![Security reviewed](https://img.shields.io/badge/security-reviewed-success)](docs/CR-identity-platform-security-pass1.md)
+[![Security audited](https://img.shields.io/badge/security%20audit-pass%204%20%C2%B7%2091%2F100-success)](docs/CR-socrate-suite-security-pass4.md)
 [![SemVer](https://img.shields.io/badge/SemVer-2.0-orange)](https://semver.org)
 [![Docs](https://img.shields.io/badge/docs-/docs-blue)](docs/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](#license)
@@ -38,7 +38,7 @@ Enterprise-grade identity for secure multi-tenant SaaS.
 
 ### Project status
 
-`✅ Production ready` · `✅ API stable` · `✅ Security reviewed` · `✅ Actively maintained` · `✅ Used in production` · `✅ MIT licensed`
+`✅ Production ready` · `✅ API stable` · `✅ Four security audit passes (all findings closed)` · `✅ Actively maintained` · `✅ Used in production` · `✅ MIT licensed`
 
 > On a clear path toward a full Zero-Trust identity platform.
 
@@ -50,22 +50,28 @@ Enterprise-grade identity for secure multi-tenant SaaS.
 
 ## Architecture
 
-Socrate is the **identity core** of a layered platform: it issues and validates tokens, while a
-companion framework (`backendkit`) enforces them inside each application.
+Socrate is the **identity core** of a four-repository suite. It issues and validates tokens and
+runs the hosted login; a shared Go library (`backendkit`) enforces them inside every application
+and provides the Backend-for-Frontend (BFF) runtime; two operator consoles ship as SPAs behind
+their own BFFs, so **no browser in the suite ever holds an OAuth token**.
 
 ```mermaid
 graph TD
-    User --> Socrate
-    Socrate --> backendkit
-    backendkit --> ParaShift
-    backendkit --> GPWA
-    backendkit --> Ascenda
+    Browser --> Caddy
+    Caddy --> Socrate["Socrate (:8080 public · :8081 admin, loopback)"]
+    Caddy --> AdminBFF["Admin console BFF"]
+    Caddy --> MonBFF["Monitoring (SOC) console BFF"]
+    Caddy --> AppBFF["Your app's BFF / API"]
+    AdminBFF --> Socrate
+    MonBFF --> Socrate
+    AppBFF -. JWKS / introspect .-> Socrate
+    AdminBFF --> backendkit
+    MonBFF --> backendkit
+    AppBFF --> backendkit
     Socrate --> PostgreSQL
-    Socrate --> Audit
-    Socrate --> JWKS
+    Socrate --> Audit["Hash-chained audit log"]
     Socrate -. roadmap .-> KMS
     Socrate -. roadmap .-> PolicyEngine["Policy Engine"]
-    Socrate -. roadmap .-> AIGateway["AI Gateway"]
 
     classDef here fill:#dbeafe,stroke:#2563eb,stroke-width:2px;
     class Socrate here;
@@ -73,10 +79,12 @@ graph TD
 
 | Component | Role | Where |
 |---|---|---|
-| **Socrate** | OAuth 2.1/OIDC authorization, tokens, JWKS, MFA, identity audit | **This repo** |
-| **backendkit** | Embedded enforcement point: verify tokens, propagate tenant context, emit audit | Companion repo *(roadmap)* |
+| **Socrate** | OAuth 2.1/OIDC authorization, tokens, JWKS, hosted login/consent, MFA, invitations, per-app RBAC, admin API, security telemetry, tamper-evident audit | **This repo** |
+| **backendkit** | Shared Go library: `jwtauth` (JWKS-validated bearer middleware), `bff` (server-side sessions, CSRF, fail-closed session→bearer proxy, login binding), `socrate` (API + token client), tiering, logging | [`ovander/backendkit`](https://github.com/ovander/backendkit) `v1.12.0` |
+| **Admin console** | Vue SPA + Go BFF: clients, users, per-app roles, superadmins, step-up for destructive actions | [`ovander/oauth2-admin`](https://github.com/ovander/oauth2-admin) |
+| **Monitoring console** | Vue SPA + Go BFF (optional Postgres sessions): security events, threats, geo analytics, alert rules, blocked IPs, reports, live event stream | [`ovander/oauth2-monitoring`](https://github.com/ovander/oauth2-monitoring) |
 | **Applications** | Domain logic only; embed backendkit; own tenant-scoped data | Separate repos |
-| **Infrastructure** | PostgreSQL today; KMS/HSM, policy engine, AI gateway, mesh | Roadmap |
+| **Infrastructure** | PostgreSQL + Caddy on one Linux VPS today ([runbook](docs/DEPLOYMENT-VPS-MULTI-APP.md)); KMS/HSM, policy engine, mesh on the roadmap | — |
 
 Full target-state spec: [`PLATFORM-REFERENCE-ARCHITECTURE.md`](docs/PLATFORM-REFERENCE-ARCHITECTURE.md).
 
@@ -111,47 +119,62 @@ yourself** — JWT validation, key rotation, PKCE, revocation, audit. Socrate is
 
 ## Features
 
+What is in the code today (every item below is routed, tested and documented in [`docs/API.md`](docs/API.md)).
+
 <table>
 <tr>
 <td valign="top" width="33%">
 
-**🔐 Authentication**
+**🔐 Protocols & tokens**
 
-- OAuth 2.1 + OIDC
-- PKCE (S256)
-- MFA / TOTP
-- Magic links
-- Password + recovery flows
-
-</td>
-<td valign="top" width="33%">
-
-**🛡️ Security**
-
-- DPoP sender-constraining
-- Audience binding
-- Key rotation + JWKS ring
-- Tamper-evident audit
-- Refresh-reuse detection
+- OAuth 2.1 Authorization Code + PKCE (S256 only)
+- OpenID Connect: discovery, JWKS, ID tokens, UserInfo, `acr`/`amr`, `iss` response parameter
+- Refresh rotation, single-use, reuse detection (`off/observe/enforce`)
+- `client_credentials` service accounts
+- Token exchange RFC 8693 (delegation + impersonation, per-client gated)
+- DPoP RFC 9449 sender-constrained tokens, replay cache
+- Introspection RFC 7662, revocation RFC 7009, end-session
+- Audience binding (`dual` mode), RS256 key rotation with JWKS ring
+- Confidential + public clients, exact redirect URIs, per-client PKCE/DPoP
 
 </td>
 <td valign="top" width="33%">
 
-**🏢 Enterprise**
+**👤 Authentication & users**
 
-- Multi-tenant (apps)
-- Service accounts (M2M)
-- Per-app RBAC
-- Token exchange (delegation)
-- Revocation freshness SLA
+- Hosted login, consent, signup, password reset, invite pages (embedded templates)
+- Password (bcrypt, timing-safe) + lockout
+- TOTP MFA with encrypted secrets and one-time recovery codes
+- Magic links (passwordless), email verification
+- Invitations with app context; SMTP mail service
+- Global roles (`user/admin/superadmin`) + per-app roles (`admin/manager/editor/viewer/user`)
+- App-admin delegation: manage an app's members without global rights
+- Service-account user provisioning (`/api/apps/{id}/service`)
+- Self-service profile and MFA endpoints
+- Nuclear (`token_version`) + per-token revocation with a [freshness SLA](docs/REVOCATION-FRESHNESS-SLA.md)
+
+</td>
+<td valign="top" width="33%">
+
+**🛡️ Admin plane & security operations**
+
+- Dual-port: public `:8080`, admin API `:8081` on loopback
+- Global-admin gate, superadmin gate, forced password change, admin MFA policy
+- Step-up (fresh `auth_time`) for destructive actions
+- Least-privilege scope gating (`ADMIN_SCOPE_MODE`)
+- Hash-chained, integrity-scanned security audit log; admin action log with CSV export
+- Rate limiting, IP blocking, auto-defense (brute-force escalation), trusted-proxy model
+- Security events, threat metrics, GeoIP analytics, sessions, token stats
+- Alert rules + history, security reports (JSON/CSV), live SSE event stream
+- Two operator consoles on a token-less BFF model
 
 </td>
 </tr>
 </table>
 
-> Several controls (DPoP, token exchange, audience binding, refresh-reuse, admin-MFA) ship
-> **default-off** behind `off / observe / enforce` modes, so you adopt them gradually. See
-> [Maturity](#maturity) for what's on by default.
+> Several controls (DPoP, token exchange, audience binding, refresh-reuse, admin MFA, admin scope
+> gating) ship **default-off** behind `off / observe / enforce` modes, so you adopt them gradually.
+> See [Maturity](#maturity) for what is on by default and what is not implemented.
 
 ## Security
 
@@ -160,12 +183,18 @@ verify at every boundary · backward-compatible migrations (never a flag day).
 
 **Concretely:** Authorization-Code-with-PKCE only · DPoP (`cnf.jkt`) · audience-validated tokens ·
 MFA & step-up · nuclear + per-token revocation with a [freshness SLA](docs/REVOCATION-FRESHNESS-SLA.md) ·
-hash-chained audit · rate limiting, lockout, IP auto-blocking, CSRF, security headers. An independent
-[security review](docs/CR-identity-platform-security-pass1.md) and a
-[Zero-Trust verification](docs/CR-platform-zero-trust-verification.md) shaped the current posture.
+hash-chained audit · rate limiting, lockout, IP auto-blocking, CSRF, security headers, request-body
+caps · client-IP attribution that trusts only `TRUSTED_PROXIES` · a token-less BFF model for every
+first-party browser app.
+
+**Audited, four passes, every accepted finding closed:**
+[pass 1](docs/CR-socrate-suite-security-pass1.md) · [pass 2](docs/CR-socrate-suite-security-pass2.md) ·
+[pass 3](docs/CR-socrate-suite-security-pass3.md) · [pass 4 (scored 85 → 91/100)](docs/CR-socrate-suite-security-pass4.md) ·
+[remediation ledger](docs/CR-socrate-suite-remediation-plan.md) · [Zero-Trust verification](docs/CR-platform-zero-trust-verification.md).
 
 > **Roadmap controls** (not yet in this repo): KMS/HSM key custody, mTLS/SPIFFE, database RLS +
-> envelope encryption, passkeys/WebAuthn. Today, signing keys are RSA-3072 PEM files on disk.
+> envelope encryption, passkeys/WebAuthn. Today, signing keys are RSA-3072 PEM files on disk
+> (`0400`, rotated in place).
 
 ## Philosophy
 
@@ -178,60 +207,69 @@ hash-chained audit · rate limiting, lockout, IP auto-blocking, CSRF, security h
 
 ## Maturity
 
-Socrate is **v1.0.0** — a single-instance, production-capable identity server.
+Socrate is **v1.2.0** on the v1.x line (`main` carries the pass-3/pass-4 security fixes, unreleased) —
+a single-instance, production-capable identity server with two operator consoles.
 
 | ✅ Production ready (today) | ◻️ Roadmap |
 |---|---|
 | ✅ OAuth 2.1 / OIDC core (issue, verify, rotate) | ◻️ High availability & multi-region |
-| ✅ Single-instance production deployment | ◻️ KMS / HSM key custody |
-| ✅ Security-reviewed & hardened | ◻️ Service mesh + mTLS / SPIFFE |
-| ✅ CI gates (`-race`, vuln scan, lint, coverage ratchet) | ◻️ Tenant RLS + envelope encryption |
-| ✅ Tested (80+ test files, adversarial + fuzz suites) | ◻️ Federation, AI gateway, passkeys |
-| ✅ MFA, DPoP, token exchange, audit (flagged) | ◻️ Enforcement-by-default → **v2.0** |
+| ✅ Single-VPS production deployment ([runbook](docs/DEPLOYMENT-VPS-MULTI-APP.md), Caddy + Postgres, systemd kits) | ◻️ KMS / HSM key custody |
+| ✅ Four security audit passes, all findings closed, scored | ◻️ Service mesh + mTLS / SPIFFE |
+| ✅ CI gates (`-race`, `govulncheck`, lint, coverage ratchet) | ◻️ Tenant RLS + envelope encryption |
+| ✅ Tested (169 test files incl. adversarial + fuzz suites) | ◻️ Federation, AI gateway, passkeys |
+| ✅ MFA, DPoP, token exchange, audit, admin consoles | ◻️ Enforcement-by-default → **v2.0** |
 
-**Honest limitations:** single-instance only (rate-limit/replay/IP state is in-process); KMS and
-tenant data isolation are roadmapped; not implemented: Device Flow, CIBA, PAR/JAR, FAPI, federation.
+**Honest limitations:** single-instance only (rate-limit, replay and IP-block state is in-process;
+BFF sessions can be in Postgres). Not implemented: Device Flow, CIBA, PAR/JAR, FAPI profiles,
+dynamic client registration, back-channel/front-channel logout, persisted consent, federation to
+upstream IdPs (social login, SAML, LDAP), passkeys/WebAuthn, SCIM, per-client allowed-scope policy,
+Prometheus/OpenTelemetry metrics, an OpenAPI document.
 
 ## Quick start
 
 **5 minutes to your first token.**
 
 ```
-git clone  →  make run  →  curl  →  JWT  →  ✅ done
+git clone  →  make run  →  seed a superadmin  →  register a client  →  curl  →  JWT  →  ✅ done
 ```
 
-**Prerequisites:** Go 1.25+, PostgreSQL 14+, `make`, `openssl`, and [`goose`](https://github.com/pressly/goose).
+**Prerequisites:** Go 1.25+ (the module pins toolchain 1.26.x and downloads it), PostgreSQL 14+,
+`make`, `openssl`.
 
 ```bash
 git clone https://github.com/ovander/go-oauth2.git && cd go-oauth2
 go mod download
 cp .env.example .env          # edit DATABASE_URL, OAUTH_ISSUER, SECRET_KEY_BASE …
-make gen-keys                 # RSA-3072 signing keypair + key_id
-make migrate-up               # apply schema
-make run                      # build + start (public :8080, admin via ADMIN_PORT)
+make gen-keys                 # RSA-3072 signing keypair + key_id under ./keys
+AUTO_MIGRATE=true make run    # first start applies the schema; drop the flag afterwards
+go run ./cmd/seed -email you@example.com -name "You"   # first superadmin (one-time password printed)
 ```
+
+Register your first OAuth client through the admin API on `:8081` (or the
+[admin console](https://github.com/ovander/oauth2-admin)); see [`docs/API.md` §8.2](docs/API.md).
 
 ```bash
 make test          # full suite          make lint            # golangci-lint
 make coverage-gate # Tier-A ratchet      make build           # -> bin/oauth-server
-make docker-build  # (needs a Dockerfile — see Documentation)
+make docker-build  # distroless image from ./Dockerfile
 ```
 
 ## Repository layout
 
 ```
-cmd/            entry point (server) + db seeder
-config/         env loading + validation (feature-flag modes)
+cmd/            server entry point + socrate-seed (first superadmin)
+config/         env loading + production validation (feature-flag modes)
 internal/
-  handler/      HTTP handlers (oauth, auth, admin, mfa, monitoring)
-  http/         chi router (single- and dual-port)
-  middleware/   auth, rate-limit, DPoP, IP-block, CSRF, headers
-  service/      business logic (oauth, auth, mfa, audit, exchange)
-  shared/auth/  token & crypto core: dpop/ · tokenexchange/ · totp/
-  model/ repository/ dto/ web/ …
+  handler/      HTTP handlers (oauth, auth, admin, app-users, mfa, magic link, monitoring, reports)
+  http/         chi routers (public OAuth, loopback admin API, single-port variant)
+  middleware/   auth, roles, step-up, scope gating, rate-limit, client-IP, DPoP, IP-block, body cap, headers
+  service/      business logic (oauth, auth, mfa, magic link, audit, auto-defense, alerts, email)
+  shared/auth/  token & crypto core: keys · dpop/ · tokenexchange/ · totp/ · PKCE · CSRF · consent
+  database/migrate/  versioned schema steps applied with AUTO_MIGRATE=true
+  model/ repository/ dto/ web/ (hosted pages) …
 pkg/            logger, database
-web/            embedded templates + CSS     migrations/  goose SQL
-docs/           architecture, API, roadmaps, reviews
+web/            embedded static assets        deploy/   VPS kit pointers
+docs/           architecture, API, deployment runbook, audits, roadmaps
 ```
 
 ## See it working
@@ -254,10 +292,16 @@ Discovery is live and standards-compliant:
   "issuer": "https://localhost:8080",
   "authorization_endpoint": ".../oauth/authorize",
   "token_endpoint": ".../oauth/token",
+  "userinfo_endpoint": ".../oauth/userinfo",
+  "introspection_endpoint": ".../oauth/introspect",
+  "revocation_endpoint": ".../oauth/revoke",
   "jwks_uri": ".../.well-known/jwks.json",
-  "grant_types_supported": ["authorization_code", "refresh_token", "client_credentials"],
+  "grant_types_supported": ["authorization_code", "refresh_token", "client_credentials"],   // + token-exchange when enabled
+  "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post"],
   "code_challenge_methods_supported": ["S256"],
-  "acr_values_supported": ["pwd", "mfa"]
+  "scopes_supported": ["openid", "email", "profile", "offline_access", "api"],
+  "acr_values_supported": ["pwd", "mfa"],
+  "authorization_response_iss_parameter_supported": true
 }
 ```
 
@@ -280,24 +324,21 @@ sequenceDiagram
 ```
 </details>
 
-<!-- TODO(maintainer): drop UI screenshots here — login, consent, admin dashboard, audit log.
-     Suggested: docs/assets/{login,consent,admin,audit}.png and embed below. -->
-
 ## Documentation
 
-**Getting started** — [API & integration](docs/API.md) · [`CHANGELOG.md`](CHANGELOG.md)
+**Getting started** — [API & integration guide](docs/API.md) · [`CHANGELOG.md`](CHANGELOG.md) · feature-flag modes in [`.env.example`](.env.example)
 
-**Architecture** — [Reference architecture](docs/PLATFORM-REFERENCE-ARCHITECTURE.md)
+**Deploy & operate** — [Linux VPS + Postgres + Caddy, multi-app runbook](docs/DEPLOYMENT-VPS-MULTI-APP.md) · [Revocation & freshness SLA](docs/REVOCATION-FRESHNESS-SLA.md) · [Alert rules](docs/ALERT-RULES.md) · [Geo analytics](docs/CR-geo-analytics-api.md)
 
-**Security** — [Security review](docs/CR-identity-platform-security-pass1.md) · [Zero-Trust verification](docs/CR-platform-zero-trust-verification.md) · [Revocation & freshness SLA](docs/REVOCATION-FRESHNESS-SLA.md)
+**Architecture** — [Reference architecture](docs/PLATFORM-REFERENCE-ARCHITECTURE.md) · [Auth flows](docs/CR-oauth2-auth-flows.md)
 
-**Operations** — [Revocation SLA](docs/REVOCATION-FRESHNESS-SLA.md) · feature-flag modes in [`.env.example`](.env.example)
+**Security** — [Audit pass 4 (scored)](docs/CR-socrate-suite-security-pass4.md) · [passes 1–3](docs/) · [Remediation ledger](docs/CR-socrate-suite-remediation-plan.md) · [Zero-Trust verification](docs/CR-platform-zero-trust-verification.md)
 
-**Roadmap** — [Program · Epics · RFCs · Releases](docs/program/)
+**Roadmap** — [Program · Epics · RFCs · Releases · Risk register](docs/program/)
 
-**Development** — [Test strategy & coverage gates](docs/program/TEST-STRATEGY.md)
+**Development** — [Test strategy & coverage gates](docs/program/TEST-STRATEGY.md) · [Test configuration](docs/TEST-CONFIGURATION.md)
 
-*Recommended additions:* `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, `Dockerfile`.
+*Still to add at the repo root:* `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`.
 
 ## Roadmap
 
@@ -333,9 +374,10 @@ fixes. *(A `SECURITY.md` is recommended so GitHub surfaces this in the Security 
 
 **MIT.**
 
-> ⚠️ **Before open-sourcing:** there is no `LICENSE` file yet, and some source files carry a stale
-> proprietary "DTMA" header that contradicts the MIT intent. Add a top-level `LICENSE` and normalize
-> those headers so the license is unambiguous.
+> ⚠️ **Before open-sourcing:** there is still no `LICENSE` file at the repo root, and
+> two source files (`pkg/logger/logger.go`, `pkg/logger/middleware.go`) still carry a stale proprietary "DTMA" header that
+> contradicts the MIT intent. Add a top-level `LICENSE` (and a `SECURITY.md`) and normalize those
+> headers so the license is unambiguous.
 
 ---
 

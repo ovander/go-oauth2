@@ -36,6 +36,19 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ### Added
 
+- **Prometheus metrics (plan B1 / EPIC-4).** `GET /metrics` on the admin port
+  (loopback only): RED counters/histograms per router and chi route pattern,
+  `socrate_tokens_issued_total{grant,outcome}`,
+  `socrate_security_events_total{event_type,success}` (every persisted audit
+  event), `socrate_rate_limit_hits_total{route}`, `socrate_ip_blocks_total`,
+  `socrate_signing_key_age_seconds`, `socrate_db_pool_*`, `socrate_build_info`.
+  No label ever carries a user, client, IP or token. Scrape config, alert rules
+  (SLOs + security signals, plan B7), Grafana dashboard and a Promtail example
+  under `deploy/observability/`; catalogue and log schema in
+  `docs/OBSERVABILITY.md`.
+- **Log redaction guard (plan B3).** `pkg/logger/redaction_guard_test.go` fails
+  the build when any log call in the tree carries a secret-bearing expression.
+
 - **Per-client scope policy (A1, closes P3-8).** Clients carry an
   `allowed_scopes` list (admin API `POST/PUT /api/admin/apps`, `allowed_scopes`
   in the response). `SCOPE_POLICY_MODE=off|observe|enforce` (default `off`)

@@ -1,0 +1,83 @@
+# Alertmanager rules for Socrate (plan B7). Thresholds match docs/OBSERVABILITY.md.
+groups:
+  - name: socrate-slo
+    rules:
+      - alert: SocrateDown
+        expr: up{job="socrate"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Socrate metrics endpoint unreachable"
+          runbook: "docs/DEPLOYMENT-VPS-MULTI-APP.md#8-operations"
+      - alert: SocrateTokenEndpoint5xx
+        expr: |
+          sum(rate(socrate_http_requests_total{route="/oauth/token",status="5xx"}[5m]))
+            / clamp_min(sum(rate(socrate_http_requests_total{route="/oauth/token"}[5m])), 1e-9) > 0.01
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "Token endpoint error ratio above 1% (SLO 99.9%)"
+      - alert: SocrateTokenEndpointSlow
+        expr: |
+          histogram_quantile(0.99, sum by (le) (rate(socrate_http_request_duration_seconds_bucket{route="/oauth/token"}[5m]))) > 0.15
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Token endpoint p99 above 150 ms"
+      - alert: SocrateLoginSlow
+        expr: |
+          histogram_quantile(0.99, sum by (le) (rate(socrate_http_request_duration_seconds_bucket{route="/oauth/authorize",method="POST"}[5m]))) > 0.4
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Hosted login p99 above 400 ms"
+      - alert: SocrateSigningKeyStale
+        expr: socrate_signing_key_age_seconds > (30 * 24 * 3600) + 3600
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "Signing key older than the rotation interval (+1 h); check KEY_ROTATION_INTERVAL_SECONDS and the rotation goroutine"
+      - alert: SocrateDBPoolSaturated
+        expr: socrate_db_pool_in_use >= socrate_db_pool_open_connections and socrate_db_pool_wait_count_total > 0 and increase(socrate_db_pool_wait_seconds_total[5m]) > 5
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Postgres pool saturated (requests waiting > 5 s in 5 m); raise DB_POOL_SIZE or investigate slow queries"
+
+  - name: socrate-security
+    rules:
+      - alert: SocrateRefreshTokenReuse
+        expr: increase(socrate_security_events_total{event_type="refresh_token_reuse"}[15m]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "Refresh-token reuse detected — token theft signal; check the SOC console"
+      - alert: SocrateLoginFailureSpike
+        expr: |
+          sum(rate(socrate_security_events_total{event_type="login_failed"}[10m]))
+            / clamp_min(sum(rate(socrate_security_events_total{event_type=~"login_(failed|success)"}[10m])), 1e-9) > 0.5
+            and sum(rate(socrate_security_events_total{event_type="login_failed"}[10m])) > 0.2
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "More than half of logins failing for 10 m (credential stuffing / spraying?)"
+      - alert: SocrateAutoDefenseBlocking
+        expr: increase(socrate_security_events_total{event_type="ip_blocked"}[15m]) > 10
+        labels: { severity: warning }
+        annotations:
+          summary: "Auto-defense blocked more than 10 IPs in 15 m"
+      - alert: SocrateRateLimitSurge
+        expr: sum(rate(socrate_rate_limit_hits_total[5m])) > 5
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Sustained rate limiting (> 5 rejections/s) — abuse or a misbehaving client"
+      - alert: SocrateDPoPRejections
+        expr: increase(socrate_security_events_total{event_type="dpop_validation_failed"}[15m]) > 20
+        labels: { severity: warning }
+        annotations:
+          summary: "DPoP proofs being rejected — replay attempts or a broken client"
+      - alert: SocrateScopeDenials
+        expr: increase(socrate_security_events_total{event_type="scope_denied"}[1h]) > 0
+        labels: { severity: info }
+        annotations:
+          summary: "A client requested a scope outside its allowed_scopes policy (SCOPE_POLICY_MODE)"

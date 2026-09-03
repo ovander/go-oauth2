@@ -3,6 +3,7 @@ package middleware
 import (
 	"container/list"
 	"fmt"
+	"github.com/ovandermoten/go-oauth2/internal/metrics"
 	"net"
 	"net/http"
 	"strings"
@@ -265,6 +266,7 @@ func RateLimitMiddleware(limiter *RateLimiter, trustedCIDRs []*net.IPNet) func(h
 			key := GetClientIPSafe(r, trustedCIDRs)
 
 			if !limiter.Allow(key) {
+				metrics.RateLimited(r)
 				resetTime := limiter.ResetTime(key)
 				retryAfter := int(time.Until(resetTime).Seconds())
 				if retryAfter < 1 {

@@ -248,7 +248,9 @@ Only what Caddy routes to `:8080` on `auth.example.com`: discovery
 (authorize, token, userinfo, introspect, revoke, logout), the hosted login,
 signup, invite, verify and password-reset pages under `/auth/*`, and the JSON
 auth API under `/api/auth/*`. The admin API is on `:8081` and is never routed
-by a public site block.
+by a public site block — and neither is `GET /metrics`, which the admin port
+serves for Prometheus (see `docs/OBSERVABILITY.md` and
+`deploy/observability/`). Scrape it from the VPS itself.
 
 ### 4.4 Client-IP attribution across the chain
 

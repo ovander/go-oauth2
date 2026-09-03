@@ -119,7 +119,7 @@ bump per console.
 ## 3. Production GO checklist (rev. 3)
 
 **Release-blocking**
-- [ ] **P3-1** go-oauth2 `/api/admin` role gate + route-walking 403 test
+- [x] **P3-1** go-oauth2 `/api/admin` role gate + route-walking 403 test — go-oauth2 #223 (`RequireGlobalAdmin()` on the group, `superadmin` on `/superadmins`; console users must hold a global admin role, see the CHANGELOG upgrade note)
 - [x] **P3-2** go-oauth2 drop `RealIP`, `GetClientIPSafe` everywhere — go-oauth2 #222 (`middleware.ClientIP`; `TRUSTED_PROXIES` now defaults to loopback, see the CHANGELOG upgrade note)
 - [ ] **P3-26** admin BFF refuses Phase 1 without explicit opt-in; env examples ship Phase 2
 - [ ] backendkit `v1.11.1` tag + both consoles bumped (P2-7 consequence; ends monitoring's 15-min logouts)

@@ -18,7 +18,31 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 > on the proxy's address instead of the client's. Set `TRUSTED_PROXIES=none`
 > only when Socrate is exposed directly with no proxy.
 
+> **Upgrade note (P3-1):** `/api/admin/*` now requires a **global admin**
+> (`role=admin` or `role=superadmin`), and `/api/admin/superadmins/*` requires
+> `role=superadmin`. Accounts that used the admin or monitoring console with a
+> plain `user` role — relying on console-side UI gating or OAuth scopes — will
+> now receive 403 and must be promoted to a global admin role.
+
 ### Security
+
+- **`/api/admin` had no authorisation gate (P3-1 / CRIT-01, Critical).**
+  `AuthMiddleware` verified the bearer and placed the user's role in the
+  request context, but nothing checked it; `RequireGlobalAdmin()` existed and
+  was unused. Combined with open self-signup on any `client_id`, any
+  authenticated user could `POST /api/admin/superadmins` (201), reset a
+  superadmin's password, rewrite the unowned first-party console client's
+  `redirect_uris`, and drive every monitoring/SOC endpoint. `ADMIN_SCOPE_MODE`
+  is opt-in and `scope=admin` is grantable to anyone, so scopes were never a
+  boundary. The `/api/admin` group now applies `RequireGlobalAdmin()` directly
+  after `AuthMiddleware`, and the `/superadmins` subtree additionally requires
+  `role=superadmin` (mirroring `AdminLogin`, which already restricted the
+  admin portal password login to superadmins). A regression test walks every
+  registered `/api/admin` route through the real router with real signed
+  tokens: `role=user` → 403 everywhere; `role=admin` → 403 on
+  `/superadmins/*` only; `role=superadmin` → admitted. Traceability:
+  `docs/CR-platform-zero-trust-verification.md` CRIT-01,
+  `docs/CR-socrate-suite-security-pass3.md` §1.3.
 
 - **Client-IP spoofing via chi `RealIP` closed (P3-2; GO-2026-5775 /
   GO-2026-5777).** `chimiddleware.RealIP` was installed unconditionally on all

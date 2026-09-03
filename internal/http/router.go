@@ -420,6 +420,13 @@ func newAdminRouter(
 	// ==========================================
 	r.Route("/api/admin", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo, config.AuthRejectSink))
+		// P3-1 / CRIT-01: the admin API is the Tier-0 control plane and is for
+		// global admins only. AuthMiddleware only authenticates; without this
+		// gate any authenticated user — including a self-signup on any client —
+		// could reach every handler below (create/reset superadmins, manage
+		// OAuth clients, drive SOC config). Scope gates are opt-in and any user
+		// can request scope=admin, so they are not an authorisation boundary.
+		r.Use(middleware.RequireGlobalAdmin())
 		// Tier-0: an admin flagged MustChangePassword is blocked from every admin
 		// API route (403 password_change_required) until they change it. The
 		// change-password endpoint itself is exempt so it stays reachable.
@@ -494,9 +501,13 @@ func newAdminRouter(
 			r.Get("/app-usage", dashboardHandler.GetAppUsage)
 		})
 
-		// Superadmin management — admin console.
+		// Superadmin management — admin console. Superadmin-only (P3-1): a
+		// global "admin" must not be able to enumerate, create, reset or delete
+		// superadmin accounts. Mirrors AdminLogin, which already restricts the
+		// admin portal password login to model.UserRoleSuperadmin.
 		r.Route("/superadmins", func(r chi.Router) {
 			r.Use(adminScope)
+			r.Use(middleware.RequireRole("superadmin"))
 			r.Get("/", adminHandler.ListSuperadmins)
 			// Destructive: require fresh step-up.
 			r.With(freshAuth).Post("/", adminHandler.CreateSuperadmin)

@@ -72,6 +72,11 @@ func (s *appService) GetByOwnerID(ctx context.Context, ownerID uint) ([]model.Ap
 }
 
 func (s *appService) Create(ctx context.Context, req dto.CreateAppRequest, ownerID uint) (*model.App, string, error) {
+	// A1: a scope policy may only name supported scopes.
+	if err := validateScopeNames(req.AllowedScopes); err != nil {
+		return nil, "", err
+	}
+
 	// Generate client ID
 	clientID, err := generateSecureToken(16)
 	if err != nil {
@@ -116,6 +121,7 @@ func (s *appService) Create(ctx context.Context, req dto.CreateAppRequest, owner
 		AllowTokenExchange: req.AllowTokenExchange,
 		AllowImpersonation: req.AllowImpersonation,
 		Audiences:          model.StringArray(req.Audiences),
+		AllowedScopes:      model.StringArray(req.AllowedScopes),
 		Active:             true,
 		URL:                req.URL,
 		RedirectURIs:       model.StringArray(req.RedirectURIs),
@@ -160,6 +166,12 @@ func (s *appService) Update(ctx context.Context, id uint, req dto.UpdateAppReque
 	}
 	if req.Audiences != nil {
 		app.Audiences = model.StringArray(*req.Audiences)
+	}
+	if req.AllowedScopes != nil {
+		if err := validateScopeNames(*req.AllowedScopes); err != nil {
+			return nil, err
+		}
+		app.AllowedScopes = model.StringArray(*req.AllowedScopes)
 	}
 
 	app.UpdatedAt = time.Now()

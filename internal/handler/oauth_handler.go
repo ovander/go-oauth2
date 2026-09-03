@@ -490,6 +490,9 @@ func (h *OAuthHandler) handleConsentPost(w http.ResponseWriter, r *http.Request,
 		case errors.Is(err, service.ErrPKCEMethodUnsupported):
 			// P3-4: only S256 is supported; "plain" and an omitted method are rejected.
 			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "invalid_request", "code_challenge_method must be S256")
+		case errors.Is(err, service.ErrInvalidScope):
+			// Unknown scope, or one outside the client's allowed_scopes policy (A1).
+			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "invalid_scope", "requested scope is not allowed for this client")
 		case errors.Is(err, service.ErrAccountLocked):
 			// P3-3: a locked account cannot authorize new clients.
 			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "access_denied", "account is locked")

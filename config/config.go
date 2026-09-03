@@ -138,6 +138,10 @@ type Config struct {
 	// is rejected, unchanged), "observe" (also audit the reuse), or "enforce"
 	// (also revoke the user's token family, since reuse signals token theft).
 	RefreshReuseMode string
+	// ScopePolicyMode governs the per-client allowed_scopes policy (A1 / P3-8):
+	// "off" (default — policy stored but not applied), "observe" (audit
+	// scope_denied, still issue), "enforce" (refuse with invalid_scope).
+	ScopePolicyMode string
 	// AudienceMode controls how an access token's `aud` is built from the client
 	// and its registered audiences (RFC-001 / EPIC-7): "off" (default — aud is
 	// the client_id, unchanged) or "dual" (the client's registered audiences are
@@ -298,6 +302,7 @@ func Load() *Config {
 		ImpersonationMaxAuthAge: time.Duration(getEnvInt("IMPERSONATION_MAX_AUTH_AGE", 900)) * time.Second,
 		DelegationStepUpMode:    normalizeStepUpMode(getEnv("DELEGATION_STEPUP_MODE", "off")),
 		RefreshReuseMode:        normalizeStepUpMode(getEnv("REFRESH_REUSE_MODE", "off")),
+		ScopePolicyMode:         normalizeStepUpMode(getEnv("SCOPE_POLICY_MODE", "off")),
 		AudienceMode:            normalizeAudienceMode(getEnv("AUDIENCE_MODE", "off")),
 
 		// Rate Limiting

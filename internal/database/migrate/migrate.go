@@ -346,6 +346,20 @@ var migrations = []Migration{
 			return db.Exec("ALTER TABLE apps ADD COLUMN audiences TEXT[] NOT NULL DEFAULT '{}'").Error
 		},
 	},
+	{
+		ID:   "0015",
+		Name: "add_apps.allowed_scopes",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("apps") {
+				return nil
+			}
+			if db.Migrator().HasColumn(&model.App{}, "allowed_scopes") {
+				return nil
+			}
+			// Empty = no restriction, so every existing client is unaffected.
+			return db.Exec("ALTER TABLE apps ADD COLUMN allowed_scopes TEXT[] NOT NULL DEFAULT '{}'").Error
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

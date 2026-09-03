@@ -58,6 +58,10 @@ var (
 	// ErrPKCEMethodUnsupported indicates an authorization request carried a
 	// code_challenge with a code_challenge_method other than S256 (P3-4).
 	ErrPKCEMethodUnsupported = errors.New("code_challenge_method must be S256")
+	// ErrScopeNotAllowed indicates a scope the client's allowed_scopes policy
+	// does not permit (A1). It wraps ErrInvalidScope so every existing mapping
+	// answers invalid_scope.
+	ErrScopeNotAllowed = fmt.Errorf("%w: not allowed for this client", ErrInvalidScope)
 	// ErrDPoPRequired indicates the client requires DPoP (RFC 9449) but the token
 	// request carried no valid DPoP proof.
 	ErrDPoPRequired = errors.New("DPoP proof required for this client")
@@ -160,6 +164,9 @@ type oauthService struct {
 	// §4.14.2 refresh-token reuse detection). observe audits a detected reuse;
 	// enforce additionally revokes the user's token family.
 	refreshReuseMode string
+	// scopePolicyMode is "off" (default), "observe" or "enforce" for the
+	// per-client allowed_scopes policy (A1 / P3-8).
+	scopePolicyMode string
 }
 
 // Token-exchange rollout modes (RFC 8693 / EPIC-16).
@@ -183,6 +190,10 @@ const (
 	refreshReuseModeOff     = "off"
 	refreshReuseModeObserve = "observe"
 	refreshReuseModeEnforce = "enforce"
+
+	// Per-client scope policy modes (A1 / P3-8, SCOPE_POLICY_MODE).
+	scopePolicyModeOff     = "off"
+	scopePolicyModeObserve = "observe"
 )
 
 // OAuthServiceConfig holds OAuth service configuration
@@ -207,6 +218,7 @@ func NewOAuthService(
 	impersonationMaxAuthAge time.Duration,
 	delegationStepUpMode string,
 	refreshReuseMode string,
+	scopePolicyMode string,
 ) OAuthService {
 	requireHTTPS := strings.HasPrefix(issuer, "https://")
 
@@ -220,6 +232,7 @@ func NewOAuthService(
 		"impersonation_max_auth_age": impersonationMaxAuthAge.String(),
 		"delegation_stepup_mode":     delegationStepUpMode,
 		"refresh_reuse_mode":         refreshReuseMode,
+		"scope_policy_mode":          scopePolicyMode,
 	}).Debug("✅ OAuth service initialized")
 
 	return &oauthService{
@@ -239,6 +252,7 @@ func NewOAuthService(
 		impersonationMaxAuthAge: impersonationMaxAuthAge,
 		delegationStepUpMode:    delegationStepUpMode,
 		refreshReuseMode:        refreshReuseMode,
+		scopePolicyMode:         scopePolicyMode,
 	}
 }
 
@@ -304,6 +318,10 @@ func (s *oauthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, 
 	// Validate scope
 	if err := validateScope(req.Scope); err != nil {
 		return "", fmt.Errorf("invalid scope '%s': %w", req.Scope, err)
+	}
+	// A1: per-client scope policy.
+	if err := s.enforceClientScopes(ctx, app, &userID, "authorization_code", req.Scope); err != nil {
+		return "", err
 	}
 
 	// Get user
@@ -675,6 +693,18 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 		return nil, fmt.Errorf("%w: client_id=%s", ErrAppInactive, clientID)
 	}
 
+	// A1: a scope removed from the client's policy stops being renewable —
+	// refresh never widens, and in enforce mode it also cannot keep a scope
+	// the operator has since withdrawn.
+	var scopeUID *uint
+	if uid64, perr := strconv.ParseUint(claims.Subject, 10, 64); perr == nil {
+		u := uint(uid64)
+		scopeUID = &u
+	}
+	if err := s.enforceClientScopes(ctx, app, scopeUID, "refresh_token", claims.Scope); err != nil {
+		return nil, err
+	}
+
 	// RFC 9449 / EPIC-8: enforce the per-client DPoP requirement.
 	if err := requireDPoP(ctx, app); err != nil {
 		return nil, err
@@ -864,6 +894,10 @@ func (s *oauthService) handleClientCredentialsGrant(ctx context.Context, req dto
 	scope := req.Scope
 	if scope == "" {
 		scope = "api"
+	}
+	// A1: per-client scope policy (checked on the effective scope).
+	if err := s.enforceClientScopes(ctx, app, nil, "client_credentials", scope); err != nil {
+		return nil, err
 	}
 
 	accessToken, err := s.tokenService.GenerateClientCredentialsToken(app, scope)
@@ -1196,6 +1230,42 @@ func isValidResponseType(responseType string) bool {
 	return responseType == "code"
 }
 
+// validateScopeNames checks a list of scope names (an allowed_scopes policy)
+// against the supported set; duplicates are tolerated.
+func validateScopeNames(scopes []string) error {
+	for _, s := range scopes {
+		if s == "" || !validScopes[s] {
+			return fmt.Errorf("%w: unknown scope '%s'", ErrInvalidScope, s)
+		}
+	}
+	return nil
+}
+
+// enforceClientScopes applies the per-client scope policy (A1 / P3-8) for one
+// grant. off: no-op. observe: audits a scope_denied event and allows. enforce:
+// audits and refuses with ErrScopeNotAllowed (an ErrInvalidScope, so handlers
+// map it to invalid_scope). A client with an empty policy is unrestricted.
+func (s *oauthService) enforceClientScopes(ctx context.Context, app *model.App, userID *uint, grant, scope string) error {
+	if s.scopePolicyMode == scopePolicyModeOff || app == nil || len(app.AllowedScopes) == 0 {
+		return nil
+	}
+	denied := app.DeniedScopes(scope)
+	if len(denied) == 0 {
+		return nil
+	}
+	s.logSecurityEvent(ctx, model.SecurityEventScopeDenied, userID, &app.ID, false, map[string]interface{}{
+		"client_id":     app.ClientID,
+		"grant":         grant,
+		"requested":     scope,
+		"denied_scopes": denied,
+		"mode":          s.scopePolicyMode,
+	})
+	if s.scopePolicyMode == scopePolicyModeObserve {
+		return nil
+	}
+	return fmt.Errorf("%w: %s (client_id=%s)", ErrScopeNotAllowed, strings.Join(denied, " "), app.ClientID)
+}
+
 func validateScope(scope string) error {
 	if scope == "" {
 		return nil
@@ -1375,6 +1445,10 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 	// exchange request carried a valid proof (verified by the token-endpoint
 	// middleware and stashed on the context). Opportunistic — RFC 9449.
 	jkt := dpopJKTFromContext(ctx)
+	// A1: the requesting client's scope policy bounds the exchanged token too.
+	if err := s.enforceClientScopes(ctx, app, nil, "token_exchange", decision.GrantedScope); err != nil {
+		return nil, err
+	}
 	token, expiresIn, merr := s.tokenService.GenerateExchangedTokenWithTTL(subjectSub, decision.Audience, decision.GrantedScope, subjectVer, actor, jkt, ttl)
 	if merr != nil {
 		return fail("error", fmt.Errorf("failed to issue exchanged token: %w", merr))

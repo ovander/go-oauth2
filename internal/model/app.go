@@ -56,6 +56,40 @@ type App struct {
 	// carries the client_id). This is registration only; token issuance and
 	// resource-server enforcement are layered in later (warn → enforce) slices.
 	Audiences StringArray `gorm:"type:text[];column:audiences" json:"audiences"`
+
+	// AllowedScopes is the per-client scope policy (A1 / P3-8): the only scopes
+	// this client may request at /oauth/authorize and at every token grant.
+	// Empty means "every supported scope" so existing registrations keep
+	// working; SCOPE_POLICY_MODE decides whether a violation is ignored (off),
+	// audited (observe) or refused with invalid_scope (enforce).
+	AllowedScopes StringArray `gorm:"type:text[];column:allowed_scopes" json:"allowed_scopes"`
+}
+
+// ScopeAllowed reports whether the client may request scope under its
+// AllowedScopes policy. An empty policy allows everything (registration-time
+// default; validation of the scope name itself happens elsewhere).
+func (a *App) ScopeAllowed(scope string) bool {
+	if len(a.AllowedScopes) == 0 {
+		return true
+	}
+	for _, s := range a.AllowedScopes {
+		if s == scope {
+			return true
+		}
+	}
+	return false
+}
+
+// DeniedScopes returns the space-separated scopes in requested that the
+// policy does not allow, in request order.
+func (a *App) DeniedScopes(requested string) []string {
+	var denied []string
+	for _, s := range strings.Fields(requested) {
+		if !a.ScopeAllowed(s) {
+			denied = append(denied, s)
+		}
+	}
+	return denied
 }
 
 // IsConfidential returns true when the client has a stored secret hash,

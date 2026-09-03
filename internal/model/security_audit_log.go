@@ -47,6 +47,9 @@ const (
 	SecurityEventAuthCodeExchanged  SecurityEventType = "auth_code_exchanged"
 	SecurityEventAuthCodeFailed     SecurityEventType = "auth_code_failed"
 	SecurityEventPKCEValidationFail SecurityEventType = "pkce_validation_failed"
+	// SecurityEventScopeDenied: a client requested a scope outside its
+	// allowed_scopes policy (A1). Emitted in observe and enforce modes.
+	SecurityEventScopeDenied SecurityEventType = "scope_denied"
 
 	// Suspicious activity
 	SecurityEventSuspiciousActivity SecurityEventType = "suspicious_activity"

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovandermoten/go-oauth2/internal/hooks"
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
@@ -268,6 +269,9 @@ func (s *magicLinkService) VerifyMagicLink(ctx context.Context, req dto.MagicLin
 	user.UpdatedAt = now
 	_ = s.userRepo.Update(ctx, user) // best-effort; don't fail the login
 
+	if err := hooks.RunBeforeTokenIssue(ctx, &hooks.TokenIssue{User: user, App: app, Grant: "magic_link"}); err != nil {
+		return nil, err
+	}
 	tokenSet, err := s.tokenService.GenerateTokenSet(
 		user, app, string(userAppRole.Role),
 		"openid email profile offline_access",

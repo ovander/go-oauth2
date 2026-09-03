@@ -288,6 +288,10 @@ func (s *oauthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, 
 	if err != nil {
 		return "", fmt.Errorf("%w: client_id=%s", ErrAppNotFound, req.ClientID)
 	}
+	// P3-3: a deactivated client must not be able to obtain new codes.
+	if !app.Active {
+		return "", fmt.Errorf("%w: client_id=%s", ErrAppInactive, req.ClientID)
+	}
 
 	// Validate redirect URI with enhanced security checks
 	if err := auth.ValidateRedirectURI(req.RedirectURI, app.RedirectURIs, s.requireHTTPS); err != nil {
@@ -303,6 +307,11 @@ func (s *oauthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, 
 	user, err := s.userRepo.FindByID(ctx, userID)
 	if err != nil {
 		return "", fmt.Errorf("%w: user_id=%d", ErrUserNotFound, userID)
+	}
+	// P3-3: a locked (admin-blocked or brute-force-locked) account must not be
+	// issued new authorization codes even with a live login session.
+	if user.IsLocked() {
+		return "", fmt.Errorf("%w: user_id=%d", ErrAccountLocked, userID)
 	}
 
 	// LOW-02 fix: validate max_age (OIDC Core §3.1.2.1).
@@ -432,6 +441,11 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 	if err != nil {
 		return nil, fmt.Errorf("%w: client_id=%s", ErrAppNotFound, clientID)
 	}
+	// P3-3: a client deactivated between authorization and redemption must not
+	// be able to turn its code into tokens.
+	if !app.Active {
+		return nil, fmt.Errorf("%w: client_id=%s", ErrAppInactive, clientID)
+	}
 
 	// If the app requires PKCE (explicitly or as a public client), the
 	// authorization request MUST have included a code_challenge. Reject token
@@ -494,6 +508,10 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 	user, err := s.userRepo.FindByID(ctx, authCode.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: user_id=%d", ErrUserNotFound, authCode.UserID)
+	}
+	// P3-3: an account locked after the code was issued gets no tokens.
+	if user.IsLocked() {
+		return nil, fmt.Errorf("%w: user_id=%d", ErrAccountLocked, authCode.UserID)
 	}
 
 	logger.FromContext(ctx).WithFields(logger.Fields{
@@ -638,6 +656,13 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 		}
 	}
 
+	// P3-3: a deactivated client's outstanding refresh tokens must stop
+	// minting access tokens. Checked after client authentication so an
+	// unauthenticated caller cannot probe a client's active flag.
+	if !app.Active {
+		return nil, fmt.Errorf("%w: client_id=%s", ErrAppInactive, clientID)
+	}
+
 	// RFC 9449 / EPIC-8: enforce the per-client DPoP requirement.
 	if err := requireDPoP(ctx, app); err != nil {
 		return nil, err
@@ -656,6 +681,15 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 	// Check token version (revocation check)
 	if user.TokenVersion != claims.Ver {
 		return nil, fmt.Errorf("%w: token has been revoked", ErrInvalidToken)
+	}
+
+	// P3-3: a locked account (admin Block, or brute-force lockout) must not
+	// keep minting access tokens off an outstanding refresh token. Without
+	// this, a blocked user stayed valid at every external resource server
+	// for the full refresh TTL — this server's own AuthMiddleware rejected
+	// them, but nothing else did.
+	if user.IsLocked() {
+		return nil, fmt.Errorf("%w: user_id=%d", ErrAccountLocked, userID)
 	}
 
 	userAppRole, err := s.userAppRoleRepo.FindByUserAndApp(ctx, user.ID, app.ID)
@@ -797,6 +831,22 @@ func (s *oauthService) handleClientCredentialsGrant(ctx context.Context, req dto
 	if !auth.CheckClientSecret(clientSecret, app.ClientSecretHash) {
 		s.logClientAuthFailed(ctx, clientID, "invalid_secret", &app.ID)
 		return nil, ErrInvalidCredentials
+	}
+
+	// P3-3: a deactivated client gets no service-account tokens either.
+	if !app.Active {
+		return nil, fmt.Errorf("%w: client_id=%s", ErrAppInactive, clientID)
+	}
+
+	// P2-5: the other two grants validate the requested scope and enforce the
+	// per-client DPoP requirement; client_credentials skipped both, so a
+	// service account could mint a token with any scope string (including
+	// "admin") and a DPoP-required client could obtain a bearer-only token.
+	if err := validateScope(req.Scope); err != nil {
+		return nil, err
+	}
+	if err := requireDPoP(ctx, app); err != nil {
+		return nil, err
 	}
 
 	scope := req.Scope

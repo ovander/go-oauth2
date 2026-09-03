@@ -26,6 +26,35 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ### Security
 
+- **Locked accounts and deactivated clients can no longer obtain tokens
+  (P3-3).** The refresh-token grant checked token version and role but not
+  the account's lock state or the client's `active` flag, and `Authorize` /
+  the authorization-code grant ignored `active` entirely — so an
+  admin-blocked user (or a deactivated OAuth client) kept minting valid JWTs
+  for external resource servers until the refresh TTL. All three paths now
+  return `ErrAccountLocked` / the new `ErrAppInactive` (token endpoint:
+  `invalid_grant` "account is locked" / `unauthorized_client` "client is
+  deactivated"; authorize: `access_denied` / `unauthorized_client`).
+  `userService.Block` additionally bumps `token_version`, so blocking is a
+  revocation event for every outstanding token rather than a lock that only
+  this server's own middleware honours.
+
+- **`client_credentials` grant validates scope and enforces DPoP (P2-5).**
+  The grant skipped `validateScope` and `requireDPoP`, unlike the code and
+  refresh grants: a service account could mint a token with an arbitrary
+  scope string (including `admin`) and a DPoP-required client could obtain
+  a bearer-only token. Both checks now run; an unknown scope is
+  `invalid_scope`, a missing proof `invalid_dpop_proof`. A deactivated
+  client is also refused here.
+
+- **Hosted signup / accept-invite forms no longer render raw errors
+  (P2-1).** `internal/web/handler.go` put `err.Error()` straight into the
+  page for unauthenticated browsers, which for a wrapped failure meant
+  driver/GORM text ("failed to create user: pq: duplicate key …") or SMTP
+  detail. Both forms now map known sentinels to static messages, pass the
+  password-policy hints through, and log-and-replace everything else —
+  the same policy the JSON API adopted for M1.
+
 - **`/api/admin` had no authorisation gate (P3-1 / CRIT-01, Critical).**
   `AuthMiddleware` verified the bearer and placed the user's role in the
   request context, but nothing checked it; `RequireGlobalAdmin()` existed and

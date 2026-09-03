@@ -310,7 +310,14 @@ func (s *userService) Block(ctx context.Context, userID uint) error {
 	// Lock until far future — effectively permanent until an admin calls Unlock.
 	farFuture := time.Now().Add(100 * 365 * 24 * time.Hour)
 	until := &farFuture
-	return s.repo.LockAccount(ctx, userID, until)
+	if err := s.repo.LockAccount(ctx, userID, until); err != nil {
+		return err
+	}
+	// P3-3: blocking is a revocation event. Bump the token version so every
+	// outstanding access/refresh token is rejected by the version check
+	// (AuthMiddleware, introspection, the refresh grant) rather than staying
+	// valid until it expires.
+	return s.repo.IncrementTokenVersion(ctx, userID)
 }
 
 // Superadmin management

@@ -24,6 +24,7 @@ var (
 
 	// App errors
 	ErrAppNotFound        = errors.New("app not found")
+	ErrAppInactive        = errors.New("app is deactivated")
 	ErrClientIDExists     = errors.New("client ID already exists")
 	ErrInvalidRedirectURI = errors.New("invalid redirect URI")
 

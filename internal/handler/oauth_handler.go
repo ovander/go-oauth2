@@ -451,6 +451,12 @@ func (h *OAuthHandler) handleConsentPost(w http.ResponseWriter, r *http.Request,
 			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "login_required", "re-authentication required")
 		case errors.Is(err, service.ErrPKCERequired):
 			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "invalid_request", "this client requires PKCE")
+		case errors.Is(err, service.ErrAccountLocked):
+			// P3-3: a locked account cannot authorize new clients.
+			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "access_denied", "account is locked")
+		case errors.Is(err, service.ErrAppInactive):
+			// P3-3: a deactivated client cannot obtain authorization codes.
+			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "unauthorized_client", "client is deactivated")
 		default:
 			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "server_error", "authorization failed")
 		}
@@ -719,6 +725,15 @@ func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 			writeOAuthError(w, "invalid_grant", "PKCE verification failed", http.StatusBadRequest)
 		case errors.Is(err, service.ErrInvalidToken):
 			writeOAuthError(w, "invalid_grant", "invalid or expired refresh token", http.StatusBadRequest)
+		case errors.Is(err, service.ErrAccountLocked):
+			// P3-3: a locked account's refresh token is no longer honoured.
+			writeOAuthError(w, "invalid_grant", "account is locked", http.StatusBadRequest)
+		case errors.Is(err, service.ErrAppInactive):
+			// P3-3: a deactivated client gets no tokens from any grant.
+			writeOAuthError(w, "unauthorized_client", "client is deactivated", http.StatusBadRequest)
+		case errors.Is(err, service.ErrInvalidScope):
+			// P2-5: client_credentials now validates scope like the other grants.
+			writeOAuthError(w, "invalid_scope", "unknown or unsupported scope", http.StatusBadRequest)
 		case errors.Is(err, service.ErrDPoPRequired):
 			writeOAuthError(w, "invalid_dpop_proof", "this client requires a DPoP proof", http.StatusBadRequest)
 		case errors.Is(err, service.ErrDPoPKeyMismatch):

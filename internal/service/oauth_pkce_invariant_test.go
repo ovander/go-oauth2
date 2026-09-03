@@ -19,6 +19,7 @@ func TestPKCEInvariant_PublicClient_RequirePKCEFalse_StillRejected(t *testing.T)
 	app := &model.App{
 		ID:           12,
 		ClientID:     "public-no-flag",
+		Active:       true,
 		IsPublic:     true,  // public client
 		RequirePKCE:  false, // flag somehow cleared
 		RedirectURIs: model.StringArray{"https://app.example.com/cb"},

@@ -275,7 +275,7 @@ var _ repository.UserRepository = (*trackIncrUserRepo)(nil)
 // code_challenge is included in the request.
 func TestMED02_Authorize_RequirePKCE_RejectsNoPKCE(t *testing.T) {
 	user := &model.User{ID: 20, Email: "pkce@example.com", TokenVersion: 1}
-	app := &model.App{ID: 10, ClientID: "public-app", RequirePKCE: true,
+	app := &model.App{ID: 10, ClientID: "public-app", RequirePKCE: true, Active: true,
 		RedirectURIs: model.StringArray{"https://app.example.com/cb"}}
 	svc, _ := newMedSvc(t, newMemUsedTokenRepo(), app, user)
 
@@ -347,7 +347,7 @@ func TestMED02_Authorize_NoPKCERequired_AllowsNoPKCE(t *testing.T) {
 // code_challenge (i.e. the auth request bypassed the PKCE check).
 func TestMED02_TokenGrant_RequirePKCE_RejectsCodeWithoutChallenge(t *testing.T) {
 	user := &model.User{ID: 23, Email: "pkce3@example.com", TokenVersion: 1}
-	app := &model.App{ID: 13, ClientID: "pkce-app", RequirePKCE: true,
+	app := &model.App{ID: 13, ClientID: "pkce-app", RequirePKCE: true, Active: true,
 		RedirectURIs: model.StringArray{"https://app.example.com/cb"}}
 	svc, _ := newMedSvc(t, newMemUsedTokenRepo(), app, user)
 

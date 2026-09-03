@@ -35,11 +35,13 @@ func VerifyPKCE(codeVerifier, codeChallenge, codeChallengeMethod string) error {
 			return ErrPKCEVerificationFailed
 		}
 	case "":
-		// No method specified with no challenge: PKCE not in use — allowed for
-		// confidential clients that authenticate via client_secret.
-		if codeVerifier != codeChallenge {
-			return ErrPKCEVerificationFailed
-		}
+		// P3-4: a stored challenge with no method used to be compared verbatim
+		// against the verifier — i.e. "plain" PKCE by omission, which the
+		// explicit "plain" branch below rejects. Authorize now refuses to store
+		// a challenge without S256, so an empty method here is a malformed
+		// code, never a legitimate no-PKCE flow (that case returned above when
+		// both verifier and challenge were empty).
+		return ErrInvalidChallengeMethod
 	case "plain":
 		// H-02 fix: "plain" is explicitly rejected.  With plain PKCE the
 		// code_verifier equals the code_challenge, so an attacker who can

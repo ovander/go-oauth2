@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -53,6 +54,9 @@ type OAuthHandler struct {
 	// cookie channel. Disabled (zero value) unless SetRefreshCookie is called
 	// with a non-empty client id. Tier-0 admin session hardening.
 	refreshCookie refreshCookieConfig
+
+	// autoDefense receives failed/successful hosted-login attempts (P3-5).
+	autoDefense loginDefense
 }
 
 // refreshCookieConfig delivers a first-party public client's refresh token as
@@ -77,6 +81,25 @@ func (c refreshCookieConfig) enabled() bool { return c.clientID != "" }
 // handles reports whether refresh tokens for clientID are cookie-borne.
 func (c refreshCookieConfig) handles(clientID string) bool {
 	return c.enabled() && clientID == c.clientID
+}
+
+// loginDefense is the subset of *service.AutoDefenseService the hosted login
+// path needs. Kept as an interface so tests can observe the calls.
+type loginDefense interface {
+	RecordFailedLogin(ctx context.Context, ip, userAgent string)
+	RecordSuccessfulLogin(ip string)
+}
+
+// SetAutoDefenseService wires the hosted login form (POST /oauth/authorize,
+// password path) into IP-based auto-defense, so browser-path password
+// spraying is tracked the same way as POST /api/auth/login (P3-5). A nil
+// service leaves the channel disabled.
+func (h *OAuthHandler) SetAutoDefenseService(autoDefense *service.AutoDefenseService) {
+	if autoDefense == nil {
+		h.autoDefense = nil
+		return
+	}
+	h.autoDefense = autoDefense
 }
 
 // SetRefreshCookie enables the first-party admin-console refresh-token cookie
@@ -368,12 +391,21 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// P3-5: the hosted form is a login endpoint like POST /api/auth/login and
+	// must feed the same IP-based auto-defense, otherwise password spraying
+	// through the browser path is throttled only by per-account lockout.
+	clientIP := middleware.GetClientIP(r)
+	userAgent := r.Header.Get("User-Agent")
+
 	loginResp, err := h.authService.Login(r.Context(), dto.LoginRequest{
 		Email:       email,
 		Password:    password,
 		AppClientID: req.ClientID,
 	})
 	if err != nil {
+		if h.autoDefense != nil {
+			h.autoDefense.RecordFailedLogin(r.Context(), clientIP, userAgent)
+		}
 		// errors.Is, not equality: Login returns several *wrapped* errors
 		// (ErrRoleNotFound / ErrAccountLocked / ErrUserNotVerified / ErrAppNotFound),
 		// which an equality switch would miss — collapsing them all to the
@@ -393,6 +425,10 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 			renderLoginError("Login failed. Please try again")
 		}
 		return
+	}
+
+	if h.autoDefense != nil {
+		h.autoDefense.RecordSuccessfulLogin(clientIP)
 	}
 
 	// CRIT-04: login succeeded — show consent page instead of issuing code.
@@ -451,6 +487,9 @@ func (h *OAuthHandler) handleConsentPost(w http.ResponseWriter, r *http.Request,
 			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "login_required", "re-authentication required")
 		case errors.Is(err, service.ErrPKCERequired):
 			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "invalid_request", "this client requires PKCE")
+		case errors.Is(err, service.ErrPKCEMethodUnsupported):
+			// P3-4: only S256 is supported; "plain" and an omitted method are rejected.
+			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "invalid_request", "code_challenge_method must be S256")
 		case errors.Is(err, service.ErrAccountLocked):
 			// P3-3: a locked account cannot authorize new clients.
 			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "access_denied", "account is locked")

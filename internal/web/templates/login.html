@@ -11,50 +11,17 @@
         </div>
         {{end}}
 
-        <form method="POST" action="/auth/login">
-            <!-- Preserve OAuth parameters -->
-            <input type="hidden" name="client_id" value="{{.ClientID}}">
-            <input type="hidden" name="redirect_uri" value="{{.RedirectURI}}">
-            <input type="hidden" name="response_type" value="{{.ResponseType}}">
-            <input type="hidden" name="scope" value="{{.Scope}}">
-            <input type="hidden" name="state" value="{{.State}}">
-            {{if .CodeChallenge}}
-            <input type="hidden" name="code_challenge" value="{{.CodeChallenge}}">
-            <input type="hidden" name="code_challenge_method" value="{{.CodeChallengeMethod}}">
-            {{end}}
-            {{if .Nonce}}
-            <input type="hidden" name="nonce" value="{{.Nonce}}">
-            {{end}}
-
-            <div class="form-group">
-                <label for="email">Email address</label>
-                <input type="email" id="email" name="email" value="{{.Email}}" required autofocus placeholder="you@example.com">
-            </div>
-
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required placeholder="Enter your password">
-            </div>
-
-            <button type="submit" class="btn">Sign in</button>
-        </form>
+        <p class="text-center">
+            Sign-in happens from the application itself. Return to
+            {{if .AppName}}{{.AppName}}{{else}}the application{{end}} and choose
+            <strong>Sign in</strong> to continue.
+        </p>
 
         <div class="divider"><span>or</span></div>
 
         <p class="text-center text-muted">
             <a href="/auth/forgot-password{{if .ClientID}}?client_id={{.ClientID}}{{end}}" class="link">Forgot password?</a>
         </p>
-
-        {{if .Scopes}}
-        <div style="margin-top: 20px; padding: 16px; background: #f9f9f9; border-radius: 8px;">
-            <p class="text-muted" style="margin-bottom: 8px; font-size: 14px;">This app will be able to:</p>
-            <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #6b7280;">
-                {{range .Scopes}}
-                <li>{{.}}</li>
-                {{end}}
-            </ul>
-        </div>
-        {{end}}
     </div>
 </div>
 {{end}}

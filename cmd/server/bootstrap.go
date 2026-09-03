@@ -508,7 +508,7 @@ func Bootstrap(cfg *config.Config) *App {
 	}
 	appUsersHandler := handler.NewAppUsersHandler(userService, userAppRoleService, appService, adminLogService, emailService, tokenService, cfg.OAuthIssuer)
 	profileHandler := handler.NewProfileHandler(userService)
-	mfaHandler := handler.NewMFAHandler(mfaService)
+	mfaHandler := handler.NewMFAHandler(mfaService, userService) // P3-9: disable needs re-auth
 	// #203: AdminHandler emits client-lifecycle changes as alertable security
 	// events; give it a security audit service over the same repo.
 	adminSecurityAuditService := service.NewSecurityAuditService(securityAuditRepo)
@@ -585,6 +585,7 @@ func Bootstrap(cfg *config.Config) *App {
 	// Wire auto-defense to auth handlers
 	authHandler.SetAutoDefenseService(autoDefense)
 	adminAuthHandler.SetAutoDefenseService(autoDefense)
+	oauthHandler.SetAutoDefenseService(autoDefense) // P3-5: hosted login form
 
 	// ==========================================
 	// Rate Limiters (with graceful shutdown support)

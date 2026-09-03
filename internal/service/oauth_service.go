@@ -55,6 +55,9 @@ var (
 	ErrCodeAlreadyUsed      = errors.New("authorization code already used")
 	ErrPKCERequired         = errors.New("PKCE code verifier required")
 	ErrPKCEVerificationFail = errors.New("PKCE verification failed")
+	// ErrPKCEMethodUnsupported indicates an authorization request carried a
+	// code_challenge with a code_challenge_method other than S256 (P3-4).
+	ErrPKCEMethodUnsupported = errors.New("code_challenge_method must be S256")
 	// ErrDPoPRequired indicates the client requires DPoP (RFC 9449) but the token
 	// request carried no valid DPoP proof.
 	ErrDPoPRequired = errors.New("DPoP proof required for this client")
@@ -343,6 +346,15 @@ func (s *oauthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, 
 	// starting an unprotected authorization flow.
 	if app.PKCERequired() && req.CodeChallenge == "" {
 		return "", fmt.Errorf("%w: this client requires PKCE — include code_challenge in the authorization request", ErrPKCERequired)
+	}
+
+	// P3-4: discovery advertises S256 only, but an omitted
+	// code_challenge_method used to be stored as "" and verified as plain
+	// (verifier == challenge) at the token endpoint — so a client that forgot
+	// the parameter got a PKCE that any interceptor of the authorization
+	// request could satisfy. Refuse anything but S256 up front.
+	if req.CodeChallenge != "" && req.CodeChallengeMethod != "S256" {
+		return "", fmt.Errorf("%w: got %q", ErrPKCEMethodUnsupported, req.CodeChallengeMethod)
 	}
 
 	// Get user's role for the app.

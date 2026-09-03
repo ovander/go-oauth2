@@ -24,8 +24,54 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 > plain `user` role — relying on console-side UI gating or OAuth scopes — will
 > now receive 403 and must be promoted to a global admin role.
 
+> **Upgrade note (P3-9):** `POST /api/profile/mfa/disable` now requires a JSON
+> body `{"password": "...", "code": "..."}` — the account password (when the
+> account has one) and a current TOTP code or an unused recovery code. A bare
+> authenticated POST returns 400/401 and leaves MFA enabled.
+
+> **Upgrade note (P3-4):** authorization requests that send `code_challenge`
+> must also send `code_challenge_method=S256`. An omitted method (previously
+> accepted and verified as *plain*) or `plain` is now rejected with
+> `invalid_request`, matching what discovery has always advertised.
+
 ### Security
 
+- **PKCE by omission closed (P3-4).** An authorization request that carried a
+  `code_challenge` but no `code_challenge_method` was stored with an empty
+  method and verified at the token endpoint as `verifier == challenge` — plain
+  PKCE, which the explicit `plain` branch already rejected. `Authorize` now
+  refuses any method other than `S256` (`ErrPKCEMethodUnsupported` →
+  `invalid_request`), and `VerifyPKCE` treats an empty method with a stored
+  challenge as an error rather than a plain comparison.
+- **Hosted login feeds auto-defense (P3-5).** The password path of
+  `POST /oauth/authorize` now records failed and successful attempts with the
+  IP-based auto-defense service exactly like `POST /api/auth/login`, so
+  browser-path password spraying is blocked by the same thresholds instead of
+  being throttled only by per-account lockout.
+- **Dead `POST /auth/login` removed (P3-6).** The standalone form handler
+  authenticated without an app context, set an `access_token` cookie nothing
+  consumed, and still counted against the victim's failed-login lockout.
+  `GET /auth/login` now forwards OAuth-parameterised requests to
+  `/oauth/authorize` and otherwise renders an informational page without a
+  password form.
+- **App-admin mail actions limited to app members (P3-7).**
+  `POST /api/apps/{app_id}/users/{user_id}/resend-verification` and
+  `.../reset-password` verified only that the user existed, so an app-admin
+  could trigger verification / password-reset mail for any user ID on the
+  platform. Both now require a `user_app_roles` row for the target in that
+  app and return 404 `user not in app` otherwise (same as `GET .../users/{id}`).
+- **MFA disable requires re-authentication (P3-9).** See the upgrade note.
+  Every failure returns the same 401 so the response does not reveal which
+  factor was wrong; `Disable` fails closed if no user service is wired.
+- **Legacy client-secret comparison is constant-time (P3-9).**
+  `CheckClientSecret`'s SHA-256 migration branch compared hex strings with
+  `==` despite its comment; it now uses `crypto/subtle`.
+- **App-users handler no longer echoes internal errors (P2-2).** Every
+  `err.Error()` forwarded to the caller in `app_users_handler.go` (list,
+  create, assign/update/remove role, token generation, mail sending, the
+  `email_error` field) is replaced by a static message; the detail is logged.
+  `ErrRoleNotFound` on update/remove maps to 404 instead of a 400 carrying the
+  error text.
 - **Locked accounts and deactivated clients can no longer obtain tokens
   (P3-3).** The refresh-token grant checked token version and role but not
   the account's lock state or the client's `active` flag, and `Authorize` /

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -66,7 +67,10 @@ func (h *AppUsersHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 
 	roles, totalCount, err := h.userAppRoleService.GetAppUsers(r.Context(), appID, page, pageSize, search)
 	if err != nil {
-		writeError(w, err.Error(), http.StatusInternalServerError)
+		// P2-2: static messages only; repository/driver detail is logged, not
+		// forwarded to the (app-admin) caller.
+		logger.Warnf("app users: list for app %d: %v", appID, err)
+		writeError(w, "could not list app users", http.StatusInternalServerError)
 		return
 	}
 
@@ -189,7 +193,8 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 			Password: generateTempPassword(),
 		})
 		if err != nil {
-			writeError(w, err.Error(), http.StatusBadRequest)
+			logger.Warnf("app users: create user for app %d: %v", appID, err)
+			writeError(w, "could not create user", http.StatusBadRequest)
 			return
 		}
 	}
@@ -197,18 +202,20 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	// Assign role
 	role, err := h.userAppRoleService.AssignRole(r.Context(), user.ID, appID, model.AppRole(req.Role))
 	if err != nil {
-		if err == service.ErrRoleAlreadyExists {
+		if errors.Is(err, service.ErrRoleAlreadyExists) {
 			writeError(w, "user already has a role in this app", http.StatusConflict)
 			return
 		}
-		writeError(w, err.Error(), http.StatusInternalServerError)
+		logger.Warnf("app users: assign role for user %d app %d: %v", user.ID, appID, err)
+		writeError(w, "could not assign role", http.StatusInternalServerError)
 		return
 	}
 
 	// Generate invite token
 	inviteToken, err := h.tokenService.GenerateInviteToken(user.Email, appID, req.Role, adminID)
 	if err != nil {
-		writeError(w, err.Error(), http.StatusInternalServerError)
+		logger.Warnf("app users: generate invite token for user %d app %d: %v", user.ID, appID, err)
+		writeError(w, "could not generate invite token", http.StatusInternalServerError)
 		return
 	}
 
@@ -232,7 +239,8 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 				"app":   appName,
 				"error": err.Error(),
 			}).Warn("📧 Failed to send invite email, but invite token is valid")
-			emailError = err.Error()
+			// P2-2: the SMTP/driver error text stays in the log.
+			emailError = "failed to send invite email"
 		} else {
 			emailSent = true
 		}
@@ -310,7 +318,12 @@ func (h *AppUsersHandler) UpdateUserRole(w http.ResponseWriter, r *http.Request)
 
 	role, err := h.userAppRoleService.UpdateRole(r.Context(), userID, appID, model.AppRole(req.Role))
 	if err != nil {
-		writeError(w, err.Error(), http.StatusBadRequest)
+		if errors.Is(err, service.ErrRoleNotFound) {
+			writeError(w, "user not in app", http.StatusNotFound)
+			return
+		}
+		logger.Warnf("app users: update role for user %d app %d: %v", userID, appID, err)
+		writeError(w, "could not update role", http.StatusInternalServerError)
 		return
 	}
 
@@ -356,7 +369,12 @@ func (h *AppUsersHandler) RemoveUser(w http.ResponseWriter, r *http.Request) {
 	user, _ := h.userService.GetByID(r.Context(), userID)
 
 	if err := h.userAppRoleService.RemoveRole(r.Context(), userID, appID); err != nil {
-		writeError(w, err.Error(), http.StatusBadRequest)
+		if errors.Is(err, service.ErrRoleNotFound) {
+			writeError(w, "user not in app", http.StatusNotFound)
+			return
+		}
+		logger.Warnf("app users: remove role for user %d app %d: %v", userID, appID, err)
+		writeError(w, "could not remove user from app", http.StatusInternalServerError)
 		return
 	}
 
@@ -394,6 +412,12 @@ func (h *AppUsersHandler) ResendVerification(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// P3-7: an app-admin may only trigger mail for members of their own app.
+	// Without this check any user ID on the platform could be targeted.
+	if !h.requireAppMember(w, r, userID, appID) {
+		return
+	}
+
 	// Get app details for context
 	app, err := h.appService.GetByID(r.Context(), appID)
 	if err != nil {
@@ -412,7 +436,8 @@ func (h *AppUsersHandler) ResendVerification(w http.ResponseWriter, r *http.Requ
 
 	token, err := h.tokenService.GenerateEmailVerificationToken(user.Email, user.ID, appCtx)
 	if err != nil {
-		writeError(w, err.Error(), http.StatusInternalServerError)
+		logger.Warnf("app users: verification token for user %d app %d: %v", userID, appID, err)
+		writeError(w, "could not generate verification token", http.StatusInternalServerError)
 		return
 	}
 
@@ -427,7 +452,8 @@ func (h *AppUsersHandler) ResendVerification(w http.ResponseWriter, r *http.Requ
 	if h.emailService != nil {
 		verifyURL := h.baseURL + "/auth/verify-email?token=" + token
 		if err := h.emailService.SendVerificationEmail(user.Email, user.Name, app.Name, verifyURL); err != nil {
-			writeError(w, "failed to send verification email: "+err.Error(), http.StatusInternalServerError)
+			logger.Warnf("app users: send verification email for user %d app %d: %v", userID, appID, err)
+			writeError(w, "failed to send verification email", http.StatusInternalServerError)
 			return
 		}
 	}
@@ -457,6 +483,11 @@ func (h *AppUsersHandler) ForcePasswordReset(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// P3-7: same membership gate as ResendVerification.
+	if !h.requireAppMember(w, r, userID, appID) {
+		return
+	}
+
 	// Get app details for context
 	app, err := h.appService.GetByID(r.Context(), appID)
 	if err != nil {
@@ -475,7 +506,8 @@ func (h *AppUsersHandler) ForcePasswordReset(w http.ResponseWriter, r *http.Requ
 
 	token, err := h.tokenService.GeneratePasswordResetToken(user.Email, user.ID, appCtx)
 	if err != nil {
-		writeError(w, err.Error(), http.StatusInternalServerError)
+		logger.Warnf("app users: password reset token for user %d app %d: %v", userID, appID, err)
+		writeError(w, "could not generate password reset token", http.StatusInternalServerError)
 		return
 	}
 
@@ -490,12 +522,28 @@ func (h *AppUsersHandler) ForcePasswordReset(w http.ResponseWriter, r *http.Requ
 	if h.emailService != nil {
 		resetURL := h.baseURL + "/auth/reset-password?token=" + token
 		if err := h.emailService.SendPasswordResetEmail(user.Email, user.Name, app.Name, resetURL); err != nil {
-			writeError(w, "failed to send password reset email: "+err.Error(), http.StatusInternalServerError)
+			logger.Warnf("app users: send password reset email for user %d app %d: %v", userID, appID, err)
+			writeError(w, "failed to send password reset email", http.StatusInternalServerError)
 			return
 		}
 	}
 
 	writeJSON(w, dto.MessageResponse{Message: "Password reset email sent"})
+}
+
+// requireAppMember writes 404 and returns false unless userID holds a role in
+// appID. Used by the mail-triggering admin actions (P3-7) so an app-admin can
+// only act on members of the app they administer; the 404 matches GetUser so
+// the check does not disclose whether a foreign user ID exists.
+func (h *AppUsersHandler) requireAppMember(w http.ResponseWriter, r *http.Request, userID, appID uint) bool {
+	if _, err := h.userAppRoleService.GetUserRoleForApp(r.Context(), userID, appID); err != nil {
+		if !errors.Is(err, service.ErrRoleNotFound) {
+			logger.Warnf("app users: membership check for user %d app %d: %v", userID, appID, err)
+		}
+		writeError(w, "user not in app", http.StatusNotFound)
+		return false
+	}
+	return true
 }
 
 func getAppIDFromURL(r *http.Request) (uint, error) {

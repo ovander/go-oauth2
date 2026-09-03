@@ -78,7 +78,7 @@ func TestMFAHandler_Enroll_Success(t *testing.T) {
 		beginFn: func(_ context.Context, _ uint) (string, string, error) {
 			return "SECRET32", "otpauth://totp/Socrate:a@b.com?secret=SECRET32", nil
 		},
-	})
+	}, nil)
 
 	rr := httptest.NewRecorder()
 	req := withUser(httptest.NewRequest(http.MethodPost, "/api/profile/mfa/enroll", nil), 7)
@@ -101,7 +101,7 @@ func TestMFAHandler_Enroll_AlreadyEnabled(t *testing.T) {
 		beginFn: func(_ context.Context, _ uint) (string, string, error) {
 			return "", "", service.ErrMFAAlreadyEnabled
 		},
-	})
+	}, nil)
 
 	rr := httptest.NewRecorder()
 	req := withUser(httptest.NewRequest(http.MethodPost, "/api/profile/mfa/enroll", nil), 7)
@@ -113,7 +113,7 @@ func TestMFAHandler_Enroll_AlreadyEnabled(t *testing.T) {
 }
 
 func TestMFAHandler_Enroll_Unauthenticated(t *testing.T) {
-	h := NewMFAHandler(&mockMFAService{})
+	h := NewMFAHandler(&mockMFAService{}, nil)
 
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/profile/mfa/enroll", nil)
@@ -136,7 +136,7 @@ func TestMFAHandler_Confirm_Success(t *testing.T) {
 			}
 			return nil
 		},
-	})
+	}, nil)
 
 	rr := httptest.NewRecorder()
 	req := withUser(httptest.NewRequest(http.MethodPost, "/api/profile/mfa/confirm",
@@ -153,7 +153,7 @@ func TestMFAHandler_Confirm_InvalidCode(t *testing.T) {
 		confirmFn: func(_ context.Context, _ uint, _ string) error {
 			return service.ErrMFAInvalidCode
 		},
-	})
+	}, nil)
 
 	rr := httptest.NewRecorder()
 	req := withUser(httptest.NewRequest(http.MethodPost, "/api/profile/mfa/confirm",
@@ -170,7 +170,7 @@ func TestMFAHandler_Confirm_NotEnrolled(t *testing.T) {
 		confirmFn: func(_ context.Context, _ uint, _ string) error {
 			return service.ErrMFANotEnrolled
 		},
-	})
+	}, nil)
 
 	rr := httptest.NewRecorder()
 	req := withUser(httptest.NewRequest(http.MethodPost, "/api/profile/mfa/confirm",
@@ -183,7 +183,7 @@ func TestMFAHandler_Confirm_NotEnrolled(t *testing.T) {
 }
 
 func TestMFAHandler_Confirm_BadJSON(t *testing.T) {
-	h := NewMFAHandler(&mockMFAService{})
+	h := NewMFAHandler(&mockMFAService{}, nil)
 
 	rr := httptest.NewRecorder()
 	req := withUser(httptest.NewRequest(http.MethodPost, "/api/profile/mfa/confirm",
@@ -199,21 +199,23 @@ func TestMFAHandler_Confirm_BadJSON(t *testing.T) {
 // Disable
 // ---------------------------------------------------------------------------
 
-func TestMFAHandler_Disable_Success(t *testing.T) {
+// P3-9: a bare authenticated POST (no password / code) no longer disables MFA.
+// The success paths are covered in mfa_disable_p3_9_test.go.
+func TestMFAHandler_Disable_RequiresReauth(t *testing.T) {
 	called := false
 	h := NewMFAHandler(&mockMFAService{
 		disableFn: func(_ context.Context, _ uint) error { called = true; return nil },
-	})
+	}, nil)
 
 	rr := httptest.NewRecorder()
 	req := withUser(httptest.NewRequest(http.MethodPost, "/api/profile/mfa/disable", nil), 7)
 	h.Disable(rr, req)
 
-	if rr.Code != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d", rr.Code)
+	if rr.Code == http.StatusNoContent {
+		t.Fatalf("expected a rejection, got 204")
 	}
-	if !called {
-		t.Fatal("expected Disable to be called")
+	if called {
+		t.Fatal("Disable must not be called without re-authentication")
 	}
 }
 
@@ -225,7 +227,7 @@ func TestMFAHandler_Status(t *testing.T) {
 	for _, tc := range []struct{ enabled bool }{{true}, {false}} {
 		h := NewMFAHandler(&mockMFAService{
 			enabledFn: func(_ context.Context, _ uint) (bool, error) { return tc.enabled, nil },
-		})
+		}, nil)
 
 		rr := httptest.NewRecorder()
 		req := withUser(httptest.NewRequest(http.MethodGet, "/api/profile/mfa", nil), 7)
@@ -248,7 +250,7 @@ func TestMFAHandler_Status_IncludesRecoveryCount(t *testing.T) {
 	h := NewMFAHandler(&mockMFAService{
 		enabledFn:   func(_ context.Context, _ uint) (bool, error) { return true, nil },
 		remainingFn: func(_ context.Context, _ uint) (int, error) { return 4, nil },
-	})
+	}, nil)
 
 	rr := httptest.NewRecorder()
 	req := withUser(httptest.NewRequest(http.MethodGet, "/api/profile/mfa", nil), 7)
@@ -271,7 +273,7 @@ func TestMFAHandler_Status_NotEnabledSkipsCount(t *testing.T) {
 	h := NewMFAHandler(&mockMFAService{
 		enabledFn:   func(_ context.Context, _ uint) (bool, error) { return false, nil },
 		remainingFn: func(_ context.Context, _ uint) (int, error) { called = true; return 9, nil },
-	})
+	}, nil)
 
 	rr := httptest.NewRecorder()
 	req := withUser(httptest.NewRequest(http.MethodGet, "/api/profile/mfa", nil), 7)
@@ -290,7 +292,7 @@ func TestMFAHandler_Status_NotEnabledSkipsCount(t *testing.T) {
 }
 
 func TestMFAHandler_Status_Unauthenticated(t *testing.T) {
-	h := NewMFAHandler(&mockMFAService{})
+	h := NewMFAHandler(&mockMFAService{}, nil)
 
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/profile/mfa", nil)
@@ -309,7 +311,7 @@ func TestMFAHandler_RecoveryCodes_Success(t *testing.T) {
 	want := []string{"aaaaa-bbbbb", "ccccc-ddddd"}
 	h := NewMFAHandler(&mockMFAService{
 		recoveryFn: func(_ context.Context, _ uint) ([]string, error) { return want, nil },
-	})
+	}, nil)
 
 	rr := httptest.NewRecorder()
 	req := withUser(httptest.NewRequest(http.MethodPost, "/api/profile/mfa/recovery-codes", nil), 7)
@@ -332,7 +334,7 @@ func TestMFAHandler_RecoveryCodes_NotEnabled(t *testing.T) {
 		recoveryFn: func(_ context.Context, _ uint) ([]string, error) {
 			return nil, service.ErrMFANotEnrolled
 		},
-	})
+	}, nil)
 
 	rr := httptest.NewRecorder()
 	req := withUser(httptest.NewRequest(http.MethodPost, "/api/profile/mfa/recovery-codes", nil), 7)
@@ -344,7 +346,7 @@ func TestMFAHandler_RecoveryCodes_NotEnabled(t *testing.T) {
 }
 
 func TestMFAHandler_RecoveryCodes_Unauthenticated(t *testing.T) {
-	h := NewMFAHandler(&mockMFAService{})
+	h := NewMFAHandler(&mockMFAService{}, nil)
 
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/profile/mfa/recovery-codes", nil)

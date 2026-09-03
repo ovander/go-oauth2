@@ -2,6 +2,7 @@ package auth
 
 import (
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"regexp"
@@ -144,7 +145,8 @@ func CheckClientSecret(secret, hash string) bool {
 		// bcrypt hash
 		return bcrypt.CompareHashAndPassword([]byte(hash), []byte(secret)) == nil
 	}
-	// Legacy SHA-256 path — constant-time hex comparison to avoid timing leaks.
+	// Legacy SHA-256 path. P3-9: the comparison is genuinely constant-time now
+	// (the previous `==` short-circuited on the first differing byte).
 	legacy := sha256.Sum256([]byte(secret))
-	return hex.EncodeToString(legacy[:]) == hash
+	return subtle.ConstantTimeCompare([]byte(hex.EncodeToString(legacy[:])), []byte(hash)) == 1
 }

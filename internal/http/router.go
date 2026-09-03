@@ -236,10 +236,10 @@ func newOAuthRouter(
 	// Server-Rendered Auth Pages (HTML)
 	// ==========================================
 	r.Route("/auth", func(r chi.Router) {
-		// Login flow
+		// Login: GET only. P3-6 removed the dead POST /auth/login form handler;
+		// interactive sign-in is the hosted /oauth/authorize page, and
+		// LoginPage forwards OAuth-parameterised requests there.
 		r.Get("/login", webHandler.LoginPage)
-		r.With(middleware.RateLimitMiddleware(config.LoginRateLimiter, config.TrustedProxyCIDRs)).
-			Post("/login", webHandler.LoginSubmit)
 
 		// Signup flow
 		r.Get("/signup", webHandler.SignupPage)

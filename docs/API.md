@@ -465,13 +465,19 @@ admin's tokens are revoked (token-version bump) and they must log in again
   { "name": "My App", "url": "https://app.example.com",
     "redirect_uris": ["https://app.example.com/callback"],
     "is_public": false, "require_pkce": true,
-    "audiences": ["https://api.example.com"] }
+    "audiences": ["https://api.example.com"],
+    "allowed_scopes": ["openid", "profile", "email"] }
   ```
   Returns `AppWithSecretResponse` including the one-time `client_secret`
   (empty for public clients). `audiences` (optional) registers the resource
   identifiers tokens for this client are intended for — the canonical `aud`
-  claim (RFC-001). On update, omitting `audiences` leaves it unchanged; a
-  non-null value (including `[]`) replaces the set.
+  claim (RFC-001). `allowed_scopes` (optional) is the client's scope policy:
+  the only scopes it may request at `/oauth/authorize` and at every grant,
+  refresh included; entries must be supported scopes (§2.2) and an empty list
+  means unrestricted. It is applied according to `SCOPE_POLICY_MODE`
+  (`off` default · `observe` audits `scope_denied` · `enforce` answers
+  `invalid_scope`). On update, omitting `audiences` / `allowed_scopes` leaves
+  them unchanged; a non-null value (including `[]`) replaces the set.
 - `GET /{id}` · `PUT /{id}` · `DELETE /{id}`
 - `POST /{id}/rotate-secret` — issue a new secret (returned once).
 

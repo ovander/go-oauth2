@@ -23,6 +23,9 @@ type CreateAppRequest struct {
 	// for — the canonical `aud` claim (RFC-001 / EPIC-7). Optional; empty means
 	// none registered.
 	Audiences []string `json:"audiences,omitempty"`
+	// AllowedScopes restricts which scopes this client may request (A1 / P3-8).
+	// Every entry must be a supported scope. Empty = no restriction.
+	AllowedScopes []string `json:"allowed_scopes,omitempty"`
 }
 
 type UpdateAppRequest struct {
@@ -41,6 +44,9 @@ type UpdateAppRequest struct {
 	// EPIC-7). Omitted (nil) = unchanged; a non-nil value (including an empty
 	// array) replaces the set.
 	Audiences *[]string `json:"audiences,omitempty"`
+	// AllowedScopes replaces the client's scope policy (A1). Omitted (nil) =
+	// unchanged; an empty array clears the restriction.
+	AllowedScopes *[]string `json:"allowed_scopes,omitempty"`
 }
 
 type AddAppUserRequest struct {
@@ -66,6 +72,7 @@ type AppResponse struct {
 	AllowTokenExchange bool      `json:"allow_token_exchange"`
 	AllowImpersonation bool      `json:"allow_impersonation"`
 	Audiences          []string  `json:"audiences"`
+	AllowedScopes      []string  `json:"allowed_scopes"`
 	URL                *string   `json:"url,omitempty"`
 	RedirectURIs       []string  `json:"redirect_uris"`
 	OwnerID            *uint     `json:"owner_id,omitempty"`

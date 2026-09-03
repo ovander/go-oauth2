@@ -442,6 +442,7 @@ func Bootstrap(cfg *config.Config) *App {
 		cfg.ImpersonationMaxAuthAge,
 		cfg.DelegationStepUpMode, // EPIC-17: delegation step-up (actor MFA)
 		cfg.RefreshReuseMode,     // RFC 9700: refresh-token reuse detection
+		cfg.ScopePolicyMode,      // A1: per-client allowed_scopes policy
 	)
 
 	// Single refresh code path: POST /api/auth/refresh delegates to the hardened

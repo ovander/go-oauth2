@@ -34,6 +34,17 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 > accepted and verified as *plain*) or `plain` is now rejected with
 > `invalid_request`, matching what discovery has always advertised.
 
+### Added
+
+- **Per-client scope policy (A1, closes P3-8).** Clients carry an
+  `allowed_scopes` list (admin API `POST/PUT /api/admin/apps`, `allowed_scopes`
+  in the response). `SCOPE_POLICY_MODE=off|observe|enforce` (default `off`)
+  applies it at `/oauth/authorize` and at every grant — refresh included, so a
+  scope withdrawn from a client stops being renewable — with a `scope_denied`
+  security event in `observe` and `enforce`, and `invalid_scope` in `enforce`.
+  An empty list means unrestricted, so existing registrations are unaffected.
+  Policy entries must be supported scopes. Schema step `0015` adds the column.
+
 ### Security
 
 - **PKCE by omission closed (P3-4).** An authorization request that carried a

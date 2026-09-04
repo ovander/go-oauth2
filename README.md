@@ -330,7 +330,7 @@ sequenceDiagram
 
 **Getting started** — [API & integration guide](docs/API.md) · [`CHANGELOG.md`](CHANGELOG.md) · feature-flag modes in [`.env.example`](.env.example)
 
-**Deploy & operate** — [Linux VPS + Postgres + Caddy, multi-app runbook](docs/DEPLOYMENT-VPS-MULTI-APP.md) · [Revocation & freshness SLA](docs/REVOCATION-FRESHNESS-SLA.md) · [Alert rules](docs/ALERT-RULES.md) · [Geo analytics](docs/CR-geo-analytics-api.md)
+**Deploy & operate** — [Performance baseline & sizing](docs/PERFORMANCE-BASELINE.md) · [Linux VPS + Postgres + Caddy, multi-app runbook](docs/DEPLOYMENT-VPS-MULTI-APP.md) · [Revocation & freshness SLA](docs/REVOCATION-FRESHNESS-SLA.md) · [Alert rules](docs/ALERT-RULES.md) · [Geo analytics](docs/CR-geo-analytics-api.md)
 
 **Architecture** — [Reference architecture](docs/PLATFORM-REFERENCE-ARCHITECTURE.md) · [Auth flows](docs/CR-oauth2-auth-flows.md)
 

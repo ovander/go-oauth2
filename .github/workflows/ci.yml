@@ -148,3 +148,80 @@ jobs:
           path: |
             coverage.out
             tierA.out
+
+  # B6: a regression tripwire, not a benchmark. It boots a real server against a
+  # real Postgres and drives the two paths whose latency is not dominated by a
+  # constant we already know. The bcrypt-bound scenarios are excluded on
+  # purpose: at ~14 rps they would add minutes per PR to re-measure bcrypt.
+  # Thresholds come from docs/PERFORMANCE-BASELINE.md with generous headroom,
+  # because a shared GitHub runner is noisy.
+  perf:
+    name: perf smoke
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: socrate_perf
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install k6
+        run: go install go.k6.io/k6@latest
+
+      - name: Build the server
+        run: go build -o /tmp/socrate ./cmd/server
+
+      - name: Start the server
+        env:
+          PORT: "8080"
+          ADMIN_PORT: "8081"
+          ENV: development
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/socrate_perf?sslmode=disable
+          OAUTH_ISSUER: http://localhost:8080
+          SECRET_KEY_BASE: ci-perf-secret-key-base-at-least-32-characters
+          AUTO_MIGRATE: "true"
+          LOG_LEVEL: warn
+          # The perf run would otherwise trip the very rate limits it drives.
+          RATE_LIMIT_LOGIN: "1000000"
+          RATE_LIMIT_SIGNUP: "1000000"
+          RATE_LIMIT_TOKEN: "1000000"
+        run: |
+          /tmp/socrate > /tmp/socrate.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://localhost:8080/health; then
+              echo "server up after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "server did not become healthy:"; cat /tmp/socrate.log; exit 1
+
+      - name: Seed the perf fixtures
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/socrate_perf?sslmode=disable
+        run: go run ./deploy/perf/seed
+
+      - name: Run the perf smoke
+        env:
+          BASE_URL: http://localhost:8080
+          DURATION: 20s
+        run: ./deploy/perf/run.sh discovery token_refresh
+
+      - name: Server log on failure
+        if: failure()
+        run: tail -100 /tmp/socrate.log

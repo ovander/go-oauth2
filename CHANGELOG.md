@@ -36,6 +36,43 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ### Added
 
+- **Performance baseline (B6).** k6 scenarios in `deploy/perf/` (`discovery`,
+  `token_refresh`, `login`, `client_credentials`, `introspect`) with a runner,
+  a seeder, and **measured** numbers published in
+  `docs/PERFORMANCE-BASELINE.md`. A `perf smoke` CI job boots a real server
+  against Postgres and gates `discovery` and `token_refresh` on every pull
+  request. Headline result on 4 vCPU: discovery p95 **0.8 ms**; public-client
+  token refresh p95 **22 ms at 89 rps**, saturating cleanly near **110 rps**;
+  password login p95 **93 ms** (bcrypt cost 10). All scenarios use k6's
+  constant-arrival-rate executor, so a saturated endpoint shows as rising
+  latency rather than as quietly reduced load.
+
+### Fixed
+
+- **A fresh install could not boot with `AUTO_MIGRATE=true`.** Migration `0005`
+  creates `magic_link_tokens` with a unique constraint named
+  `uq_magic_link_token_hash`, while the GORM model tags `TokenHash` with
+  `uniqueIndex` and so expects `uni_magic_link_tokens_token_hash`. On a brand-new
+  database `migrate.Run` creates the table first, then `AutoMigrate` issues
+  `ALTER TABLE magic_link_tokens DROP CONSTRAINT uni_magic_link_tokens_token_hash`
+  for a constraint that does not exist — SQLSTATE 42704, fatal at startup. This
+  is the documented first-deploy path, so a new install failed to start.
+  Migration `0022` renames the constraint to the name GORM derives; guarded both
+  ways, so it is a no-op on databases that already agree. Found while building
+  the B6 baseline, and verified by booting against an empty database.
+
+### Changed
+
+- **Documented: client-secret verification is bcrypt cost 12 (~273 ms), which
+  caps every confidential-client endpoint at ~14 requests/second per 4 vCPU.**
+  That covers `client_credentials`, `introspect`, `revoke`, and the
+  authorization-code and refresh grants for confidential clients. Public clients
+  (PKCE) skip it entirely and run roughly 12x faster. No behaviour is changed
+  here — the finding, its measurement and the options (a keyed hash over a
+  high-entropy secret, or cost 10) are written up in
+  `docs/PERFORMANCE-BASELINE.md` so the tradeoff is decided deliberately rather
+  than inherited.
+
 - **Shared state for multi-instance deployments (B4 / EPIC-13).**
   `STATE_BACKEND=memory|postgres` (default `memory`, unchanged behaviour) moves
   the rate-limit counters and the DPoP replay cache into the database already

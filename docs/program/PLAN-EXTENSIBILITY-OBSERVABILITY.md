@@ -208,11 +208,26 @@ optional and outside the exit criteria, as planned.
 - Acceptance: a k6 run (B6) against two instances behind Caddy shows correct rate limiting,
   no double refresh, no replay acceptance, and key rotation once.
 
-### B6. Performance baseline — **S/M**
+### B6. Performance baseline — **S/M** — ✅ delivered
 - k6 scenarios in `deploy/perf/`: `token_refresh`, `authorize_login_consent`, `introspect`,
   `client_credentials`; CI perf smoke on a Postgres service container with thresholds
   (p95 token < 100 ms at 200 rps on the CI runner) that fail the build on a 25 % regression.
 - Publish the numbers in the runbook so operators can size the VPS.
+
+**As delivered.** Scenarios in `deploy/perf/` with a runner, a committed seeder and measured
+numbers in `docs/PERFORMANCE-BASELINE.md`; CI runs `discovery` + `token_refresh` against a real
+server and Postgres on every PR. `authorize_login_consent` is **not** included: the hosted flow
+carries a CSRF-signed consent token and a session cookie, so scripting it faithfully is a
+meaningful piece of work whose result would mostly re-measure the login bcrypt cost that `login`
+already isolates — deferred rather than faked.
+
+**The target needs restating.** "p95 token < 100 ms at 200 rps" holds for *public-client* token
+traffic (measured 22 ms p95 at 89 rps on 4 vCPU; 200 rps needs ~8 vCPU) but is unreachable for
+*confidential* clients at any hardware size: client-secret verification is bcrypt cost 12 (273 ms
+measured), capping those endpoints at ~14 rps per 4 vCPU, so 200 rps would need ~55 vCPU doing
+nothing but bcrypt. The CI gate therefore covers the public paths, and the confidential-client
+ceiling is documented with its options rather than being papered over with a threshold nobody
+could meet.
 
 ### B7. SLOs and alerting — **S**
 - SLOs: token endpoint availability 99.9 %, p99 < 150 ms; login p99 < 400 ms (bcrypt bound);

@@ -36,6 +36,25 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ### Added
 
+- **Multi-instance readiness (B5 / EPIC-13).** `internal/cluster` coordinates the
+  background jobs through PostgreSQL advisory locks, so each runs once across
+  the cluster rather than once per instance: **schema migration** takes a
+  *blocking* lock (a second instance starting simultaneously waits rather than
+  racing the same migration), while **key rotation**, **used-token pruning**,
+  the **audit-chain integrity scan** and the **shared-state sweep** take a
+  try-lock per tick. Webhook delivery is deliberately left uncoordinated — the
+  outbox already claims rows with `FOR UPDATE SKIP LOCKED`, so every instance
+  dispatching is throughput, not duplication. There is no leader to elect or
+  fail over: whoever wins the tick does the work, and a crashed winner costs one
+  interval. Locks are taken on a **dedicated pinned connection**, because a
+  session-level advisory lock belongs to the connection that took it and a
+  pooled one would return to the pool still holding it.
+  `GET /health/readiness` now reports the database, the signing key and the
+  shared-state backend by name, so a load balancer removes an instance that
+  booted but cannot mint a token — and says which dependency failed.
+  `deploy/caddy/socrate-ha.caddy` and a new runbook section cover the Caddy
+  side. Gated on `STATE_BACKEND=postgres`; a single-instance deployment on the
+  default in-memory backend behaves exactly as before.
 - **Performance baseline (B6).** k6 scenarios in `deploy/perf/` (`discovery`,
   `token_refresh`, `login`, `client_credentials`, `introspect`) with a runner,
   a seeder, and **measured** numbers published in
@@ -46,33 +65,6 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
   password login p95 **93 ms** (bcrypt cost 10). All scenarios use k6's
   constant-arrival-rate executor, so a saturated endpoint shows as rising
   latency rather than as quietly reduced load.
-
-### Fixed
-
-- **A fresh install could not boot with `AUTO_MIGRATE=true`.** Migration `0005`
-  creates `magic_link_tokens` with a unique constraint named
-  `uq_magic_link_token_hash`, while the GORM model tags `TokenHash` with
-  `uniqueIndex` and so expects `uni_magic_link_tokens_token_hash`. On a brand-new
-  database `migrate.Run` creates the table first, then `AutoMigrate` issues
-  `ALTER TABLE magic_link_tokens DROP CONSTRAINT uni_magic_link_tokens_token_hash`
-  for a constraint that does not exist — SQLSTATE 42704, fatal at startup. This
-  is the documented first-deploy path, so a new install failed to start.
-  Migration `0022` renames the constraint to the name GORM derives; guarded both
-  ways, so it is a no-op on databases that already agree. Found while building
-  the B6 baseline, and verified by booting against an empty database.
-
-### Changed
-
-- **Documented: client-secret verification is bcrypt cost 12 (~273 ms), which
-  caps every confidential-client endpoint at ~14 requests/second per 4 vCPU.**
-  That covers `client_credentials`, `introspect`, `revoke`, and the
-  authorization-code and refresh grants for confidential clients. Public clients
-  (PKCE) skip it entirely and run roughly 12x faster. No behaviour is changed
-  here — the finding, its measurement and the options (a keyed hash over a
-  high-entropy secret, or cost 10) are written up in
-  `docs/PERFORMANCE-BASELINE.md` so the tradeoff is decided deliberately rather
-  than inherited.
-
 - **Shared state for multi-instance deployments (B4 / EPIC-13).**
   `STATE_BACKEND=memory|postgres` (default `memory`, unchanged behaviour) moves
   the rate-limit counters and the DPoP replay cache into the database already
@@ -177,7 +169,6 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
   `docs/OBSERVABILITY.md`.
 - **Log redaction guard (plan B3).** `pkg/logger/redaction_guard_test.go` fails
   the build when any log call in the tree carries a secret-bearing expression.
-
 - **Per-client scope policy (A1, closes P3-8).** Clients carry an
   `allowed_scopes` list (admin API `POST/PUT /api/admin/apps`, `allowed_scopes`
   in the response). `SCOPE_POLICY_MODE=off|observe|enforce` (default `off`)
@@ -186,6 +177,32 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
   security event in `observe` and `enforce`, and `invalid_scope` in `enforce`.
   An empty list means unrestricted, so existing registrations are unaffected.
   Policy entries must be supported scopes. Schema step `0015` adds the column.
+
+### Fixed
+
+- **A fresh install could not boot with `AUTO_MIGRATE=true`.** Migration `0005`
+  creates `magic_link_tokens` with a unique constraint named
+  `uq_magic_link_token_hash`, while the GORM model tags `TokenHash` with
+  `uniqueIndex` and so expects `uni_magic_link_tokens_token_hash`. On a brand-new
+  database `migrate.Run` creates the table first, then `AutoMigrate` issues
+  `ALTER TABLE magic_link_tokens DROP CONSTRAINT uni_magic_link_tokens_token_hash`
+  for a constraint that does not exist — SQLSTATE 42704, fatal at startup. This
+  is the documented first-deploy path, so a new install failed to start.
+  Migration `0022` renames the constraint to the name GORM derives; guarded both
+  ways, so it is a no-op on databases that already agree. Found while building
+  the B6 baseline, and verified by booting against an empty database.
+
+### Changed
+
+- **Documented: client-secret verification is bcrypt cost 12 (~273 ms), which
+  caps every confidential-client endpoint at ~14 requests/second per 4 vCPU.**
+  That covers `client_credentials`, `introspect`, `revoke`, and the
+  authorization-code and refresh grants for confidential clients. Public clients
+  (PKCE) skip it entirely and run roughly 12x faster. No behaviour is changed
+  here — the finding, its measurement and the options (a keyed hash over a
+  high-entropy secret, or cost 10) are written up in
+  `docs/PERFORMANCE-BASELINE.md` so the tradeoff is decided deliberately rather
+  than inherited.
 
 ### Security
 

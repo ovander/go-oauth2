@@ -643,6 +643,87 @@ curl -s -o /dev/null -w '%{http_code}\n' 'https://admin.example.com/api/admin/%2
 
 ---
 
+## 8bis. Running two Socrate instances (B5)
+
+One instance is the documented default and is what most deployments should run.
+Add a second only when you need redundancy or headroom — and read this section
+first, because a second instance is **not** a matter of starting the binary
+twice.
+
+### The two prerequisites
+
+**1. `STATE_BACKEND=postgres` on every instance.** With the default in-memory
+backend, two instances each keep their own copy of the security state:
+
+- a rate limit of 5/min becomes 10/min, because each counts only what it saw;
+- **a DPoP proof replayed against the other instance is accepted**, because the
+  one that saw it first is the only one that remembers the `jti`.
+
+The second is a security hole, not a capacity nuisance. Never run two instances
+on the in-memory backend.
+
+**2. `TRUSTED_PROXIES` set to Caddy's address** on both. Otherwise every request
+attributes to the proxy, and rate limits and IP blocks collapse into a single
+global bucket that any one user can exhaust for everybody.
+
+Then both instances point at the same `DATABASE_URL`, and Caddy load balances
+only the **public** port. The admin API stays on loopback, per instance, and is
+never fronted.
+
+### What coordinates itself
+
+With `STATE_BACKEND=postgres`, the background jobs elect a runner per tick
+through a PostgreSQL advisory lock, so each runs once across the cluster rather
+than once per instance:
+
+| Job | Coordination |
+|---|---|
+| Schema migration | **Blocking** lock — a second instance starting at the same time waits, then finds the work already done |
+| Signing-key rotation | Try-lock per tick — one rotation per interval cluster-wide, not N |
+| Used-token pruning | Try-lock per tick |
+| Audit-chain integrity scan | Try-lock per tick |
+| Shared-state sweep | Try-lock per tick |
+| **Webhook delivery** | **Deliberately not locked** — the outbox already claims rows with `FOR UPDATE SKIP LOCKED`, so every instance should dispatch; that is throughput, not duplication |
+
+There is no leader to elect or fail over. Each instance tries on every tick and
+one wins; if the winner dies mid-job, its connection drops, the lock vanishes,
+and the next tick is contested normally. A crashed instance costs one interval.
+
+### Caddy
+
+Use [`deploy/caddy/socrate-ha.caddy`](../deploy/caddy/socrate-ha.caddy). It
+health-checks `/health/readiness`, which now reports the database, the signing
+key and the shared-state backend by name — so an instance that booted but cannot
+mint a token is taken out of rotation instead of serving errors:
+
+```json
+{"status":"ok","checks":{"database":"ok","signing_key":"ok","shared_state":"ok"}}
+```
+
+A failing check returns `503` with the same shape, naming what is wrong.
+
+`lb_policy round_robin` spreads load; `first` gives an active/passive pair where
+the second instance only takes over on failure.
+
+### Verifying it before you trust it
+
+With `RATE_LIMIT_LOGIN=5`, send six failing logins alternating between the two
+instances. Requests 1–5 must return `401` and request 6 must return `429`. If
+you get six `401`s, the instances are not sharing state — check
+`STATE_BACKEND` on **both**.
+
+For key rotation, set `KEY_ROTATION_INTERVAL_SECONDS` low on a scratch database,
+run both at `LOG_LEVEL=debug`, and confirm one instance logs
+`another instance holds the job lock for this tick` while the number of retired
+keys grows by exactly one per interval — not two.
+
+### Sizing
+
+See [`PERFORMANCE-BASELINE.md`](PERFORMANCE-BASELINE.md). Note especially that
+client-secret verification is bcrypt-bound at ~14 requests/second per 4 vCPU, so
+for confidential-client traffic a second instance buys close to linear headroom —
+it is CPU you are adding, which is exactly what that path is short of.
+
 ## 9. Security checklist (suite-wide)
 
 - [ ] `ufw`: 22/80/443 only; every service bound to `127.0.0.1`.

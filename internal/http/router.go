@@ -60,12 +60,12 @@ func corsHandler(config RouterConfig) func(http.Handler) http.Handler {
 
 type RouterConfig struct {
 	AllowedOrigins    []string
-	LoginRateLimiter  *middleware.RateLimiter
-	SignupRateLimiter *middleware.RateLimiter
+	LoginRateLimiter  middleware.Limiter
+	SignupRateLimiter middleware.Limiter
 	// MED-05: TokenRateLimiter throttles POST /oauth/token to prevent
 	// authorization-code brute-force, refresh-token scanning, and client
 	// credential password-spraying.  Keyed by client IP.  Nil disables.
-	TokenRateLimiter *middleware.RateLimiter
+	TokenRateLimiter middleware.Limiter
 	IPBlockChecker   *middleware.IPBlockChecker // Optional: nil disables IP blocking
 	// TrustedProxyCIDRs lists upstream proxies whose X-Forwarded-For / X-Real-IP
 	// headers are trusted for real-IP extraction.  Leave nil to always use

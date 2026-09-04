@@ -214,6 +214,59 @@ is disabled, proxy environment variables are ignored, each attempt is bounded by
 `WEBHOOK_SEND_TIMEOUT` (default 5s), and the response body is discarded after a
 bounded read.
 
+## Shared state — running more than one instance (B4)
+
+Several controls keep state in the process. On one instance that is correct and
+fastest, and `STATE_BACKEND=memory` (the default) keeps it that way. On N
+instances the controls quietly weaken:
+
+- a rate limit of 5/min becomes **5N/min**, because each instance counts only
+  the requests it happened to receive;
+- a DPoP proof replayed against a **different** instance is accepted, because
+  the instance that saw it first is the only one that remembers the `jti`.
+
+The second is a security hole, not a performance wrinkle. `STATE_BACKEND=postgres`
+moves both into the database that is already configured — no new infrastructure:
+
+| State | Memory | Postgres |
+|---|---|---|
+| Rate-limit counters (login, signup, token) | per instance | shared, `rate_limit_counters` |
+| DPoP replay cache (`jti`) | per instance | shared, `dpop_replay` |
+
+Both tables are `UNLOGGED` (migrations `0020`/`0021`): the data is ephemeral and
+reconstructible, so skipping the WAL keeps a per-request counter cheap. The cost
+— truncation on an unclean shutdown — is the same guarantee memory gives on
+restart.
+
+**Two deliberate differences from the in-memory behaviour**, both worth knowing
+before you flip the switch:
+
+1. **Fixed windows, not sliding.** A sliding window needs a timestamp per
+   request, which is a row per request in a shared store. The known consequence
+   is that a caller can send `limit` requests at the end of one window and
+   `limit` more at the start of the next, so the true worst case is **2×limit**
+   across a boundary.
+2. **The rate limiter fails open; the replay store fails closed.** If the store
+   is unreachable the limiter allows the request and logs at error level —
+   because the endpoints it guards all need the same database, so there is
+   nothing left to brute-force, and failing closed would turn a database blip
+   into a self-inflicted outage. The replay store fails closed, because there
+   its failure mode really would drop a security guarantee.
+
+`STATE_SWEEP_INTERVAL` evicts expired rows; the stores are correct without it
+(every read filters on expiry) so it only bounds table growth.
+`STATE_OP_TIMEOUT_MS` bounds one round trip.
+
+**Still per-instance:** auto-defense's failed-login counters
+(`AutoDefenseService.ipRecords`). Its record is two sliding windows plus a block
+escalation count rather than a single counter, so folding it into this interface
+needs its own design pass — deferred rather than bodged. The *blocks* it
+produces are already shared, since they are rows in `blocked_ips`; only the
+pre-block counting is local, which makes brute-force escalation N times slower
+to trigger across N instances.
+
 ## Next
 
 - **A4 policy decision point** (shadow first), **A5** hosted-page branding.
+- **B5 multi-instance readiness** — advisory-lock-guarded key rotation and
+  leader-elected sweepers, which is what B4 unblocks.

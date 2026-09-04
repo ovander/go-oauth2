@@ -64,7 +64,7 @@ Caps: 32 attributes / 4 KB per user, 2 KB of custom claims per token — over th
 dropped whole and logged at error level rather than truncated. The backendkit `jwtauth` accessor
 is a follow-up PR in that repo.
 
-### A3. Webhooks with a transactional outbox — **M/L** — ◧ part 1 of 2 delivered
+### A3. Webhooks with a transactional outbox — **M/L** — ✅ delivered
 - `webhook_subscriptions` (per app or global-admin; URL, secret, event filter, active) and
   `webhook_deliveries` (outbox: event id, payload, attempts, next_attempt, last_status).
 - Events are written to the outbox **in the same transaction** as the security audit row
@@ -98,10 +98,17 @@ exists; `login.mfa_required` is `login.mfa_policy_violation`, matching the audit
 event. Added beyond the plan: `token.exchanged` and five `security.*` events
 that were already audited and are exactly what a SOC subscriber wants.
 
-**Part 2 (next).** The dispatcher: `FOR UPDATE SKIP LOCKED` claiming,
-HMAC-SHA256 over `timestamp.body` in `X-Socrate-Signature`, exponential backoff,
-dead-lettering after N attempts, connect-time re-resolution through the same
-SSRF guard, no redirects, 5 s timeout, response body discarded.
+**Part 2 (delivered).** The dispatcher: `FOR UPDATE SKIP LOCKED` claiming under
+a lease, HMAC-SHA256 over `timestamp.body` in `X-Socrate-Signature`, exponential
+backoff (30s → 15m cap), dead-lettering after `WEBHOOK_MAX_ATTEMPTS`,
+connect-time re-resolution through the same SSRF guard with the dial pinned to
+the checked IP, no redirects, bounded timeout, response body discarded.
+Additions beyond the plan: `410 Gone` is honoured as a terminal unsubscribe
+rather than retried to the limit; a deleted or deactivated subscription
+dead-letters its queued rows instead of retrying forever; and dead deliveries
+are replayable from the admin API. Delivery is at-least-once by construction —
+the lease means a crashed pass retries rather than drops — so the payload's
+stable `event_id` is the subscriber's deduplication key.
 
 ### A4. Policy decision point, shadow first (EPIC-10 / RFC-005) — **L**
 - Contract (small on purpose):

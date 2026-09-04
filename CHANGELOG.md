@@ -36,6 +36,25 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ### Added
 
+- **Outbound webhooks — the delivery dispatcher (A3, part 2 of 2).** The outbox
+  is now drained. A pass claims due deliveries with
+  `SELECT … FOR UPDATE SKIP LOCKED` under a lease, so several instances can
+  dispatch concurrently without double-sending, and a process that dies
+  mid-flight releases its rows instead of stranding them (delivery is
+  at-least-once — deduplicate on `event_id`). Each request is signed
+  `X-Socrate-Signature: t=<unix>,v1=<hex>` — HMAC-SHA256 over `<t>.<raw body>`,
+  with the timestamp inside the signed material so a captured delivery cannot be
+  replayed indefinitely — alongside `X-Socrate-Event`, `X-Socrate-Delivery` and
+  `X-Socrate-Attempt`. A `2xx` is terminal success; `410 Gone` is taken as "stop
+  sending" and dead-letters immediately; anything else retries with 30s → 1m →
+  2m → 4m → 8m backoff capped at 15 minutes, dead-lettering after
+  `WEBHOOK_MAX_ATTEMPTS` (default 6). Dead deliveries are kept for inspection and
+  replayable via `POST /api/admin/webhooks/deliveries/{id}/requeue`. The send
+  path re-applies the SSRF guard **at connect time** and dials by the checked IP,
+  so DNS cannot change between check and connect; redirects are refused outright,
+  connection reuse and proxies are disabled, each attempt is bounded by
+  `WEBHOOK_SEND_TIMEOUT`, and the response body is discarded after a bounded
+  read. `WEBHOOKS_MODE=off` (default) starts no dispatcher.
 - **Outbound webhooks — subscriptions and the transactional outbox (A3, part 1
   of 2).** Operators can register delivery targets
   (`/api/admin/webhooks`, global admin + fresh step-up) with an event filter

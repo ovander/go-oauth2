@@ -165,11 +165,55 @@ Secrets are generated server-side, returned once, stored encrypted with
 registering a subscription is refused rather than storing a signing key in the
 clear. Every subscription change is in the admin audit trail.
 
-> **Delivery is the next slice.** This one lands the subscriptions, the
-> transactional outbox and the admin API; rows accumulate as `pending`. The
-> dispatcher — `FOR UPDATE SKIP LOCKED` claiming, HMAC-SHA256
-> `X-Socrate-Signature`, exponential backoff, dead-lettering — follows.
+### Delivery
+
+The dispatcher drains the outbox on a timer (`WEBHOOK_POLL_INTERVAL`, default
+10s). A pass claims up to `WEBHOOK_BATCH_SIZE` due rows with
+`SELECT … FOR UPDATE SKIP LOCKED`, so several instances can run it concurrently
+and each gets a disjoint batch instead of double-sending. Claimed rows are
+leased; if a process dies mid-flight the row becomes due again rather than being
+lost. **Delivery is therefore at-least-once** — deduplicate on `event_id`.
+
+Each request carries:
+
+```
+POST /your/endpoint
+Content-Type: application/json
+X-Socrate-Event: login.failed
+X-Socrate-Delivery: 8412
+X-Socrate-Attempt: 1
+X-Socrate-Signature: t=1788529010,v1=6f1c…
+```
+
+The signature is `HMAC-SHA256(secret, "<t>.<raw body>")`, hex-encoded. **Verify
+over the raw bytes before parsing**, compare in constant time, and reject a `t`
+outside your tolerance — the timestamp is inside the signed material precisely
+so a captured delivery is not replayable forever. `service.VerifySignature` is
+the reference implementation.
+
+Outcomes:
+
+| Response | Result |
+|---|---|
+| `2xx` | delivered (terminal) |
+| `410 Gone` | dead-lettered immediately — taken as "stop sending" |
+| any other status, or a transport error | retried |
+| subscription deleted or deactivated | dead-lettered |
+
+Retries back off 30s → 1m → 2m → 4m → 8m, capped at 15 minutes, and after
+`WEBHOOK_MAX_ATTEMPTS` (default 6) the delivery is **dead-lettered**: kept, never
+silently dropped, visible at `GET /api/admin/webhooks/deliveries?status=dead` and
+replayable with `POST /api/admin/webhooks/deliveries/{id}/requeue`.
+
+The send path re-applies the SSRF guard **at connect time**, not just at
+registration: every connection is checked against the address actually being
+dialled, then dialled by IP so nothing can change between the check and the
+connect. Redirects are refused outright (a public URL that 302s to
+`http://127.0.0.1:8081/` would otherwise undo the whole guard), connection reuse
+is disabled, proxy environment variables are ignored, each attempt is bounded by
+`WEBHOOK_SEND_TIMEOUT` (default 5s), and the response body is discarded after a
+bounded read.
 
 ## Next
 
-- **A3 dispatcher** — claim, sign, send, retry, dead-letter.
+- **A4 policy decision point** (shadow first), **A5** hosted-page branding.

@@ -59,6 +59,9 @@ type App struct {
 	// webhookCacheStop stops the webhook subscription cache refresh (A3).
 	// Nil when webhooks are disabled (WEBHOOKS_MODE=off).
 	webhookCacheStop func()
+	// webhookDispatchStop stops the webhook delivery dispatcher (A3 part 2).
+	// Nil when webhooks are disabled.
+	webhookDispatchStop func()
 	// dpopReplayCache backs DPoP observe-mode replay detection; nil when DPoP is
 	// off. Stopped on shutdown.
 	dpopReplayCache *dpop.MemoryReplayCache
@@ -222,6 +225,9 @@ func (a *App) Stop() {
 	if a.webhookCacheStop != nil {
 		a.webhookCacheStop()
 	}
+	if a.webhookDispatchStop != nil {
+		a.webhookDispatchStop()
+	}
 	if a.dpopReplayCache != nil {
 		a.dpopReplayCache.Stop()
 	}
@@ -371,11 +377,24 @@ func Bootstrap(cfg *config.Config) *App {
 	if setter, ok := auditRepoBase.(repository.AuditOutboxSetter); ok {
 		setter.SetOutboxWriter(service.NewWebhookOutbox(webhookService, cfg.WebhooksEnabled))
 	}
+	var webhookDispatchStop func()
 	if cfg.WebhooksEnabled {
 		webhookCacheStop = webhookService.StartCacheRefresh(cfg.WebhookCacheRefresh)
+		// A3 part 2: drain the outbox. Claiming uses FOR UPDATE SKIP LOCKED, so
+		// several instances can run this concurrently without double-sending.
+		webhookDispatchStop = service.NewWebhookDispatcher(webhookRepo, webhookService, service.DispatcherConfig{
+			MaxAttempts:  cfg.WebhookMaxAttempts,
+			BatchSize:    cfg.WebhookBatchSize,
+			PollInterval: cfg.WebhookPollInterval,
+			SendTimeout:  cfg.WebhookSendTimeout,
+		}).Start()
 		logger.WithFields(logger.Fields{
 			"cache_refresh": cfg.WebhookCacheRefresh.String(),
-		}).Info("A3: webhook outbox enabled")
+			"poll_interval": cfg.WebhookPollInterval.String(),
+			"max_attempts":  cfg.WebhookMaxAttempts,
+			"batch_size":    cfg.WebhookBatchSize,
+			"send_timeout":  cfg.WebhookSendTimeout.String(),
+		}).Info("A3: webhook outbox and dispatcher enabled")
 	}
 
 	// RFC-007: optionally run the audit-row integrity scan on a timer. Disabled
@@ -791,6 +810,7 @@ func Bootstrap(cfg *config.Config) *App {
 			auditIntegrityStop:   auditIntegrityStop,
 			usedTokenCleanupStop: usedTokenCleanupStop,
 			webhookCacheStop:     webhookCacheStop,
+			webhookDispatchStop:  webhookDispatchStop,
 			dpopReplayCache:      dpopReplayCache,
 		}
 	}
@@ -832,6 +852,7 @@ func Bootstrap(cfg *config.Config) *App {
 		auditIntegrityStop:   auditIntegrityStop,
 		usedTokenCleanupStop: usedTokenCleanupStop,
 		webhookCacheStop:     webhookCacheStop,
+		webhookDispatchStop:  webhookDispatchStop,
 		dpopReplayCache:      dpopReplayCache,
 	}
 }

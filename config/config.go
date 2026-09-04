@@ -149,6 +149,12 @@ type Config struct {
 	// verifying their resource identifier while client_id verifiers keep working).
 	// Canonical-only enforcement is a later (Wave 2) step. AUDIENCE_MODE.
 	AudienceMode string
+	// ClaimsNamespace prefixes every custom claim a client's claim-mapping
+	// policy projects into its tokens (A2). Namespacing is what keeps a mapping
+	// from shadowing a registered or standard claim: a mapping named `role`
+	// becomes `https://socrate/role`. CLAIMS_NAMESPACE; defaults to
+	// auth.DefaultClaimsNamespace.
+	ClaimsNamespace string
 	// SecretKeyBase is a cryptographic secret (≥32 bytes in production) used
 	// for two purposes:
 	//   1. CSRF cookie signing in the OAuth authorization handler (CRIT-03):
@@ -304,6 +310,7 @@ func Load() *Config {
 		RefreshReuseMode:        normalizeStepUpMode(getEnv("REFRESH_REUSE_MODE", "off")),
 		ScopePolicyMode:         normalizeStepUpMode(getEnv("SCOPE_POLICY_MODE", "off")),
 		AudienceMode:            normalizeAudienceMode(getEnv("AUDIENCE_MODE", "off")),
+		ClaimsNamespace:         getEnv("CLAIMS_NAMESPACE", ""),
 
 		// Rate Limiting
 		// LOW-03 fix: window env vars now have an explicit _MS suffix so

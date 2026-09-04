@@ -329,6 +329,14 @@ func Bootstrap(cfg *config.Config) *App {
 		InviteTokenTTL:  cfg.InviteTokenTTL,
 		AudienceMode:    cfg.AudienceMode, // RFC-001 / EPIC-7
 	})
+	// A2: project each client's claim-mapping policy into its tokens, under a
+	// namespace so a mapping can never shadow a standard claim. Inert until a
+	// client registers a mapping.
+	claimsEnricher := auth.NewMappingEnricher(cfg.ClaimsNamespace)
+	tokenService.SetClaimsEnricher(claimsEnricher)
+	logger.WithFields(logger.Fields{
+		"claims_namespace": claimsEnricher.Namespace(),
+	}).Info("A2: custom claim mapping enabled")
 
 	// ==========================================
 	// Repositories

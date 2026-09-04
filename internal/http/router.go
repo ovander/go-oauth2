@@ -500,6 +500,9 @@ func newAdminRouter(
 				r.With(adminScope).Get("/", adminHandler.GetUser)
 				r.With(adminScope).Delete("/", adminHandler.DeleteUser)
 				r.With(adminScope).Get("/apps", adminHandler.GetUserApps)
+				// A2: free-form attributes a client can project into its
+				// tokens via a claim mapping. Global-admin only, audited.
+				r.With(adminScope).Put("/attributes", adminHandler.UpdateUserAttributes)
 				// Monitoring console: inspect a user's sessions, revoke their tokens.
 				r.With(monRead).Get("/sessions", monitoringHandler.GetUserSessions)
 				// Destructive: require fresh step-up (revokes all of a user's tokens).

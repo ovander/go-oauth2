@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ovandermoten/go-oauth2/internal/dto"
@@ -171,6 +173,13 @@ func (s *userService) Update(ctx context.Context, id uint, req dto.UpdateUserReq
 	if req.Timezone != nil {
 		user.Timezone = req.Timezone
 	}
+	// A2: replace the attribute set wholesale — an empty object clears it.
+	if req.Attributes != nil {
+		if err := validateUserAttributes(*req.Attributes); err != nil {
+			return nil, err
+		}
+		user.Attributes = *req.Attributes
+	}
 
 	user.UpdatedAt = time.Now()
 
@@ -179,6 +188,39 @@ func (s *userService) Update(ctx context.Context, id uint, req dto.UpdateUserReq
 	}
 
 	return user, nil
+}
+
+// Attribute bounds (A2). Attributes are projected into tokens via claim
+// mappings, so an unbounded attribute set would be an unbounded token; these
+// limits are the first line of defence, with the issuance-time size cap
+// (auth.MaxCustomClaimsBytes) as the second.
+const (
+	MaxUserAttributes    = 32
+	MaxUserAttributeName = 64
+	MaxUserAttributeSize = 4096
+)
+
+// validateUserAttributes bounds the attribute set an admin may store on a user.
+func validateUserAttributes(attrs model.JSONMap) error {
+	if len(attrs) > MaxUserAttributes {
+		return fmt.Errorf("%w: at most %d attributes", ErrInvalidUserAttributes, MaxUserAttributes)
+	}
+	for name := range attrs {
+		if name == "" {
+			return fmt.Errorf("%w: empty attribute name", ErrInvalidUserAttributes)
+		}
+		if len(name) > MaxUserAttributeName {
+			return fmt.Errorf("%w: attribute name %q exceeds %d characters", ErrInvalidUserAttributes, name, MaxUserAttributeName)
+		}
+	}
+	encoded, err := json.Marshal(map[string]any(attrs))
+	if err != nil {
+		return fmt.Errorf("%w: not serializable: %s", ErrInvalidUserAttributes, err)
+	}
+	if len(encoded) > MaxUserAttributeSize {
+		return fmt.Errorf("%w: attribute set exceeds %d bytes", ErrInvalidUserAttributes, MaxUserAttributeSize)
+	}
+	return nil
 }
 
 func (s *userService) UpdateProfile(ctx context.Context, userID uint, req dto.UpdateProfileRequest) (*model.User, error) {

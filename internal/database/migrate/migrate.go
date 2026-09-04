@@ -360,6 +360,35 @@ var migrations = []Migration{
 			return db.Exec("ALTER TABLE apps ADD COLUMN allowed_scopes TEXT[] NOT NULL DEFAULT '{}'").Error
 		},
 	},
+	{
+		ID:   "0016",
+		Name: "add_users.attributes",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("users") {
+				return nil
+			}
+			if db.Migrator().HasColumn(&model.User{}, "attributes") {
+				return nil
+			}
+			// Empty object = no attributes, so every existing user is unaffected.
+			return db.Exec("ALTER TABLE users ADD COLUMN attributes JSONB NOT NULL DEFAULT '{}'").Error
+		},
+	},
+	{
+		ID:   "0017",
+		Name: "add_apps.claim_mappings",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("apps") {
+				return nil
+			}
+			if db.Migrator().HasColumn(&model.App{}, "claim_mappings") {
+				return nil
+			}
+			// Empty object = no custom claims, so every existing client keeps
+			// receiving exactly the standard claim set.
+			return db.Exec("ALTER TABLE apps ADD COLUMN claim_mappings JSONB NOT NULL DEFAULT '{}'").Error
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

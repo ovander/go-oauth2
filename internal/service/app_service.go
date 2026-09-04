@@ -76,6 +76,10 @@ func (s *appService) Create(ctx context.Context, req dto.CreateAppRequest, owner
 	if err := validateScopeNames(req.AllowedScopes); err != nil {
 		return nil, "", err
 	}
+	// A2: a claim mapping may only name a supported source and target.
+	if err := model.ValidateClaimMappings(req.ClaimMappings); err != nil {
+		return nil, "", fmt.Errorf("%w: %s", ErrInvalidClaimMapping, err)
+	}
 
 	// Generate client ID
 	clientID, err := generateSecureToken(16)
@@ -122,6 +126,7 @@ func (s *appService) Create(ctx context.Context, req dto.CreateAppRequest, owner
 		AllowImpersonation: req.AllowImpersonation,
 		Audiences:          model.StringArray(req.Audiences),
 		AllowedScopes:      model.StringArray(req.AllowedScopes),
+		ClaimMappings:      req.ClaimMappings,
 		Active:             true,
 		URL:                req.URL,
 		RedirectURIs:       model.StringArray(req.RedirectURIs),
@@ -172,6 +177,12 @@ func (s *appService) Update(ctx context.Context, id uint, req dto.UpdateAppReque
 			return nil, err
 		}
 		app.AllowedScopes = model.StringArray(*req.AllowedScopes)
+	}
+	if req.ClaimMappings != nil {
+		if err := model.ValidateClaimMappings(*req.ClaimMappings); err != nil {
+			return nil, fmt.Errorf("%w: %s", ErrInvalidClaimMapping, err)
+		}
+		app.ClaimMappings = *req.ClaimMappings
 	}
 
 	app.UpdatedAt = time.Now()

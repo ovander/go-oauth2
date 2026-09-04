@@ -136,6 +136,7 @@ What is in the code today (every item below is routed, tested and documented in 
 - Introspection RFC 7662, revocation RFC 7009, end-session
 - Audience binding (`dual` mode), RS256 key rotation with JWKS ring
 - Confidential + public clients, exact redirect URIs, per-client PKCE/DPoP
+- Per-client scope policy (`off/observe/enforce`) and declarative custom claims
 
 </td>
 <td valign="top" width="33%">
@@ -166,6 +167,7 @@ What is in the code today (every item below is routed, tested and documented in 
 - Rate limiting, IP blocking, auto-defense (brute-force escalation), trusted-proxy model
 - Security events, threat metrics, GeoIP analytics, sessions, token stats
 - Alert rules + history, security reports (JSON/CSV), live SSE event stream
+- Prometheus metrics on the admin port, with alert rules and a Grafana dashboard
 - Two operator consoles on a token-less BFF model
 
 </td>
@@ -222,8 +224,8 @@ a single-instance, production-capable identity server with two operator consoles
 **Honest limitations:** single-instance only (rate-limit, replay and IP-block state is in-process;
 BFF sessions can be in Postgres). Not implemented: Device Flow, CIBA, PAR/JAR, FAPI profiles,
 dynamic client registration, back-channel/front-channel logout, persisted consent, federation to
-upstream IdPs (social login, SAML, LDAP), passkeys/WebAuthn, SCIM, per-client allowed-scope policy,
-Prometheus/OpenTelemetry metrics, an OpenAPI document.
+upstream IdPs (social login, SAML, LDAP), passkeys/WebAuthn, SCIM, outbound webhooks,
+OpenTelemetry tracing, an OpenAPI document.
 
 ## Quick start
 
@@ -331,6 +333,8 @@ sequenceDiagram
 **Deploy & operate** — [Linux VPS + Postgres + Caddy, multi-app runbook](docs/DEPLOYMENT-VPS-MULTI-APP.md) · [Revocation & freshness SLA](docs/REVOCATION-FRESHNESS-SLA.md) · [Alert rules](docs/ALERT-RULES.md) · [Geo analytics](docs/CR-geo-analytics-api.md)
 
 **Architecture** — [Reference architecture](docs/PLATFORM-REFERENCE-ARCHITECTURE.md) · [Auth flows](docs/CR-oauth2-auth-flows.md)
+
+**Extend & observe** — [Hooks, scope policy, custom claims](docs/EXTENSIBILITY.md) · [Metrics & log schema](docs/OBSERVABILITY.md)
 
 **Security** — [Audit pass 4 (scored)](docs/CR-socrate-suite-security-pass4.md) · [passes 1–3](docs/) · [Remediation ledger](docs/CR-socrate-suite-remediation-plan.md) · [Zero-Trust verification](docs/CR-platform-zero-trust-verification.md)
 

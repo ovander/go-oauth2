@@ -44,8 +44,13 @@ type User struct {
 	PasswordChangedAt   *time.Time     `gorm:"column:password_changed_at" json:"-"`
 	// MFASecret is the user's TOTP secret, stored encrypted at rest
 	// (auth.EncryptSecret). Empty when MFA is not enrolled. Never serialized.
-	MFASecret  string    `gorm:"column:mfa_secret" json:"-"`
-	MFAEnabled bool      `gorm:"column:mfa_enabled;default:false" json:"mfa_enabled"`
+	MFASecret  string `gorm:"column:mfa_secret" json:"-"`
+	MFAEnabled bool   `gorm:"column:mfa_enabled;default:false" json:"mfa_enabled"`
+	// Attributes is free-form per-user data an operator attaches to the user
+	// (tier, cost centre, employee number, …). It is never put in a token by
+	// itself: a client must opt in by declaring a claim mapping that names
+	// `user.attributes.<key>` (A2). Empty by default.
+	Attributes JSONMap   `gorm:"type:jsonb;column:attributes" json:"attributes,omitempty"`
 	CreatedAt  time.Time `gorm:"column:inserted_at" json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }

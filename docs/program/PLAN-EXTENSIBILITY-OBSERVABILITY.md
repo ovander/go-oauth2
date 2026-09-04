@@ -43,7 +43,7 @@ how often they block a real deployment:
 - Discovery unchanged (`scopes_supported` stays global).
 - Tests: each grant × mode; refresh cannot re-widen; observe emits exactly one audit row.
 
-### A2. Custom claims via declarative mapping — **M**
+### A2. Custom claims via declarative mapping — **M** — ✅ delivered
 - `users.attributes jsonb` (admin-editable, per-app-admin editable for their members) and
   `apps.claim_mappings jsonb`: `{"tenant_id": "user.attributes.tenant_id", "plan": "app_role"}`.
 - Sources allowed: `user.attributes.*`, `user.email/name`, `app_role`, `app.id/client_id`,
@@ -53,6 +53,16 @@ how often they block a real deployment:
   the mapping enricher is the first implementation, A6 hooks are the second.
 - backendkit `jwtauth`: `SocrateClaims.Custom map[string]any` + `ctxutil` accessor.
 - Tests: mapping resolution table, namespace collision refused, size cap (token stays < 4 KB).
+
+**As delivered.** Migrations `0016`/`0017`; sources also include `user.id`; mappings accept a
+bare-string shorthand (`"tier": "user.attributes.tier"`) alongside the object form; attributes
+are set via `PUT /api/admin/users/{id}/attributes` (global admin, audited by attribute *name*)
+rather than by app admins — per-app-admin editing is deferred until per-app attribute scoping
+exists. The enricher hangs off `TokenService.SetClaimsEnricher` (a setter, not a constructor
+argument, so no existing call site changed) and is consulted for both the access and ID tokens.
+Caps: 32 attributes / 4 KB per user, 2 KB of custom claims per token — over the cap the set is
+dropped whole and logged at error level rather than truncated. The backendkit `jwtauth` accessor
+is a follow-up PR in that repo.
 
 ### A3. Webhooks with a transactional outbox — **M/L**
 - `webhook_subscriptions` (per app or global-admin; URL, secret, event filter, active) and

@@ -19,6 +19,10 @@ const (
 	AdminActionDeleteSuperadmin   AdminAction = "delete_superadmin"
 	AdminActionDeleteUser         AdminAction = "delete_user"
 	AdminActionBlockUser          AdminAction = "block_user"
+	// AdminActionUpdateUserAttributes records a change to a user's free-form
+	// attributes (A2). Attributes can be projected into tokens via a client's
+	// claim mappings, so every change is audited.
+	AdminActionUpdateUserAttributes AdminAction = "update_user_attributes"
 )
 
 type AdminLog struct {

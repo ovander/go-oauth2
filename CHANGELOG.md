@@ -36,6 +36,24 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ### Added
 
+- **Custom claims via declarative mapping (A2).** A client can declare
+  `claim_mappings` (admin API `POST/PUT /api/admin/apps`) projecting
+  server-held values into its tokens: `user.attributes.<key>`, `user.email`,
+  `user.name`, `user.id`, `app_role`, `app.id`, `app.client_id` or a
+  `literal:` constant, targeted at the access token, the ID token or both.
+  Per-user values come from a new free-form attribute set, replaced through
+  `PUT /api/admin/users/{id}/attributes` (global admin only; audited as
+  `update_user_attributes`, recording attribute names, never values).
+  Every mapped claim is namespaced with `CLAIMS_NAMESPACE` (default
+  `https://socrate/`) and the merge refuses any name already present, so a
+  mapping can never shadow or overwrite a registered claim. Bounded on both
+  sides: 32 attributes / 4 KB per user, 2 KB of custom claims per token —
+  over the cap the custom claims are dropped whole and logged, and the token
+  is still issued with the standard claim set. Unsupported sources, unknown
+  targets and unusable claim names are refused at write time. Schema steps
+  `0016` (`users.attributes`) and `0017` (`apps.claim_mappings`), both jsonb
+  defaulting to `{}`, so every existing client and user is unaffected. See
+  `docs/EXTENSIBILITY.md`.
 - **In-process hooks (A6).** `internal/hooks`: `OnBeforeTokenIssue` (veto or
   observe every grant — authorization code, refresh, client_credentials, JSON
   password login, magic link; the first error or a panic fails closed and the

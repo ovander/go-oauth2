@@ -466,7 +466,9 @@ admin's tokens are revoked (token-version bump) and they must log in again
     "redirect_uris": ["https://app.example.com/callback"],
     "is_public": false, "require_pkce": true,
     "audiences": ["https://api.example.com"],
-    "allowed_scopes": ["openid", "profile", "email"] }
+    "allowed_scopes": ["openid", "profile", "email"],
+    "claim_mappings": { "tier": "user.attributes.tier",
+                        "dept": {"source": "user.attributes.dept", "target": "both"} } }
   ```
   Returns `AppWithSecretResponse` including the one-time `client_secret`
   (empty for public clients). `audiences` (optional) registers the resource
@@ -476,8 +478,17 @@ admin's tokens are revoked (token-version bump) and they must log in again
   refresh included; entries must be supported scopes (§2.2) and an empty list
   means unrestricted. It is applied according to `SCOPE_POLICY_MODE`
   (`off` default · `observe` audits `scope_denied` · `enforce` answers
-  `invalid_scope`). On update, omitting `audiences` / `allowed_scopes` leaves
-  them unchanged; a non-null value (including `[]`) replaces the set.
+  `invalid_scope`). `claim_mappings` (optional, A2) declares the custom claims
+  this client's tokens carry, keyed by the unqualified claim name; each value is
+  either a source string or `{"source": …, "target": "access"|"id"|"both"}`
+  (default `access`). Sources are a closed set: `user.attributes.<key>`,
+  `user.email`, `user.name`, `user.id`, `app_role`, `app.id`, `app.client_id`,
+  `literal:<constant>`. Every mapped claim is issued under `CLAIMS_NAMESPACE`
+  (default `https://socrate/`), so it can never shadow a registered claim; an
+  unsupported source or target is refused with `400 invalid claim mapping`. See
+  `docs/EXTENSIBILITY.md` for the size caps and the full semantics. On update,
+  omitting `audiences` / `allowed_scopes` / `claim_mappings` leaves them
+  unchanged; a non-null value (including `[]` / `{}`) replaces the set.
 - `GET /{id}` · `PUT /{id}` · `DELETE /{id}`
 - `POST /{id}/rotate-secret` — issue a new secret (returned once).
 
@@ -486,12 +497,21 @@ admin's tokens are revoked (token-version bump) and they must log in again
 { "id": 1, "name": "My App", "client_id": "...", "active": true,
   "is_public": false, "require_pkce": true, "url": "https://app.example.com",
   "redirect_uris": ["https://app.example.com/callback"], "owner_id": 5,
+  "audiences": [], "allowed_scopes": [], "claim_mappings": {},
   "created_at": "2026-01-01T00:00:00Z" }
 ```
 
 ### 8.3 User management — `/api/admin/users`
 List/get/delete users, `GET /{id}/apps`, `GET /{id}/sessions`,
 `POST /{id}/revoke-tokens`, `POST /{id}/unlock`, `POST /{id}/block`.
+
+- `PUT /{id}/attributes` — replace a user's free-form attributes (A2):
+  `{ "attributes": { "tier": "gold", "dept": "engineering" } }` → the updated
+  `UserResponse`. Global admin only, audited (`update_user_attributes`; the
+  audit row records the attribute *names*, never their values). The body
+  replaces the whole set, so `{}` clears it. At most 32 attributes / 4 KB, names
+  ≤ 64 characters — `400` otherwise. Attributes are inert on their own: they
+  reach a token only when a client declares a matching `claim_mappings` entry.
 
 ### 8.4 Other admin areas
 `/api/admin/stats`, `/activity`, `/dashboard/*`, `/superadmins`,

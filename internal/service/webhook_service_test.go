@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/ovandermoten/go-oauth2/internal/dto"
 	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/shared/ssrf"
 	"gorm.io/gorm"
 )
@@ -137,6 +139,73 @@ func (r *memWebhookRepo) RequeueDelivery(_ context.Context, id uint) error {
 	d.Attempts = 0
 	d.NextAttemptAt = time.Now()
 	d.LastError = ""
+	r.deliveries[id] = d
+	return nil
+}
+
+// ClaimDue mirrors the SQL claim: pending, due now, oldest first, and the
+// claimed rows get their next attempt pushed out by the lease.
+func (r *memWebhookRepo) ClaimDue(_ context.Context, limit int, leaseUntil time.Time) ([]model.WebhookDelivery, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if limit <= 0 {
+		limit = 20
+	}
+
+	var due []model.WebhookDelivery
+	now := time.Now()
+	for _, d := range r.deliveries {
+		if d.Status == model.WebhookDeliveryPending && !d.NextAttemptAt.After(now) {
+			due = append(due, d)
+		}
+	}
+	sort.Slice(due, func(i, j int) bool { return due[i].NextAttemptAt.Before(due[j].NextAttemptAt) })
+	if len(due) > limit {
+		due = due[:limit]
+	}
+	for _, d := range due {
+		row := r.deliveries[d.ID]
+		row.NextAttemptAt = leaseUntil
+		r.deliveries[d.ID] = row
+	}
+	return due, nil
+}
+
+func (r *memWebhookRepo) MarkDelivered(_ context.Context, id uint, statusCode int) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	d, ok := r.deliveries[id]
+	if !ok {
+		return gorm.ErrRecordNotFound
+	}
+	now := time.Now()
+	d.Status = model.WebhookDeliveryDelivered
+	d.LastStatusCode = statusCode
+	d.LastError = ""
+	d.DeliveredAt = &now
+	d.Attempts++
+	r.deliveries[id] = d
+	return nil
+}
+
+func (r *memWebhookRepo) MarkFailed(_ context.Context, id uint, statusCode int, reason string, nextAttempt time.Time, dead bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	d, ok := r.deliveries[id]
+	if !ok {
+		return gorm.ErrRecordNotFound
+	}
+	if len(reason) > repository.MaxLastErrorLen {
+		reason = reason[:repository.MaxLastErrorLen]
+	}
+	d.Status = model.WebhookDeliveryPending
+	if dead {
+		d.Status = model.WebhookDeliveryDead
+	}
+	d.LastStatusCode = statusCode
+	d.LastError = reason
+	d.NextAttemptAt = nextAttempt
+	d.Attempts++
 	r.deliveries[id] = d
 	return nil
 }

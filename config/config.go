@@ -165,6 +165,14 @@ type Config struct {
 	// subscription routing cache, which is what bounds how long another
 	// instance's change takes to take effect here. WEBHOOK_CACHE_REFRESH.
 	WebhookCacheRefresh time.Duration
+	// Webhook dispatcher tuning (A3 part 2). WEBHOOK_MAX_ATTEMPTS bounds retries
+	// before a delivery is dead-lettered; WEBHOOK_POLL_INTERVAL is how often the
+	// outbox is drained; WEBHOOK_BATCH_SIZE is how many rows one pass claims;
+	// WEBHOOK_SEND_TIMEOUT bounds a single attempt.
+	WebhookMaxAttempts  int
+	WebhookPollInterval time.Duration
+	WebhookBatchSize    int
+	WebhookSendTimeout  time.Duration
 	// SecretKeyBase is a cryptographic secret (≥32 bytes in production) used
 	// for two purposes:
 	//   1. CSRF cookie signing in the OAuth authorization handler (CRIT-03):
@@ -323,6 +331,10 @@ func Load() *Config {
 		ClaimsNamespace:         getEnv("CLAIMS_NAMESPACE", ""),
 		WebhooksEnabled:         strings.EqualFold(strings.TrimSpace(getEnv("WEBHOOKS_MODE", "off")), "on"),
 		WebhookCacheRefresh:     time.Duration(getEnvInt("WEBHOOK_CACHE_REFRESH", 60)) * time.Second,
+		WebhookMaxAttempts:      getEnvInt("WEBHOOK_MAX_ATTEMPTS", 6),
+		WebhookPollInterval:     time.Duration(getEnvInt("WEBHOOK_POLL_INTERVAL", 10)) * time.Second,
+		WebhookBatchSize:        getEnvInt("WEBHOOK_BATCH_SIZE", 20),
+		WebhookSendTimeout:      time.Duration(getEnvInt("WEBHOOK_SEND_TIMEOUT", 5)) * time.Second,
 
 		// Rate Limiting
 		// LOW-03 fix: window env vars now have an explicit _MS suffix so

@@ -513,6 +513,39 @@ List/get/delete users, `GET /{id}/apps`, `GET /{id}/sessions`,
   ≤ 64 characters — `400` otherwise. Attributes are inert on their own: they
   reach a token only when a client declares a matching `claim_mappings` entry.
 
+### 8.3.1 Outbound webhooks — `/api/admin/webhooks`
+
+Global admin only; the mutating routes additionally require fresh step-up.
+Delivery is gated by `WEBHOOKS_MODE` (`off` default): with it off, subscriptions
+can be managed but nothing is enqueued or sent.
+
+- `GET /events` — the subscribable event catalogue → `{"events": [...], "wildcard": "*"}`
+- `GET /` — list subscriptions (`?app_id=` to filter) → `{"webhooks": [...], "total_count": n}`
+- `POST /` — register a target:
+  ```json
+  { "name": "SIEM", "url": "https://hooks.example.com/socrate",
+    "app_id": 3, "event_types": ["login.failed", "user.created"] }
+  ```
+  Returns `201` with the subscription **and its `secret`** — generated
+  server-side and shown exactly once. The URL must be `https` and must resolve
+  only to public addresses (`400 invalid webhook URL` otherwise); every
+  `event_types` entry must be in the catalogue, or `"*"` for everything.
+  Omitting `app_id` makes it global (every app's events). Requires
+  `SECRET_KEY_BASE` — without it, `501`.
+- `GET /{id}` · `PUT /{id}` (name, url, event_types, active) · `DELETE /{id}`
+  (also deletes that subscription's undelivered rows)
+- `POST /{id}/rotate-secret` — issue a new signing secret, returned once
+- `GET /deliveries` — the outbox (`?subscription_id=`, `?status=pending|delivered|dead`,
+  `?page=`, `?page_size=`)
+- `GET /deliveries/stats` — outbox depth per status
+- `POST /deliveries/{id}/requeue` — replay a dead or stuck delivery
+
+Every subscription change is recorded in the admin audit trail
+(`webhook_created`, `webhook_updated`, `webhook_deleted`,
+`webhook_secret_rotated`, `webhook_delivery_requeued`). See
+`docs/EXTENSIBILITY.md` for the payload shape, the transactional-outbox
+guarantee and the SSRF rules.
+
 ### 8.4 Other admin areas
 `/api/admin/stats`, `/activity`, `/dashboard/*`, `/superadmins`,
 `/security/*` (events, threats, geo, blocked-ips, ip-reputation),

@@ -109,8 +109,67 @@ Safety properties, each covered by a test:
 Attributes are stored in `users.attributes` (jsonb) and mappings in
 `apps.claim_mappings` (jsonb) — migrations `0016` and `0017`.
 
+## Outbound webhooks — subscriptions and the outbox (A3)
+
+Socrate delivers identity events to your endpoint. `WEBHOOKS_MODE=off` is the
+default: subscriptions can be registered, but nothing is enqueued or sent.
+
+```jsonc
+// POST /api/admin/webhooks   (global admin, fresh step-up)
+{"name": "SIEM", "url": "https://hooks.example.com/socrate",
+ "event_types": ["login.failed", "security.brute_force_detected"]}
+// → 201 with "secret": "whsec_…" — shown once, never again
+```
+
+`GET /api/admin/webhooks/events` returns the catalogue. `"event_types": ["*"]`
+subscribes to everything, including events added by a later release. A
+subscription with an `app_id` receives only that client's events.
+
+**The outbox.** An audited event in the catalogue is written to
+`webhook_deliveries` **in the same transaction as the security audit row**, so a
+delivery can never exist without the audit entry that produced it. The enqueue
+runs inside a savepoint: if it fails, the audit row still commits — losing a
+security audit entry over a failed webhook enqueue would be the worse trade —
+and the failure is logged at error level.
+
+The payload is frozen at enqueue time, so a retry re-sends identical bytes and
+the signature stays reproducible:
+
+```json
+{"event": "login.failed", "event_id": 8412,
+ "occurred_at": "2026-09-04T10:31:22.481Z", "success": false,
+ "severity": "warning", "user_id": 7, "app_id": 3,
+ "ip_address": "203.0.113.9", "correlation_id": "…", "details": {…}}
+```
+
+It deliberately omits the audit row's integrity hashes and the user agent, and
+carries no token, secret or credential.
+
+**The catalogue is an allow-list.** Only mapped audit events produce a webhook,
+so adding an internal `SecurityEventType` never starts leaking to subscribers by
+default. Not currently emitted (no audit event exists for them yet):
+`user.deleted`, `user.blocked`, `alert.fired`, `ip.blocked`.
+
+**SSRF is the threat model here.** Socrate's admin API listens on loopback
+`:8081` and sits on a VPS beside other services, so a webhook target is an
+outbound request with the server's network position. `internal/shared/ssrf`
+therefore requires `https`, no credentials in the URL, and a host that resolves
+only to public addresses — refusing loopback, RFC 1918, link-local (which covers
+`169.254.169.254`), CGNAT, and the IPv4-mapped and NAT64 spellings of each. The
+check runs at registration **and again at connect time**, because DNS can change
+in between.
+
+Secrets are generated server-side, returned once, stored encrypted with
+`SECRET_KEY_BASE` (the same AES-GCM helper as TOTP secrets) and rotatable via
+`POST /api/admin/webhooks/{id}/rotate-secret`. Without `SECRET_KEY_BASE` set,
+registering a subscription is refused rather than storing a signing key in the
+clear. Every subscription change is in the admin audit trail.
+
+> **Delivery is the next slice.** This one lands the subscriptions, the
+> transactional outbox and the admin API; rows accumulate as `pending`. The
+> dispatcher — `FOR UPDATE SKIP LOCKED` claiming, HMAC-SHA256
+> `X-Socrate-Signature`, exponential backoff, dead-lettering — follows.
+
 ## Next
 
-- **A3 webhooks** — an outbox written with the audit row and delivered by a
-  signed, SSRF-safe dispatcher; `AfterLogin` / `UserProvisioned` are its first
-  producers.
+- **A3 dispatcher** — claim, sign, send, retry, dead-letter.

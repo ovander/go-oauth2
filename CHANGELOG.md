@@ -36,6 +36,29 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ### Added
 
+- **Outbound webhooks — subscriptions and the transactional outbox (A3, part 1
+  of 2).** Operators can register delivery targets
+  (`/api/admin/webhooks`, global admin + fresh step-up) with an event filter
+  over a v1 catalogue (`user.*`, `login.*`, `client.*`, `token.*`,
+  `security.*`), optionally scoped to one client. A subscription's signing
+  secret is generated server-side, returned exactly once, stored encrypted with
+  `SECRET_KEY_BASE` and rotatable; without that key, registration is refused
+  rather than storing a signing key in the clear. Audited events in the
+  catalogue are written to `webhook_deliveries` **in the same transaction as the
+  security audit row**, inside a savepoint — so a delivery can never exist
+  without its audit entry, and a failed enqueue never costs the audit row. The
+  payload is frozen at enqueue time so a retry re-sends identical bytes; it
+  omits the audit row's integrity hashes, the user agent, and any credential.
+  Target URLs go through a new `internal/shared/ssrf` guard: https only, no
+  credentials in the URL, and a host resolving only to public addresses —
+  loopback (where the admin API listens), RFC 1918, link-local
+  (`169.254.169.254`), CGNAT, and the IPv4-mapped and NAT64 spellings of each
+  are all refused, checked at registration and again at connect time. The
+  catalogue is an allow-list, so a new internal audit event never starts leaking
+  to subscribers by default. `WEBHOOKS_MODE=off` (default) enqueues nothing.
+  Schema steps `0018` and `0019`. **The dispatcher (claim, sign, retry,
+  dead-letter) is the following change**; until it lands, deliveries accumulate
+  as `pending`. See `docs/EXTENSIBILITY.md`.
 - **Custom claims via declarative mapping (A2).** A client can declare
   `claim_mappings` (admin API `POST/PUT /api/admin/apps`) projecting
   server-held values into its tokens: `user.attributes.<key>`, `user.email`,

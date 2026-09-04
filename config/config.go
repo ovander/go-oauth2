@@ -155,6 +155,16 @@ type Config struct {
 	// becomes `https://socrate/role`. CLAIMS_NAMESPACE; defaults to
 	// auth.DefaultClaimsNamespace.
 	ClaimsNamespace string
+	// WebhooksEnabled turns on the A3 outbox: audited events in the webhook
+	// catalogue are enqueued for every matching subscription, in the same
+	// transaction as the audit row. Default false — with it off, subscriptions
+	// can still be managed but nothing is enqueued or delivered. WEBHOOKS_MODE
+	// ("off" default | "on").
+	WebhooksEnabled bool
+	// WebhookCacheRefresh is how often each instance reloads its webhook
+	// subscription routing cache, which is what bounds how long another
+	// instance's change takes to take effect here. WEBHOOK_CACHE_REFRESH.
+	WebhookCacheRefresh time.Duration
 	// SecretKeyBase is a cryptographic secret (≥32 bytes in production) used
 	// for two purposes:
 	//   1. CSRF cookie signing in the OAuth authorization handler (CRIT-03):
@@ -311,6 +321,8 @@ func Load() *Config {
 		ScopePolicyMode:         normalizeStepUpMode(getEnv("SCOPE_POLICY_MODE", "off")),
 		AudienceMode:            normalizeAudienceMode(getEnv("AUDIENCE_MODE", "off")),
 		ClaimsNamespace:         getEnv("CLAIMS_NAMESPACE", ""),
+		WebhooksEnabled:         strings.EqualFold(strings.TrimSpace(getEnv("WEBHOOKS_MODE", "off")), "on"),
+		WebhookCacheRefresh:     time.Duration(getEnvInt("WEBHOOK_CACHE_REFRESH", 60)) * time.Second,
 
 		// Rate Limiting
 		// LOW-03 fix: window env vars now have an explicit _MS suffix so

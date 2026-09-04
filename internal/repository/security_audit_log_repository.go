@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovandermoten/go-oauth2/pkg/logger"
 	"gorm.io/gorm"
 )
 
@@ -24,11 +25,67 @@ type SecurityAuditLogRepository interface {
 	DeleteOlderThan(ctx context.Context, before time.Time) (int64, error)
 }
 
+// AuditOutboxWriter is called with the audit row and the *open transaction*
+// that is inserting it, so anything it writes commits or rolls back with that
+// row (A3). It is how the webhook outbox gets its transactional guarantee: a
+// delivery can never exist without the audit entry that produced it.
+//
+// The writer is called after the audit row has been inserted, inside a
+// savepoint. A writer that returns an error rolls back only its own writes —
+// the audit row still commits, because losing a security audit entry over a
+// failed webhook enqueue would be the worse trade.
+type AuditOutboxWriter interface {
+	WriteOutbox(ctx context.Context, tx *gorm.DB, log *model.SecurityAuditLog) error
+}
+
+// AuditOutboxSetter is implemented by audit repositories that can carry an
+// outbox writer. Bootstrap type-asserts for it, so the decorators that wrap the
+// repository (metrics) need no knowledge of the outbox.
+type AuditOutboxSetter interface {
+	SetOutboxWriter(w AuditOutboxWriter)
+}
+
 type gormSecurityAuditLogRepository struct {
 	db *gorm.DB
 	// secret keys the per-row integrity HMAC (RFC-007). Nil/empty disables
 	// integrity stamping, preserving prior behaviour.
 	secret []byte
+	// outbox, when set, enqueues webhook deliveries in the same transaction as
+	// the audit row (A3). Nil (the default) keeps the prior behaviour exactly.
+	outbox AuditOutboxWriter
+}
+
+// SetOutboxWriter installs the transactional outbox writer. Called once at
+// bootstrap, before the repository serves traffic.
+func (r *gormSecurityAuditLogRepository) SetOutboxWriter(w AuditOutboxWriter) {
+	r.outbox = w
+}
+
+// outboxSavepoint names the savepoint that isolates outbox writes from the
+// audit-row insert.
+const outboxSavepoint = "socrate_webhook_outbox"
+
+// writeOutbox enqueues the deliveries for one audit row inside a savepoint, so
+// a failure there cannot poison the transaction carrying the audit row.
+func (r *gormSecurityAuditLogRepository) writeOutbox(ctx context.Context, tx *gorm.DB, log *model.SecurityAuditLog) {
+	if r.outbox == nil {
+		return
+	}
+	if err := tx.SavePoint(outboxSavepoint).Error; err != nil {
+		logger.WithFields(logger.Fields{"error": err.Error()}).
+			Warn("A3: could not open the webhook outbox savepoint; audit row written without enqueueing deliveries")
+		return
+	}
+	if err := r.outbox.WriteOutbox(ctx, tx, log); err != nil {
+		if rbErr := tx.RollbackTo(outboxSavepoint).Error; rbErr != nil {
+			logger.WithFields(logger.Fields{"error": rbErr.Error()}).
+				Error("A3: could not roll back the webhook outbox savepoint")
+		}
+		logger.WithFields(logger.Fields{
+			"error":      err.Error(),
+			"event_type": string(log.EventType),
+		}).Error("A3: webhook enqueue failed; the audit row is kept and the event is not delivered")
+	}
 }
 
 // NewSecurityAuditLogRepository creates a new GORM-based security audit log
@@ -57,9 +114,21 @@ func (r *gormSecurityAuditLogRepository) Create(ctx context.Context, log *model.
 	// later read returns — keeping VerifyAuditRowHash stable across a round trip.
 	log.CreatedAt = log.CreatedAt.UTC().Truncate(time.Microsecond)
 
-	// No integrity secret: preserve prior (unchained, unstamped) behaviour.
-	if len(r.secret) == 0 {
+	// No integrity secret and no outbox: preserve prior (unchained, unstamped,
+	// single-statement) behaviour exactly.
+	if len(r.secret) == 0 && r.outbox == nil {
 		return r.db.WithContext(ctx).Create(log).Error
+	}
+
+	// Outbox without integrity stamping: one transaction, audit row first.
+	if len(r.secret) == 0 {
+		return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := tx.Create(log).Error; err != nil {
+				return err
+			}
+			r.writeOutbox(ctx, tx, log)
+			return nil
+		})
 	}
 
 	// RFC-007: chain the row to the current tip and stamp the HMAC inside a
@@ -81,7 +150,13 @@ func (r *gormSecurityAuditLogRepository) Create(ctx context.Context, log *model.
 			return err
 		}
 		log.RowHash = computeAuditRowHash(r.secret, log)
-		return tx.Create(log).Error
+		if err := tx.Create(log).Error; err != nil {
+			return err
+		}
+		// A3: enqueue the webhook deliveries for this row in the same
+		// transaction, after the row exists so the delivery can reference it.
+		r.writeOutbox(ctx, tx, log)
+		return nil
 	})
 }
 

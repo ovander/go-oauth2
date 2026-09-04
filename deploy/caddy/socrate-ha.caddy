@@ -1,0 +1,50 @@
+# Socrate behind Caddy, two instances (B5).
+#
+# Drop into /etc/caddy/sites/ alongside the single-instance file; the main
+# Caddyfile picks it up via `import /etc/caddy/sites/*.caddy`.
+#
+# Prerequisites, both non-negotiable — see docs/DEPLOYMENT-VPS-MULTI-APP.md:
+#   1. STATE_BACKEND=postgres on every instance. With the default in-memory
+#      backend a second instance does not just weaken rate limiting, it makes
+#      DPoP replay detection unsound: a proof replayed against the other
+#      instance is accepted, because only the one that saw it first remembers
+#      the jti.
+#   2. Both instances point at the same DATABASE_URL.
+#
+# Only the public port is load balanced. The admin API stays on loopback,
+# per-instance, and is never fronted here.
+
+auth.example.com {
+	encode zstd gzip
+
+	reverse_proxy 127.0.0.1:8080 127.0.0.1:8090 {
+		# round_robin spreads load. Use `first` instead for an active/passive
+		# pair: all traffic goes to the first healthy upstream, and the second
+		# only takes over when it fails — which keeps the sticky-ish behaviour
+		# of a single instance while still surviving one dying.
+		lb_policy round_robin
+
+		# Take an instance out of rotation when it says it is not ready. This is
+		# the readiness endpoint B5 extended: it reports the database, the
+		# signing key and the shared-state backend, so an instance that booted
+		# but cannot mint a token is removed rather than served 500s.
+		health_uri /health/readiness
+		health_interval 10s
+		health_timeout 2s
+		health_status 200
+
+		# Retry the other upstream when one fails mid-request, but only for
+		# requests that are safe to replay. Caddy will not retry a request whose
+		# body has already been streamed.
+		lb_try_duration 5s
+		lb_try_interval 250ms
+
+		# Socrate resolves the client IP from X-Forwarded-For, but only from
+		# peers listed in TRUSTED_PROXIES. Set TRUSTED_PROXIES to this Caddy's
+		# address on both instances, or every rate limit and IP block collapses
+		# onto the proxy's own address and applies to all users at once.
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}

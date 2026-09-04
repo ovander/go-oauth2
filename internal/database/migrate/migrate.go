@@ -16,8 +16,10 @@
 package migrate
 
 import (
+	"context"
 	"fmt"
 
+	"github.com/ovandermoten/go-oauth2/internal/cluster"
 	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
 	"gorm.io/gorm"
@@ -478,8 +480,18 @@ type schemaMigration struct {
 // is created via AutoMigrate on first call (this is the only AutoMigrate call
 // that is safe to run unconditionally because the table has no columns that
 // could change across versions).
+//
+// B5: the whole run is serialized by a PostgreSQL advisory lock, so when
+// several instances start at once exactly one migrates and the others wait for
+// it. Without that, two instances can pass the "already applied?" check for the
+// same migration simultaneously and both execute it — at best a duplicate-object
+// error that kills a healthy instance on boot, at worst a half-applied schema.
+// The lock is *blocking* on purpose: an instance that gave up would go on to
+// serve traffic against a schema another instance is still changing.
 func Run(db *gorm.DB) error {
-	return runWithList(db, migrations)
+	return cluster.WithLock(context.Background(), db, cluster.LockMigrations, func(context.Context) error {
+		return runWithList(db, migrations)
+	})
 }
 
 // runWithList is the implementation used by Run and by tests that inject a

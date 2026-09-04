@@ -5,6 +5,11 @@
 domains. **Target after this plan:** both at 8/10, overall ≈ 84/100, with no flag day: every new
 control ships `off → observe/shadow → enforce`, exactly as the existing modes do.
 
+**Status 2026-09-04:** *Extensibility & policy* **7.0/10**, *Observability & scale* **7.5/10**,
+overall **≈ 82/100**. Delivered: A1, A2, A3, A6, B1, B3, B4 (two of five stores), B5, B6, B7.
+Remaining: **A4** (policy decision point) and **A5** (branding/i18n) on track A, **B2**
+(OpenTelemetry traces) and the rest of B4's stores on track B. See §4 for how the score is read.
+
 The plan maps onto the program's epics so nothing here is a new direction:
 EPIC-4 Observability (RFC-008), EPIC-10 Policy Engine (RFC-005), EPIC-11 backendkit PEP
 (RFC-004), EPIC-13 Distributed State (RFC-013), EPIC-16 Resilience (RFC-018).
@@ -33,7 +38,7 @@ how often they block a real deployment:
 
 ## 2. Track A — Extensibility & policy (4.5 → 8)
 
-### A1. Per-client allowed scopes (closes P3-8) — **S/M**, first
+### A1. Per-client allowed scopes (closes P3-8) — **S/M**, first — ✅ delivered
 - `apps.allowed_scopes text[]` (empty = every supported scope, so existing clients are untouched).
 - `SCOPE_POLICY_MODE=off|observe|enforce`: `observe` audits `scope_denied` events without refusing;
   `enforce` returns `invalid_scope` at `/oauth/authorize` and at every grant in `/oauth/token`
@@ -133,7 +138,7 @@ stable `event_id` is the subscriber's deduplication key.
 - Message catalogues (`en`, `fr` to start) selected by `Accept-Language` / `ui_locales`;
   `/oauth/authorize?ui_locales=` honoured per OIDC.
 
-### A6. In-process hooks — **S**, alongside A1
+### A6. In-process hooks — **S**, alongside A1 — ✅ delivered
 - `hooks.Register(hooks.BeforeTokenIssue, fn)` / `AfterLogin` / `UserProvisioned` /
   `BeforeConsent`. Compile-time Go extension for operators who fork; A2 and A3 are implemented as
   hooks so the mechanism is exercised by the core itself.
@@ -142,7 +147,7 @@ stable `event_id` is the subscriber's deduplication key.
 
 ## 3. Track B — Observability & scale (5.0 → 8)
 
-### B1. Prometheus metrics — **S/M**, first
+### B1. Prometheus metrics — **S/M**, first — ✅ delivered
 - `/metrics` on the **admin port only** (loopback; Caddy never routes it), `prometheus/client_golang`.
 - RED per route (chi middleware: requests, errors, duration histogram, labelled by route pattern
   and status — never by user or client id), plus domain metrics:
@@ -161,7 +166,7 @@ stable `event_id` is the subscriber's deduplication key.
 - Exporter via standard `OTEL_EXPORTER_OTLP_ENDPOINT`; off when unset. Sampling default 10 %,
   100 % for 5xx and auth failures (tail-based is out of scope).
 
-### B3. Log conventions and redaction at source — **S**
+### B3. Log conventions and redaction at source — **S** — ✅ delivered
 - One documented schema (`ts, level, msg, correlation_id, trace_id, client_ip, route, user_id?`),
   `LOG_FORMAT=json|text`, per-event sampling for high-volume successes, and a unit test that
   greps the logger for token/secret/password fields (extends the pass-4 check).
@@ -251,7 +256,7 @@ nothing but bcrypt. The CI gate therefore covers the public paths, and the confi
 ceiling is documented with its options rather than being papered over with a threshold nobody
 could meet.
 
-### B7. SLOs and alerting — **S**
+### B7. SLOs and alerting — **S** — ✅ delivered
 - SLOs: token endpoint availability 99.9 %, p99 < 150 ms; login p99 < 400 ms (bcrypt bound);
   revocation freshness per the SLA doc; audit-chain integrity scan lag < 5 min.
 - Alertmanager rules for the SLOs plus the security signals already emitted (refresh reuse,
@@ -267,9 +272,36 @@ could meet.
 | 1 — quick wins | 1–3 | A1, A6, B1, B3, B7 | 5.5 | 6.5 | 78 |
 | 2 — substance | 4–9 | A2, A3, B4 (Postgres adapter), B6 | 7.0 | 7.0 | 81 |
 | 3 — platform | 10–17 | A4 (shadow), A5, B2, B5 (two-instance validation) | 8.0 | 8.0 | 84 |
+| **actual, 2026-09-04** | — | phases 1 and 2 complete, plus B5 and B6 from phase 3 | **7.0** | **7.5** | **≈ 82** |
 
 Order inside each phase is by dependency: A6 before A2/A3; B4 before B5; B1 before B7.
 Redis and `POLICY_MODE=enforce` are deliberately outside the plan's exit criteria.
+
+**How the actual row is read.** Only merged, tested work counts; an item is scored on what a
+deployment can switch on, not on what compiles.
+
+- *Extensibility 4.5 → 7.0.* A1 gives per-client scope policy, A2 declarative custom claims, A3
+  outbound webhooks end to end (subscriptions, transactional outbox, signed dispatcher), A6
+  in-process hooks. That closes four of the seven gaps in §1's table. It lands exactly on the
+  phase-2 mark rather than above it because the two remaining items are the two structural ones:
+  **A4** — without a policy decision point, authorisation logic is still duplicated in every app
+  — and **A5**, which leaves the hosted pages Socrate-branded and English-only. Neither is
+  substitutable by the flags now shipping, so 7.0 is a ceiling until A4 lands, not a rounding.
+- *Observability 5.0 → 7.5.* B1 (metrics), B3 (log schema + redaction guard) and B7 (SLOs and
+  alert rules) closed phase 1; B4 moved the rate-limit counters and the DPoP replay cache into
+  Postgres, B5 made a multi-instance deployment actually correct (advisory-locked background
+  jobs, dependency-aware readiness, verified against two live instances on one database), and B6
+  replaced guesses with measured numbers and a CI gate. The half point above phase 2 is B5 and
+  B6, pulled forward from phase 3. It stops at 7.5 rather than 8.0 for two reasons: **B2** is not
+  started, so there is still no distributed trace across BFF → Socrate → database, and B4 covers
+  two of its five stores — auto-defense counters and the IP-block cache remain per-instance, so
+  those thresholds are still divided by instance count.
+- *Overall 74 → ≈ 82.* Two points short of the plan's 84, and the gap is precisely A4, A5 and B2.
+
+The B6 baseline also surfaced one finding that is recorded but deliberately not acted on: bcrypt
+cost 12 on client-secret verification caps every confidential-client endpoint near 14 rps per
+4 vCPU (`docs/PERFORMANCE-BASELINE.md`). It is a security tradeoff, not a defect, so it does not
+move the score in either direction.
 
 ---
 

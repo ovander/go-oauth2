@@ -60,3 +60,5 @@ vendor/
 *.docx
 
 /oauth-server
+# k6 perf run summaries (B6) — generated locally, never committed
+deploy/perf/results/

@@ -468,6 +468,48 @@ var migrations = []Migration{
 			return nil
 		},
 	},
+	{
+		// Fresh-install boot fix. Migration 0005 creates magic_link_tokens with a
+		// named unique constraint (uq_magic_link_token_hash), but the GORM model
+		// tags TokenHash with `uniqueIndex`, so AutoMigrate expects an index
+		// named uni_magic_link_tokens_token_hash. On a brand-new database
+		// migrate.Run creates the table first, AutoMigrate then finds a unique
+		// constraint under the wrong name and issues
+		//   ALTER TABLE magic_link_tokens DROP CONSTRAINT uni_magic_link_tokens_token_hash
+		// which does not exist — SQLSTATE 42704, and the server exits.
+		//
+		// That is the documented first-deploy path (AUTO_MIGRATE=true on the
+		// first start), so a new install could not boot. Renaming the constraint
+		// to the name GORM derives makes AutoMigrate a no-op for this column.
+		// Guarded both ways, so it is a no-op on databases that already agree.
+		ID:   "0022",
+		Name: "rename_magic_link_tokens_unique_constraint",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("magic_link_tokens") {
+				return nil
+			}
+			var oldName, newName int64
+			if err := db.Raw(
+				`SELECT count(*) FROM pg_constraint
+				 WHERE conrelid = 'magic_link_tokens'::regclass AND conname = 'uq_magic_link_token_hash'`,
+			).Scan(&oldName).Error; err != nil {
+				return err
+			}
+			if err := db.Raw(
+				`SELECT count(*) FROM pg_constraint
+				 WHERE conrelid = 'magic_link_tokens'::regclass AND conname = 'uni_magic_link_tokens_token_hash'`,
+			).Scan(&newName).Error; err != nil {
+				return err
+			}
+			if oldName == 0 || newName > 0 {
+				return nil // nothing to rename, or already renamed
+			}
+			return db.Exec(
+				`ALTER TABLE magic_link_tokens
+				 RENAME CONSTRAINT uq_magic_link_token_hash TO uni_magic_link_tokens_token_hash`,
+			).Error
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

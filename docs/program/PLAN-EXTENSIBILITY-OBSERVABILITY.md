@@ -43,7 +43,7 @@ how often they block a real deployment:
 - Discovery unchanged (`scopes_supported` stays global).
 - Tests: each grant × mode; refresh cannot re-widen; observe emits exactly one audit row.
 
-### A2. Custom claims via declarative mapping — **M**
+### A2. Custom claims via declarative mapping — **M** — ✅ delivered
 - `users.attributes jsonb` (admin-editable, per-app-admin editable for their members) and
   `apps.claim_mappings jsonb`: `{"tenant_id": "user.attributes.tenant_id", "plan": "app_role"}`.
 - Sources allowed: `user.attributes.*`, `user.email/name`, `app_role`, `app.id/client_id`,
@@ -54,7 +54,17 @@ how often they block a real deployment:
 - backendkit `jwtauth`: `SocrateClaims.Custom map[string]any` + `ctxutil` accessor.
 - Tests: mapping resolution table, namespace collision refused, size cap (token stays < 4 KB).
 
-### A3. Webhooks with a transactional outbox — **M/L**
+**As delivered.** Migrations `0016`/`0017`; sources also include `user.id`; mappings accept a
+bare-string shorthand (`"tier": "user.attributes.tier"`) alongside the object form; attributes
+are set via `PUT /api/admin/users/{id}/attributes` (global admin, audited by attribute *name*)
+rather than by app admins — per-app-admin editing is deferred until per-app attribute scoping
+exists. The enricher hangs off `TokenService.SetClaimsEnricher` (a setter, not a constructor
+argument, so no existing call site changed) and is consulted for both the access and ID tokens.
+Caps: 32 attributes / 4 KB per user, 2 KB of custom claims per token — over the cap the set is
+dropped whole and logged at error level rather than truncated. The backendkit `jwtauth` accessor
+is a follow-up PR in that repo.
+
+### A3. Webhooks with a transactional outbox — **M/L** — ◧ part 1 of 2 delivered
 - `webhook_subscriptions` (per app or global-admin; URL, secret, event filter, active) and
   `webhook_deliveries` (outbox: event id, payload, attempts, next_attempt, last_status).
 - Events are written to the outbox **in the same transaction** as the security audit row
@@ -70,6 +80,28 @@ how often they block a real deployment:
 - Event catalogue v1: `user.created|verified|locked|unlocked|blocked|deleted`,
   `login.succeeded|failed|mfa_required`, `client.created|updated|secret_rotated|deactivated`,
   `token.revoked_all`, `alert.fired`, `ip.blocked`.
+
+**As delivered (part 1: subscriptions + outbox).** Tables, admin API
+(`/api/admin/webhooks`, global admin + fresh step-up on the mutating routes),
+the event catalogue as an *allow-list* over `SecurityEventType`, the
+transactional enqueue, and the SSRF guard (`internal/shared/ssrf`) applied at
+registration. The enqueue runs inside a savepoint so a failed enqueue costs the
+webhook, not the audit row — the plan's "same transaction" guarantee holds in
+the direction that matters (no delivery without its audit entry). Routing is
+decided against an in-memory subscription cache (refreshed on local writes and
+every `WEBHOOK_CACHE_REFRESH`), so the audit hot path adds no query — only the
+insert. `WEBHOOKS_MODE=off` is the default and enqueues nothing. Catalogue
+deltas: `user.blocked`, `user.deleted`, `alert.fired` and `ip.blocked` have no
+`SecurityEventType` behind them yet and are deferred rather than faked;
+`client.deactivated` is emitted as `client.deleted`, the event that actually
+exists; `login.mfa_required` is `login.mfa_policy_violation`, matching the audit
+event. Added beyond the plan: `token.exchanged` and five `security.*` events
+that were already audited and are exactly what a SOC subscriber wants.
+
+**Part 2 (next).** The dispatcher: `FOR UPDATE SKIP LOCKED` claiming,
+HMAC-SHA256 over `timestamp.body` in `X-Socrate-Signature`, exponential backoff,
+dead-lettering after N attempts, connect-time re-resolution through the same
+SSRF guard, no redirects, 5 s timeout, response body discarded.
 
 ### A4. Policy decision point, shadow first (EPIC-10 / RFC-005) — **L**
 - Contract (small on purpose):

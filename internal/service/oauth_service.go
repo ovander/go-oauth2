@@ -66,6 +66,10 @@ var (
 	ErrScopeNotAllowed = fmt.Errorf("%w: not allowed for this client", ErrInvalidScope)
 	// ErrTokenVetoed: a BeforeTokenIssue hook (A6) refused the grant.
 	ErrTokenVetoed = hooks.ErrVetoed
+	// ErrInvalidClaimMapping indicates a client's claim-mapping policy (A2)
+	// names an unsupported source, target or claim name. Refused at write time
+	// so a bad mapping never reaches token issuance.
+	ErrInvalidClaimMapping = errors.New("invalid claim mapping")
 	// ErrDPoPRequired indicates the client requires DPoP (RFC 9449) but the token
 	// request carried no valid DPoP proof.
 	ErrDPoPRequired = errors.New("DPoP proof required for this client")

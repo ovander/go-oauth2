@@ -1,6 +1,10 @@
 package dto
 
-import "time"
+import (
+	"time"
+
+	"github.com/ovandermoten/go-oauth2/internal/model"
+)
 
 // Request DTOs
 
@@ -26,6 +30,11 @@ type CreateAppRequest struct {
 	// AllowedScopes restricts which scopes this client may request (A1 / P3-8).
 	// Every entry must be a supported scope. Empty = no restriction.
 	AllowedScopes []string `json:"allowed_scopes,omitempty"`
+	// ClaimMappings declares the custom claims this client's tokens carry (A2),
+	// keyed by the unqualified claim name. Each value is either a source string
+	// ("user.attributes.tier") or an object ({"source":…,"target":"both"}).
+	// Empty = the standard claim set only.
+	ClaimMappings model.ClaimMappings `json:"claim_mappings,omitempty"`
 }
 
 type UpdateAppRequest struct {
@@ -47,6 +56,9 @@ type UpdateAppRequest struct {
 	// AllowedScopes replaces the client's scope policy (A1). Omitted (nil) =
 	// unchanged; an empty array clears the restriction.
 	AllowedScopes *[]string `json:"allowed_scopes,omitempty"`
+	// ClaimMappings replaces the client's custom-claim policy (A2). Omitted
+	// (nil) = unchanged; an empty object clears every mapping.
+	ClaimMappings *model.ClaimMappings `json:"claim_mappings,omitempty"`
 }
 
 type AddAppUserRequest struct {
@@ -62,21 +74,23 @@ type UpdateAppUserRoleRequest struct {
 // Response DTOs
 
 type AppResponse struct {
-	ID                 uint      `json:"id"`
-	Name               string    `json:"name"`
-	ClientID           string    `json:"client_id"`
-	Active             bool      `json:"active"`
-	IsPublic           bool      `json:"is_public"`
-	RequirePKCE        bool      `json:"require_pkce"`
-	RequireDPoP        bool      `json:"require_dpop"`
-	AllowTokenExchange bool      `json:"allow_token_exchange"`
-	AllowImpersonation bool      `json:"allow_impersonation"`
-	Audiences          []string  `json:"audiences"`
-	AllowedScopes      []string  `json:"allowed_scopes"`
-	URL                *string   `json:"url,omitempty"`
-	RedirectURIs       []string  `json:"redirect_uris"`
-	OwnerID            *uint     `json:"owner_id,omitempty"`
-	CreatedAt          time.Time `json:"created_at"`
+	ID                 uint     `json:"id"`
+	Name               string   `json:"name"`
+	ClientID           string   `json:"client_id"`
+	Active             bool     `json:"active"`
+	IsPublic           bool     `json:"is_public"`
+	RequirePKCE        bool     `json:"require_pkce"`
+	RequireDPoP        bool     `json:"require_dpop"`
+	AllowTokenExchange bool     `json:"allow_token_exchange"`
+	AllowImpersonation bool     `json:"allow_impersonation"`
+	Audiences          []string `json:"audiences"`
+	AllowedScopes      []string `json:"allowed_scopes"`
+	// ClaimMappings is the client's custom-claim policy (A2).
+	ClaimMappings model.ClaimMappings `json:"claim_mappings"`
+	URL           *string             `json:"url,omitempty"`
+	RedirectURIs  []string            `json:"redirect_uris"`
+	OwnerID       *uint               `json:"owner_id,omitempty"`
+	CreatedAt     time.Time           `json:"created_at"`
 }
 
 type AppWithSecretResponse struct {

@@ -63,6 +63,13 @@ type App struct {
 	// working; SCOPE_POLICY_MODE decides whether a violation is ignored (off),
 	// audited (observe) or refused with invalid_scope (enforce).
 	AllowedScopes StringArray `gorm:"type:text[];column:allowed_scopes" json:"allowed_scopes"`
+
+	// ClaimMappings is the per-client custom-claim policy (A2): which
+	// server-held values are projected into this client's tokens, and under
+	// which claim name. Names are namespaced with CLAIMS_NAMESPACE at issuance
+	// so a mapping can never shadow a registered claim. Empty (the default)
+	// means the client's tokens carry exactly the standard claim set.
+	ClaimMappings ClaimMappings `gorm:"type:jsonb;column:claim_mappings" json:"claim_mappings"`
 }
 
 // ScopeAllowed reports whether the client may request scope under its

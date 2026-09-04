@@ -56,6 +56,9 @@ type App struct {
 	// usedTokenCleanupStop stops the scheduled used-token pruning on shutdown.
 	// Nil when cleanup is disabled (UsedTokenCleanupInterval == 0).
 	usedTokenCleanupStop func()
+	// webhookCacheStop stops the webhook subscription cache refresh (A3).
+	// Nil when webhooks are disabled (WEBHOOKS_MODE=off).
+	webhookCacheStop func()
 	// dpopReplayCache backs DPoP observe-mode replay detection; nil when DPoP is
 	// off. Stopped on shutdown.
 	dpopReplayCache *dpop.MemoryReplayCache
@@ -216,6 +219,9 @@ func (a *App) Stop() {
 	if a.usedTokenCleanupStop != nil {
 		a.usedTokenCleanupStop()
 	}
+	if a.webhookCacheStop != nil {
+		a.webhookCacheStop()
+	}
 	if a.dpopReplayCache != nil {
 		a.dpopReplayCache.Stop()
 	}
@@ -329,6 +335,14 @@ func Bootstrap(cfg *config.Config) *App {
 		InviteTokenTTL:  cfg.InviteTokenTTL,
 		AudienceMode:    cfg.AudienceMode, // RFC-001 / EPIC-7
 	})
+	// A2: project each client's claim-mapping policy into its tokens, under a
+	// namespace so a mapping can never shadow a standard claim. Inert until a
+	// client registers a mapping.
+	claimsEnricher := auth.NewMappingEnricher(cfg.ClaimsNamespace)
+	tokenService.SetClaimsEnricher(claimsEnricher)
+	logger.WithFields(logger.Fields{
+		"claims_namespace": claimsEnricher.Namespace(),
+	}).Info("A2: custom claim mapping enabled")
 
 	// ==========================================
 	// Repositories
@@ -343,7 +357,26 @@ func Bootstrap(cfg *config.Config) *App {
 	// RFC-007: stamp a tamper-evidence HMAC on each audit row, keyed by
 	// SECRET_KEY_BASE (held in config, never in the DB). Empty secret disables it.
 	// B1: every persisted security event is also a Prometheus counter.
-	securityAuditRepo := metrics.InstrumentAuditRepo(repository.NewSecurityAuditLogRepositoryWithIntegrity(db, []byte(cfg.SecretKeyBase)))
+	auditRepoBase := repository.NewSecurityAuditLogRepositoryWithIntegrity(db, []byte(cfg.SecretKeyBase))
+	securityAuditRepo := metrics.InstrumentAuditRepo(auditRepoBase)
+
+	// A3: webhook subscriptions and the delivery outbox. The outbox producer is
+	// installed on the *undecorated* audit repository, because it must run
+	// inside that repository's transaction — the metrics decorator only wraps
+	// the call. With WEBHOOKS_MODE=off (the default) the producer is installed
+	// but enqueues nothing, so the audit write path is byte-for-byte as before.
+	webhookRepo := repository.NewWebhookRepository(db)
+	webhookService := service.NewWebhookService(webhookRepo, []byte(cfg.SecretKeyBase))
+	var webhookCacheStop func()
+	if setter, ok := auditRepoBase.(repository.AuditOutboxSetter); ok {
+		setter.SetOutboxWriter(service.NewWebhookOutbox(webhookService, cfg.WebhooksEnabled))
+	}
+	if cfg.WebhooksEnabled {
+		webhookCacheStop = webhookService.StartCacheRefresh(cfg.WebhookCacheRefresh)
+		logger.WithFields(logger.Fields{
+			"cache_refresh": cfg.WebhookCacheRefresh.String(),
+		}).Info("A3: webhook outbox enabled")
+	}
 
 	// RFC-007: optionally run the audit-row integrity scan on a timer. Disabled
 	// by default (AuditIntegrityScanInterval == 0).
@@ -655,6 +688,10 @@ func Bootstrap(cfg *config.Config) *App {
 		DPoPHTUBase:          cfg.OAuthIssuer,
 		AdminElevationMaxAge: cfg.AdminElevationMaxAge, // Tier-0 step-up freshness window
 		ScopeEnforce:         cfg.AdminScopeMode == "enforce",
+		// A3: the webhook admin API is registered whenever the handler is
+		// present, so an operator can prepare subscriptions before flipping
+		// WEBHOOKS_MODE=on.
+		WebhookHandler: handler.NewWebhookHandler(webhookService, adminLogService),
 	}
 	if dpopReplayCache != nil {
 		routerConfig.DPoPReplayCache = dpopReplayCache
@@ -753,6 +790,7 @@ func Bootstrap(cfg *config.Config) *App {
 			keyRotationStop:      keyRotationStop,
 			auditIntegrityStop:   auditIntegrityStop,
 			usedTokenCleanupStop: usedTokenCleanupStop,
+			webhookCacheStop:     webhookCacheStop,
 			dpopReplayCache:      dpopReplayCache,
 		}
 	}
@@ -793,6 +831,7 @@ func Bootstrap(cfg *config.Config) *App {
 		keyRotationStop:      keyRotationStop,
 		auditIntegrityStop:   auditIntegrityStop,
 		usedTokenCleanupStop: usedTokenCleanupStop,
+		webhookCacheStop:     webhookCacheStop,
 		dpopReplayCache:      dpopReplayCache,
 	}
 }

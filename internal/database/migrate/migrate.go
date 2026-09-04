@@ -360,6 +360,61 @@ var migrations = []Migration{
 			return db.Exec("ALTER TABLE apps ADD COLUMN allowed_scopes TEXT[] NOT NULL DEFAULT '{}'").Error
 		},
 	},
+	{
+		ID:   "0016",
+		Name: "add_users.attributes",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("users") {
+				return nil
+			}
+			if db.Migrator().HasColumn(&model.User{}, "attributes") {
+				return nil
+			}
+			// Empty object = no attributes, so every existing user is unaffected.
+			return db.Exec("ALTER TABLE users ADD COLUMN attributes JSONB NOT NULL DEFAULT '{}'").Error
+		},
+	},
+	{
+		ID:   "0017",
+		Name: "add_apps.claim_mappings",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("apps") {
+				return nil
+			}
+			if db.Migrator().HasColumn(&model.App{}, "claim_mappings") {
+				return nil
+			}
+			// Empty object = no custom claims, so every existing client keeps
+			// receiving exactly the standard claim set.
+			return db.Exec("ALTER TABLE apps ADD COLUMN claim_mappings JSONB NOT NULL DEFAULT '{}'").Error
+		},
+	},
+	{
+		ID:   "0018",
+		Name: "create_webhook_subscriptions",
+		Run: func(db *gorm.DB) error {
+			if db.Migrator().HasTable(&model.WebhookSubscription{}) {
+				return nil
+			}
+			return db.AutoMigrate(&model.WebhookSubscription{})
+		},
+	},
+	{
+		ID:   "0019",
+		Name: "create_webhook_deliveries",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable(&model.WebhookDelivery{}) {
+				if err := db.AutoMigrate(&model.WebhookDelivery{}); err != nil {
+					return err
+				}
+			}
+			// The dispatcher claims rows by (status, next_attempt_at); a composite
+			// index keeps that scan off a sequential read as the outbox grows.
+			return db.Exec(
+				"CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_due ON webhook_deliveries (status, next_attempt_at)",
+			).Error
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

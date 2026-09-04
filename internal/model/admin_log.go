@@ -19,6 +19,19 @@ const (
 	AdminActionDeleteSuperadmin   AdminAction = "delete_superadmin"
 	AdminActionDeleteUser         AdminAction = "delete_user"
 	AdminActionBlockUser          AdminAction = "block_user"
+	// AdminActionUpdateUserAttributes records a change to a user's free-form
+	// attributes (A2). Attributes can be projected into tokens via a client's
+	// claim mappings, so every change is audited.
+	AdminActionUpdateUserAttributes AdminAction = "update_user_attributes"
+
+	// Webhook subscription lifecycle (A3). A subscription is an egress channel
+	// for identity events, so registering, re-pointing or re-keying one is as
+	// security-relevant as a client change and is audited the same way.
+	AdminActionWebhookCreated       AdminAction = "webhook_created"
+	AdminActionWebhookUpdated       AdminAction = "webhook_updated"
+	AdminActionWebhookDeleted       AdminAction = "webhook_deleted"
+	AdminActionWebhookSecretRotated AdminAction = "webhook_secret_rotated" //nolint:gosec // G101 false positive: action enum constant, not a credential
+	AdminActionWebhookRequeued      AdminAction = "webhook_delivery_requeued"
 )
 
 type AdminLog struct {

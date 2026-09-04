@@ -91,6 +91,11 @@ type RouterConfig struct {
 	// ScopeEnforce turns on least-privilege OAuth-scope gating across the admin
 	// API (#201). False (default) leaves routes role-gated only.
 	ScopeEnforce bool
+	// WebhookHandler serves the A3 webhook subscription and delivery-outbox
+	// admin API. Nil leaves those routes unregistered — carried on the config
+	// rather than as another positional parameter through three router
+	// constructors.
+	WebhookHandler *handler.WebhookHandler
 }
 
 // Routers holds both the OAuth and Admin routers for separate port binding
@@ -500,6 +505,9 @@ func newAdminRouter(
 				r.With(adminScope).Get("/", adminHandler.GetUser)
 				r.With(adminScope).Delete("/", adminHandler.DeleteUser)
 				r.With(adminScope).Get("/apps", adminHandler.GetUserApps)
+				// A2: free-form attributes a client can project into its
+				// tokens via a claim mapping. Global-admin only, audited.
+				r.With(adminScope).Put("/attributes", adminHandler.UpdateUserAttributes)
 				// Monitoring console: inspect a user's sessions, revoke their tokens.
 				r.With(monRead).Get("/sessions", monitoringHandler.GetUserSessions)
 				// Destructive: require fresh step-up (revokes all of a user's tokens).
@@ -521,6 +529,35 @@ func newAdminRouter(
 		})
 
 		// Superadmin management — admin console. Superadmin-only (P3-1): a
+		// Webhook subscriptions and the delivery outbox (A3) — admin console.
+		// A subscription is an egress channel for identity events, so the whole
+		// area is global-admin only (enforced again in the handler) and the
+		// mutating routes require fresh step-up: re-pointing a webhook at an
+		// attacker's endpoint is an exfiltration primitive.
+		if config.WebhookHandler != nil {
+			wh := config.WebhookHandler
+			r.Route("/webhooks", func(r chi.Router) {
+				r.Use(adminScope)
+				r.Get("/", wh.List)
+				r.Get("/events", wh.Catalogue)
+				r.With(freshAuth).Post("/", wh.Create)
+
+				// Deliveries are read-mostly; the replay is a write.
+				r.Route("/deliveries", func(r chi.Router) {
+					r.Get("/", wh.ListDeliveries)
+					r.Get("/stats", wh.DeliveryStats)
+					r.With(freshAuth).Post("/{id}/requeue", wh.RequeueDelivery)
+				})
+
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", wh.Get)
+					r.With(freshAuth).Put("/", wh.Update)
+					r.With(freshAuth).Delete("/", wh.Delete)
+					r.With(freshAuth).Post("/rotate-secret", wh.RotateSecret)
+				})
+			})
+		}
+
 		// global "admin" must not be able to enumerate, create, reset or delete
 		// superadmin accounts. Mirrors AdminLogin, which already restricts the
 		// admin portal password login to model.UserRoleSuperadmin.

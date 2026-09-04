@@ -2,7 +2,9 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -530,6 +532,7 @@ func (h *AdminHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 		Name:       user.Name,
 		Role:       string(user.Role),
 		IsVerified: user.IsVerified,
+		Attributes: user.Attributes,
 		CreatedAt:  user.CreatedAt,
 	})
 }
@@ -681,6 +684,81 @@ func (h *AdminHandler) UnlockUser(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, map[string]string{
 		"message": "user unlocked successfully",
+	})
+}
+
+// PUT /api/admin/users/:id/attributes
+//
+// A2: replaces a user's free-form attribute set. Attributes are inert on their
+// own — they only reach a token when a client declares a claim mapping naming
+// `user.attributes.<key>` — but because they can end up in tokens, this is
+// global-admin only and always audited. The body replaces the whole set, so an
+// empty object clears it.
+func (h *AdminHandler) UpdateUserAttributes(w http.ResponseWriter, r *http.Request) {
+	adminID, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	currentUser, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
+	if currentUser == nil || !currentUser.IsGlobalAdmin() {
+		writeError(w, "forbidden: global admin required", http.StatusForbidden)
+		return
+	}
+
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeError(w, "invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	var body struct {
+		Attributes model.JSONMap `json:"attributes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if body.Attributes == nil {
+		body.Attributes = model.JSONMap{}
+	}
+
+	user, err := h.userService.Update(r.Context(), uint(userID), dto.UpdateUserRequest{Attributes: &body.Attributes})
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrUserNotFound):
+			writeError(w, "user not found", http.StatusNotFound)
+		case errors.Is(err, service.ErrInvalidUserAttributes):
+			writeError(w, err.Error(), http.StatusBadRequest)
+		default:
+			writeError(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	if h.adminLogService != nil {
+		// The names are audited, not the values: an attribute may hold
+		// business-sensitive data and the audit log is widely readable.
+		names := make([]string, 0, len(user.Attributes))
+		for name := range user.Attributes {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		_ = h.adminLogService.LogAction(r.Context(), adminID, nil, &user.ID, model.AdminActionUpdateUserAttributes, map[string]interface{}{
+			"target_email": user.Email,
+			"attributes":   names,
+		})
+	}
+
+	writeJSON(w, dto.UserResponse{
+		ID:         user.ID,
+		Email:      user.Email,
+		Name:       user.Name,
+		Role:       string(user.Role),
+		IsVerified: user.IsVerified,
+		Attributes: user.Attributes,
+		CreatedAt:  user.CreatedAt,
 	})
 }
 
@@ -1076,6 +1154,7 @@ func appToResponse(app model.App) dto.AppResponse {
 		AllowImpersonation: app.AllowImpersonation,
 		Audiences:          app.Audiences,
 		AllowedScopes:      app.AllowedScopes,
+		ClaimMappings:      app.ClaimMappings,
 		URL:                app.URL,
 		RedirectURIs:       app.RedirectURIs,
 		OwnerID:            app.OwnerID,

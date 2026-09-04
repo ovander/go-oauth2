@@ -3,6 +3,7 @@ package auth
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -46,6 +47,26 @@ type TokenService struct {
 	resetTokenTTL   time.Duration
 	inviteTokenTTL  time.Duration
 	audienceMode    string
+	// claimsEnricher supplies the per-client custom claims (A2). Nil (the
+	// default) means tokens carry exactly the standard claim set.
+	claimsEnricher ClaimsEnricher
+}
+
+// SetClaimsEnricher installs the custom-claims enricher (A2). It is set once at
+// bootstrap, before the service handles traffic; passing nil disables custom
+// claims. It is a setter rather than a constructor argument so every existing
+// call site — including the tests — keeps working unchanged.
+func (ts *TokenService) SetClaimsEnricher(e ClaimsEnricher) {
+	ts.claimsEnricher = e
+}
+
+// customClaims resolves the client's mapped claims for one token target,
+// tolerating a nil enricher.
+func (ts *TokenService) customClaims(user *model.User, app *model.App, role, target string) map[string]any {
+	if ts.claimsEnricher == nil {
+		return nil
+	}
+	return ts.claimsEnricher.CustomClaims(user, app, role, target)
 }
 
 // TokenConfig holds token configuration
@@ -167,6 +188,18 @@ type AccessTokenClaims struct {
 	// Act is the optional RFC 8693 actor claim, present only on tokens minted via
 	// token exchange (delegation). Absent (nil) for ordinary tokens.
 	Act *ActClaim `json:"act,omitempty"`
+	// Custom holds the client's mapped custom claims (A2), already namespaced.
+	// It is merged into the token at the top level by MarshalJSON — never
+	// overwriting a claim above — and is not itself a claim, hence json:"-".
+	Custom map[string]any `json:"-"`
+}
+
+// MarshalJSON serializes the claims with the custom (mapped) claims merged in
+// at the top level. A custom claim can never replace a registered or standard
+// claim: a name that is already present is skipped.
+func (c AccessTokenClaims) MarshalJSON() ([]byte, error) {
+	type alias AccessTokenClaims
+	return marshalWithCustomClaims(alias(c), c.Custom)
 }
 
 // RefreshTokenClaims represents refresh token claims
@@ -202,6 +235,50 @@ type IDTokenClaims struct {
 	// (RFC 8176). Present when the issuing flow knows how the user authenticated.
 	Amr []string `json:"amr,omitempty"`
 	Acr string   `json:"acr,omitempty"`
+	// Custom holds the client's mapped custom claims (A2) — see
+	// AccessTokenClaims.Custom.
+	Custom map[string]any `json:"-"`
+}
+
+// MarshalJSON serializes the claims with the custom (mapped) claims merged in
+// at the top level, never replacing a claim the ID token already carries.
+func (c IDTokenClaims) MarshalJSON() ([]byte, error) {
+	type alias IDTokenClaims
+	return marshalWithCustomClaims(alias(c), c.Custom)
+}
+
+// marshalWithCustomClaims serializes v and merges custom into the resulting
+// object. Existing keys win, so the standard claim set is immutable from a
+// client's claim-mapping policy. A custom value that cannot be serialized is
+// skipped rather than failing token issuance.
+func marshalWithCustomClaims(v any, custom map[string]any) ([]byte, error) {
+	base, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	if len(custom) == 0 {
+		return base, nil
+	}
+
+	var merged map[string]json.RawMessage
+	if err := json.Unmarshal(base, &merged); err != nil {
+		return nil, err
+	}
+	for name, value := range custom {
+		if name == "" {
+			continue
+		}
+		if _, taken := merged[name]; taken {
+			continue
+		}
+		raw, err := json.Marshal(value)
+		if err != nil {
+			continue
+		}
+		merged[name] = raw
+	}
+
+	return json.Marshal(merged)
 }
 
 // EmailTokenClaims represents email verification/reset token claims
@@ -325,6 +402,7 @@ func (ts *TokenService) newAccessClaims(user *model.User, app *model.App, role s
 		AuthTime:     authTime,
 		Amr:          ac.amr,
 		Acr:          ac.acr,
+		Custom:       ts.customClaims(user, app, role, model.ClaimTargetAccess),
 	}
 }
 
@@ -454,6 +532,7 @@ func (ts *TokenService) generateIDToken(user *model.User, app *model.App, role s
 		AtHash:            atHash,
 		Amr:               ac.amr,
 		Acr:               ac.acr,
+		Custom:            ts.customClaims(user, app, role, model.ClaimTargetID),
 	}
 
 	return ts.signToken(claims)
@@ -558,6 +637,9 @@ func (ts *TokenService) GenerateClientCredentialsToken(app *model.App, scope str
 		},
 		Scope: scope,
 		Type:  "access",
+		// A2: a service-account token has no user, so only the app-scoped and
+		// literal sources resolve — user-sourced mappings yield no claim.
+		Custom: ts.customClaims(nil, app, "", model.ClaimTargetAccess),
 	}
 
 	return ts.signToken(claims)

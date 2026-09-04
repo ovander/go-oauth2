@@ -13,6 +13,9 @@ var (
 	ErrNotAdmin                   = errors.New("admin access required")
 	ErrCannotDeleteSelf           = errors.New("cannot delete your own account")
 	ErrCannotDeleteLastSuperadmin = errors.New("cannot delete the last superadmin")
+	// ErrInvalidUserAttributes indicates an attribute set (A2) that exceeds the
+	// count/name/size bounds, or that cannot be serialized.
+	ErrInvalidUserAttributes = errors.New("invalid user attributes")
 
 	// MFA login step-up. ErrMFARequired signals that the password was correct but
 	// a second factor (TOTP code) is needed to complete login; the client should

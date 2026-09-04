@@ -36,6 +36,26 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ### Added
 
+- **Multi-instance readiness (B5 / EPIC-13).** `internal/cluster` coordinates the
+  background jobs through PostgreSQL advisory locks, so each runs once across
+  the cluster rather than once per instance: **schema migration** takes a
+  *blocking* lock (a second instance starting simultaneously waits rather than
+  racing the same migration), while **key rotation**, **used-token pruning**,
+  the **audit-chain integrity scan** and the **shared-state sweep** take a
+  try-lock per tick. Webhook delivery is deliberately left uncoordinated — the
+  outbox already claims rows with `FOR UPDATE SKIP LOCKED`, so every instance
+  dispatching is throughput, not duplication. There is no leader to elect or
+  fail over: whoever wins the tick does the work, and a crashed winner costs one
+  interval. Locks are taken on a **dedicated pinned connection**, because a
+  session-level advisory lock belongs to the connection that took it and a
+  pooled one would return to the pool still holding it.
+  `GET /health/readiness` now reports the database, the signing key and the
+  shared-state backend by name, so a load balancer removes an instance that
+  booted but cannot mint a token — and says which dependency failed.
+  `deploy/caddy/socrate-ha.caddy` and a new runbook section cover the Caddy
+  side. Gated on `STATE_BACKEND=postgres`; a single-instance deployment on the
+  default in-memory backend behaves exactly as before.
+
 - **Shared state for multi-instance deployments (B4 / EPIC-13).**
   `STATE_BACKEND=memory|postgres` (default `memory`, unchanged behaviour) moves
   the rate-limit counters and the DPoP replay cache into the database already

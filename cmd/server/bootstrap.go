@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ovandermoten/go-oauth2/config"
+	"github.com/ovandermoten/go-oauth2/internal/cluster"
 	"github.com/ovandermoten/go-oauth2/internal/database/migrate"
 	"github.com/ovandermoten/go-oauth2/internal/handler"
 	internalhttp "github.com/ovandermoten/go-oauth2/internal/http"
@@ -306,6 +307,16 @@ func Bootstrap(cfg *config.Config) *App {
 		logger.Info("AUTO_MIGRATE=false — skipping GORM schema diffing (set AUTO_MIGRATE=true to apply model changes)")
 	}
 
+	// B5: with STATE_BACKEND=postgres the periodic jobs below are gated on a
+	// PostgreSQL advisory lock, so exactly one instance runs each tick. A nil
+	// handle (single-instance, the default) leaves them running on every tick
+	// exactly as before — the gate is opt-in with the same switch that makes
+	// the request-path state shared, because the two only make sense together.
+	var jobDB *gorm.DB
+	if cfg.StateBackend == state.BackendPostgres {
+		jobDB = db
+	}
+
 	// ==========================================
 	// Key Manager
 	// ==========================================
@@ -329,7 +340,25 @@ func Bootstrap(cfg *config.Config) *App {
 				"refresh_token_ttl": cfg.RefreshTokenTTL.String(),
 			}).Warn("RFC-002: KEY_ROTATION_INTERVAL exceeds REFRESH_TOKEN_TTL — a compromised key could outlive the next rotation; consider a shorter interval")
 		}
-		keyRotationStop = keyManager.StartRotationScheduleWithRetention(cfg.KeyRotationInterval, retention)
+		// B5: rotation must happen once per cluster, not once per instance —
+		// N instances on the same schedule would burn through the JWKS ring N
+		// times as fast and retire keys that tokens in flight still need.
+		keyRotationStop = cluster.Every(jobDB, cluster.LockKeyRotation, "key_rotation",
+			cfg.KeyRotationInterval, func(context.Context) error {
+				if err := keyManager.RotateKey(); err != nil {
+					return err
+				}
+				if retention > 0 {
+					// A pruning failure is worth logging but must not fail the
+					// tick: the rotation itself already succeeded, and retrying
+					// it would mint a second key.
+					if _, err := keyManager.PruneRetiredKeys(retention); err != nil {
+						logger.WithFields(logger.Fields{"error": err.Error()}).
+							Warn("B5: retired-key pruning failed after rotation")
+					}
+				}
+				return nil
+			})
 		logger.WithFields(logger.Fields{
 			"rotation_interval": cfg.KeyRotationInterval.String(),
 			"retention":         retention.String(),
@@ -409,7 +438,12 @@ func Bootstrap(cfg *config.Config) *App {
 	var auditIntegrityStop func()
 	if cfg.AuditIntegrityScanInterval > 0 {
 		scanner := service.NewAuditIntegrityScanner(securityAuditRepo, []byte(cfg.SecretKeyBase))
-		auditIntegrityStop = scanner.StartSchedule(cfg.AuditIntegrityScanInterval, cfg.AuditIntegrityScanLookback)
+		lookback := cfg.AuditIntegrityScanLookback
+		auditIntegrityStop = cluster.Every(jobDB, cluster.LockAuditScan, "audit_integrity_scan",
+			cfg.AuditIntegrityScanInterval, func(ctx context.Context) error {
+				_, _, err := scanner.Scan(ctx, time.Now().Add(-lookback))
+				return err
+			})
 		logger.WithFields(logger.Fields{
 			"interval": cfg.AuditIntegrityScanInterval.String(),
 			"lookback": cfg.AuditIntegrityScanLookback.String(),
@@ -421,7 +455,12 @@ func Bootstrap(cfg *config.Config) *App {
 	// default (1h); disabled when UsedTokenCleanupInterval == 0.
 	var usedTokenCleanupStop func()
 	if cfg.UsedTokenCleanupInterval > 0 {
-		usedTokenCleanupStop = service.NewUsedTokenCleaner(usedTokenRepo).StartSchedule(cfg.UsedTokenCleanupInterval)
+		cleaner := service.NewUsedTokenCleaner(usedTokenRepo)
+		usedTokenCleanupStop = cluster.Every(jobDB, cluster.LockUsedTokenSweep, "used_token_cleanup",
+			cfg.UsedTokenCleanupInterval, func(ctx context.Context) error {
+				_, err := cleaner.Cleanup(ctx)
+				return err
+			})
 		logger.WithFields(logger.Fields{
 			"interval": cfg.UsedTokenCleanupInterval.String(),
 		}).Info("EPIC-14: scheduled used-token cleanup enabled")
@@ -670,13 +709,27 @@ func Bootstrap(cfg *config.Config) *App {
 		pgLimits := state.NewPostgresRateLimitStore(db, cfg.StateOpTimeout)
 		rateLimitStore = pgLimits
 		replayStore = state.NewPostgresReplayStore(db, cfg.StateOpTimeout)
-		stateSweepStop = state.NewSweeper(cfg.StateSweepInterval, pgLimits, replayStore).Start()
+		sweeper := state.NewSweeper(cfg.StateSweepInterval, pgLimits, replayStore)
+		stateSweepStop = cluster.Every(jobDB, cluster.LockStateSweep, "shared_state_sweep",
+			cfg.StateSweepInterval, func(ctx context.Context) error {
+				sweeper.SweepOnce(ctx)
+				return nil
+			})
 		logger.WithFields(logger.Fields{
 			"backend":        cfg.StateBackend,
 			"sweep_interval": cfg.StateSweepInterval.String(),
 			"op_timeout":     cfg.StateOpTimeout.String(),
 		}).Info("B4: shared state enabled — rate limits and DPoP replay are cluster-wide")
 	}
+
+	// B5: readiness reports the dependencies this instance needs to serve a
+	// token, so a load balancer takes it out of rotation for a missing signing
+	// key or an unreachable shared-state backend, not only for a dead database.
+	var stateProbe handler.StateProbe
+	if replayStore != nil {
+		stateProbe = replayStore
+	}
+	healthHandler.SetProbes(keyManager, stateProbe)
 
 	newLimiter := func(namespace string, limit int, window time.Duration) middleware.Limiter {
 		if rateLimitStore != nil {

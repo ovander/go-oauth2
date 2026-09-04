@@ -199,7 +199,7 @@ slower to trigger across N instances. `IPBlockCache` is already a read-through c
 table — only its freshness lags, which is not a correctness break. The Redis adapter stays
 optional and outside the exit criteria, as planned.
 
-### B5. Multi-instance readiness — **M**, after B4
+### B5. Multi-instance readiness — **M**, after B4 — ✅ delivered
 - Key rotation guarded by a Postgres advisory lock (one rotator; the JWKS ring already serves
   current + previous); migrations behind the same lock; sweepers (used tokens, magic links,
   reports) elect a leader with `pg_try_advisory_lock`.
@@ -207,6 +207,28 @@ optional and outside the exit criteria, as planned.
   `lb_policy first` / `round_robin` example with two Socrate instances in the runbook.
 - Acceptance: a k6 run (B6) against two instances behind Caddy shows correct rate limiting,
   no double refresh, no replay acceptance, and key rotation once.
+
+**As delivered.** `internal/cluster` with `TryWithLock` (per-tick election) and `WithLock`
+(blocking, for migrations), each on a **dedicated pinned connection** — a session-level advisory
+lock belongs to the connection that took it, so taking one through the pool would return it to the
+pool still held. Migrations, key rotation, used-token pruning, the audit scan and the shared-state
+sweep are wired through it; webhook delivery deliberately is not, since `FOR UPDATE SKIP LOCKED`
+already makes every instance dispatching correct and desirable. Readiness reports database,
+signing key and shared-state backend by name. Caddy config and a runbook section shipped.
+
+**Acceptance, verified against two live instances on one PostgreSQL 16:** with
+`RATE_LIMIT_LOGIN=5` and requests alternating between the two, requests 1-5 returned 401 and 6-10
+returned **429** — the limit held across the pair, where in-memory state would have allowed ten.
+With a 5-second rotation interval, instance B logged "another instance holds the job lock" on all
+five ticks while the retired-key count grew by exactly five: **one rotation per tick
+cluster-wide**, not two. Both instances started simultaneously against one database without a
+migration race.
+
+**Not covered by the live run:** the no-double-refresh and no-replay-acceptance criteria. Refresh
+rotation is already enforced by a single-use database row rather than by instance-local state, and
+DPoP replay is covered by B4's `PostgresReplayStore` (exactly one of 25 concurrent claims accepted,
+against a real database). Neither needed the two-instance harness to demonstrate, so it was not
+built for them.
 
 ### B6. Performance baseline — **S/M**
 - k6 scenarios in `deploy/perf/`: `token_refresh`, `authorize_login_consent`, `introspect`,

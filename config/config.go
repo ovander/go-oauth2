@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/ovandermoten/go-oauth2/internal/state"
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
 
@@ -173,6 +174,18 @@ type Config struct {
 	WebhookPollInterval time.Duration
 	WebhookBatchSize    int
 	WebhookSendTimeout  time.Duration
+	// StateBackend selects where the shared security state lives (B4):
+	// "memory" (default — correct for one instance) or "postgres" (correct
+	// under N instances, using the database already configured). Rate-limit
+	// counters and the DPoP replay cache follow this setting.
+	StateBackend string
+	// StateSweepInterval is how often expired shared-state rows are evicted.
+	// The stores are correct without it — every read filters on expiry — so
+	// this only bounds table growth.
+	StateSweepInterval time.Duration
+	// StateOpTimeout bounds a single shared-state round trip, so a slow
+	// database degrades the limiter rather than the request path.
+	StateOpTimeout time.Duration
 	// SecretKeyBase is a cryptographic secret (≥32 bytes in production) used
 	// for two purposes:
 	//   1. CSRF cookie signing in the OAuth authorization handler (CRIT-03):
@@ -335,6 +348,9 @@ func Load() *Config {
 		WebhookPollInterval:     time.Duration(getEnvInt("WEBHOOK_POLL_INTERVAL", 10)) * time.Second,
 		WebhookBatchSize:        getEnvInt("WEBHOOK_BATCH_SIZE", 20),
 		WebhookSendTimeout:      time.Duration(getEnvInt("WEBHOOK_SEND_TIMEOUT", 5)) * time.Second,
+		StateBackend:            state.NormalizeBackend(getEnv("STATE_BACKEND", "memory")),
+		StateSweepInterval:      time.Duration(getEnvInt("STATE_SWEEP_INTERVAL", 300)) * time.Second,
+		StateOpTimeout:          time.Duration(getEnvInt("STATE_OP_TIMEOUT_MS", 2000)) * time.Millisecond,
 
 		// Rate Limiting
 		// LOW-03 fix: window env vars now have an explicit _MS suffix so

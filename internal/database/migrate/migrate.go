@@ -415,6 +415,57 @@ var migrations = []Migration{
 			).Error
 		},
 	},
+	{
+		// B4: shared fixed-window rate-limit counters. UNLOGGED on purpose —
+		// this is ephemeral, reconstructible state written on every rate-limited
+		// request, so skipping the WAL keeps the write cost low. The tables are
+		// truncated on an unclean shutdown, which is the same guarantee the
+		// in-memory backend gives on restart.
+		ID:   "0020",
+		Name: "create_rate_limit_counters",
+		Run: func(db *gorm.DB) error {
+			stmts := []string{
+				`CREATE UNLOGGED TABLE IF NOT EXISTS rate_limit_counters (
+					key          TEXT        NOT NULL,
+					window_start TIMESTAMPTZ NOT NULL,
+					count        INTEGER     NOT NULL DEFAULT 0,
+					expires_at   TIMESTAMPTZ NOT NULL,
+					PRIMARY KEY (key, window_start)
+				)`,
+				`CREATE INDEX IF NOT EXISTS idx_rate_limit_counters_expiry
+					ON rate_limit_counters (expires_at)`,
+			}
+			for _, stmt := range stmts {
+				if err := db.Exec(stmt).Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
+	{
+		// B4: shared DPoP replay cache. Without this, a proof replayed against a
+		// different instance is accepted, because only the instance that saw it
+		// first remembers the jti.
+		ID:   "0021",
+		Name: "create_dpop_replay",
+		Run: func(db *gorm.DB) error {
+			stmts := []string{
+				`CREATE UNLOGGED TABLE IF NOT EXISTS dpop_replay (
+					jti        TEXT        PRIMARY KEY,
+					expires_at TIMESTAMPTZ NOT NULL
+				)`,
+				`CREATE INDEX IF NOT EXISTS idx_dpop_replay_expiry
+					ON dpop_replay (expires_at)`,
+			}
+			for _, stmt := range stmts {
+				if err := db.Exec(stmt).Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

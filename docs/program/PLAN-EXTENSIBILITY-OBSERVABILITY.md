@@ -166,7 +166,7 @@ stable `event_id` is the subscriber's deduplication key.
   `LOG_FORMAT=json|text`, per-event sampling for high-volume successes, and a unit test that
   greps the logger for token/secret/password fields (extends the pass-4 check).
 
-### B4. Distributed state adapters (EPIC-13 / RFC-013) — **M/L**
+### B4. Distributed state adapters (EPIC-13 / RFC-013) — **M/L** — ◧ rate limits + DPoP replay delivered
 - Define the store interfaces where the state is in-process today:
   `RateLimitStore` (`middleware.RateLimiter`), `dpop.ReplayCache` (already an interface),
   `AutoDefenseStore` (`ipRecords`), `IPBlockCache`, `LoginStateStore` for the hosted flow if any
@@ -178,6 +178,26 @@ stable `event_id` is the subscriber's deduplication key.
 - Optional Redis adapter behind the same interfaces (`STATE_BACKEND=memory|postgres|redis`)
   for deployments that already run Redis.
 - The webhook outbox (A3) and the monitoring BFF's Postgres sessions already follow this model.
+
+**As delivered.** `internal/state` with `RateLimitStore` and `ReplayStore`, memory (default) and
+Postgres behind `STATE_BACKEND`, migrations `0020`/`0021` creating `UNLOGGED` tables, and a
+sweeper. `middleware.Limiter` is now an interface so the in-process and shared limiters are
+interchangeable at the call site with no change to the middleware. Counters are fixed-window
+(`INSERT … ON CONFLICT DO UPDATE … RETURNING`) — the 2×limit boundary case is documented rather
+than hidden; the replay check is a conditional upsert so first-use is decided atomically.
+Failure policy is split on purpose: the rate limiter fails open (its endpoints need the same
+database, so nothing is left to brute-force and failing closed would be a self-inflicted outage),
+the replay store fails closed. Verified against a real Postgres 16, including 50 concurrent
+increments losing no counts and exactly one of 25 concurrent replay claims winning; CI gained a
+Postgres service so these run there too.
+
+**Deferred:** the auto-defense counters (`AutoDefenseService.ipRecords`) and `IPBlockCache`.
+Auto-defense keeps two sliding windows plus a block-escalation count per IP rather than a single
+counter, so it needs its own design pass instead of being wedged into the counter interface; its
+*blocks* are already shared via `blocked_ips`, so the gap is that pre-block escalation is N times
+slower to trigger across N instances. `IPBlockCache` is already a read-through cache over a shared
+table — only its freshness lags, which is not a correctness break. The Redis adapter stays
+optional and outside the exit criteria, as planned.
 
 ### B5. Multi-instance readiness — **M**, after B4
 - Key rotation guarded by a Postgres advisory lock (one rotator; the JWKS ring already serves

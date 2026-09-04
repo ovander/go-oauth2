@@ -36,6 +36,32 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ### Added
 
+- **Shared state for multi-instance deployments (B4 / EPIC-13).**
+  `STATE_BACKEND=memory|postgres` (default `memory`, unchanged behaviour) moves
+  the rate-limit counters and the DPoP replay cache into the database already
+  configured — no new infrastructure. This is what a second instance needs to
+  be correct: with in-process state, N instances each enforce a rate limit
+  independently (a 5/min limit becomes 5N/min) and **a DPoP proof replayed
+  against a different instance is accepted**, because only the instance that
+  saw it first remembers the `jti`. Counters use a single
+  `INSERT … ON CONFLICT DO UPDATE … RETURNING`, and the replay check is a
+  conditional upsert that decides first-use atomically — a SELECT-then-INSERT
+  would let two instances both accept one proof. Both tables are `UNLOGGED`
+  (migrations `0020`/`0021`), matching what memory already gives on restart.
+  Two deliberate differences from the in-memory limiter, both documented:
+  windows are **fixed** rather than sliding, so the worst case across a
+  boundary is 2×limit; and the rate limiter **fails open** on a store error
+  (the endpoints it guards need the same database, so nothing is left to
+  brute-force) while the replay store **fails closed**. `STATE_SWEEP_INTERVAL`
+  evicts expired rows, `STATE_OP_TIMEOUT_MS` bounds one round trip. Auto-defense
+  counters remain per-instance — see `docs/EXTENSIBILITY.md`.
+- **Migration and shared-state integration tests.** CI now runs a Postgres
+  service, so `TEST_DATABASE_URL` is set and the SQL is actually exercised:
+  the whole migration chain applies to an empty database and re-applies as a
+  no-op, the shared-state tables are asserted `UNLOGGED`, concurrent counter
+  increments lose no counts, and exactly one of N concurrent replay claims is
+  accepted. Without the variable these tests skip, so the suite still runs
+  with no database.
 - **Outbound webhooks — the delivery dispatcher (A3, part 2 of 2).** The outbox
   is now drained. A pass claims due deliveries with
   `SELECT … FOR UPDATE SKIP LOCKED` under a lease, so several instances can

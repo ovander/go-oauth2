@@ -19,6 +19,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth/dpop"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth/tokenexchange"
+	"github.com/ovandermoten/go-oauth2/internal/state"
 	"github.com/ovandermoten/go-oauth2/internal/version"
 	"github.com/ovandermoten/go-oauth2/internal/web"
 	"github.com/ovandermoten/go-oauth2/pkg/database"
@@ -39,12 +40,12 @@ type App struct {
 
 	// Cleanup functions for graceful shutdown
 	codeStore         *auth.CodeStore
-	loginRateLimiter  *middleware.RateLimiter
-	signupRateLimiter *middleware.RateLimiter
+	loginRateLimiter  middleware.Limiter
+	signupRateLimiter middleware.Limiter
 	// MED-05: tokenRateLimiter protects POST /oauth/token.  Stored here so
 	// it participates in the graceful-shutdown Stop() sequence alongside the
 	// other rate limiters.
-	tokenRateLimiter *middleware.RateLimiter
+	tokenRateLimiter middleware.Limiter
 	autoDefense      *service.AutoDefenseService
 	ipBlockChecker   *middleware.IPBlockChecker
 	// keyRotationStop stops the scheduled key-rotation goroutine on shutdown.
@@ -62,6 +63,9 @@ type App struct {
 	// webhookDispatchStop stops the webhook delivery dispatcher (A3 part 2).
 	// Nil when webhooks are disabled.
 	webhookDispatchStop func()
+	// stateSweepStop stops the shared-state sweeper (B4). Nil unless
+	// STATE_BACKEND=postgres.
+	stateSweepStop func()
 	// dpopReplayCache backs DPoP observe-mode replay detection; nil when DPoP is
 	// off. Stopped on shutdown.
 	dpopReplayCache *dpop.MemoryReplayCache
@@ -227,6 +231,9 @@ func (a *App) Stop() {
 	}
 	if a.webhookDispatchStop != nil {
 		a.webhookDispatchStop()
+	}
+	if a.stateSweepStop != nil {
+		a.stateSweepStop()
 	}
 	if a.dpopReplayCache != nil {
 		a.dpopReplayCache.Stop()
@@ -652,31 +659,46 @@ func Bootstrap(cfg *config.Config) *App {
 	// ==========================================
 	// Rate Limiters (with graceful shutdown support)
 	// ==========================================
-	loginRateLimiter := middleware.NewRateLimiterWithConfig(middleware.RateLimiterConfig{
-		Limit:           cfg.RateLimitLogin,
-		Window:          cfg.RateLimitLoginWindow,
-		MaxEntries:      cfg.RateLimitMaxEntries,
-		CleanupInterval: time.Minute,
-	})
+	// B4: with STATE_BACKEND=postgres the counters live in the database, so N
+	// instances share one budget instead of each enforcing the limit
+	// independently (which would make the effective limit N times the
+	// configured one). Memory is the default and behaves exactly as before.
+	var rateLimitStore state.RateLimitStore
+	var replayStore *state.PostgresReplayStore
+	var stateSweepStop func()
+	if cfg.StateBackend == state.BackendPostgres {
+		pgLimits := state.NewPostgresRateLimitStore(db, cfg.StateOpTimeout)
+		rateLimitStore = pgLimits
+		replayStore = state.NewPostgresReplayStore(db, cfg.StateOpTimeout)
+		stateSweepStop = state.NewSweeper(cfg.StateSweepInterval, pgLimits, replayStore).Start()
+		logger.WithFields(logger.Fields{
+			"backend":        cfg.StateBackend,
+			"sweep_interval": cfg.StateSweepInterval.String(),
+			"op_timeout":     cfg.StateOpTimeout.String(),
+		}).Info("B4: shared state enabled — rate limits and DPoP replay are cluster-wide")
+	}
 
-	signupRateLimiter := middleware.NewRateLimiterWithConfig(middleware.RateLimiterConfig{
-		Limit:           cfg.RateLimitSignup,
-		Window:          cfg.RateLimitSignupWindow,
-		MaxEntries:      cfg.RateLimitMaxEntries,
-		CleanupInterval: time.Minute,
-	})
+	newLimiter := func(namespace string, limit int, window time.Duration) middleware.Limiter {
+		if rateLimitStore != nil {
+			return state.NewStoreLimiter(rateLimitStore, namespace, limit, window)
+		}
+		return middleware.NewRateLimiterWithConfig(middleware.RateLimiterConfig{
+			Limit:           limit,
+			Window:          window,
+			MaxEntries:      cfg.RateLimitMaxEntries,
+			CleanupInterval: time.Minute,
+		})
+	}
+
+	loginRateLimiter := newLimiter("login", cfg.RateLimitLogin, cfg.RateLimitLoginWindow)
+	signupRateLimiter := newLimiter("signup", cfg.RateLimitSignup, cfg.RateLimitSignupWindow)
 
 	// MED-05: token endpoint rate limiter — nil when explicitly disabled
 	// (RATE_LIMIT_TOKEN=0).  A nil limiter leaves the token endpoint unprotected;
 	// the production Validate() warning fires in that case.
-	var tokenRateLimiter *middleware.RateLimiter
+	var tokenRateLimiter middleware.Limiter
 	if cfg.RateLimitToken > 0 {
-		tokenRateLimiter = middleware.NewRateLimiterWithConfig(middleware.RateLimiterConfig{
-			Limit:           cfg.RateLimitToken,
-			Window:          cfg.RateLimitTokenWindow,
-			MaxEntries:      cfg.RateLimitMaxEntries,
-			CleanupInterval: time.Minute,
-		})
+		tokenRateLimiter = newLimiter("token", cfg.RateLimitToken, cfg.RateLimitTokenWindow)
 		logger.WithFields(logger.Fields{
 			"limit":  cfg.RateLimitToken,
 			"window": cfg.RateLimitTokenWindow.String(),
@@ -691,9 +713,22 @@ func Bootstrap(cfg *config.Config) *App {
 	// DPoP (RFC 9449) observe-mode telemetry on the token endpoint. The replay
 	// cache (and its janitor) is created only when DPoP is enabled.
 	var dpopReplayCache *dpop.MemoryReplayCache
+	var dpopCache dpop.ReplayCache
 	if cfg.DPoPMode != "off" && cfg.DPoPMode != "" {
-		dpopReplayCache = dpop.NewMemoryReplayCache(time.Minute)
-		logger.WithFields(logger.Fields{"mode": cfg.DPoPMode}).Info("DPoP enabled (observe-mode telemetry on /oauth/token)")
+		if replayStore != nil {
+			// B4: a proof replayed against another instance must be rejected
+			// there too, so the jti has to be shared. This is the one piece of
+			// state whose in-process copy is a security hole rather than a
+			// performance detail.
+			dpopCache = replayStore
+		} else {
+			dpopReplayCache = dpop.NewMemoryReplayCache(time.Minute)
+			dpopCache = dpopReplayCache
+		}
+		logger.WithFields(logger.Fields{
+			"mode":    cfg.DPoPMode,
+			"backend": cfg.StateBackend,
+		}).Info("DPoP enabled (observe-mode telemetry on /oauth/token)")
 	}
 
 	routerConfig := internalhttp.RouterConfig{
@@ -712,8 +747,8 @@ func Bootstrap(cfg *config.Config) *App {
 		// WEBHOOKS_MODE=on.
 		WebhookHandler: handler.NewWebhookHandler(webhookService, adminLogService),
 	}
-	if dpopReplayCache != nil {
-		routerConfig.DPoPReplayCache = dpopReplayCache
+	if dpopCache != nil {
+		routerConfig.DPoPReplayCache = dpopCache
 	}
 	// Record a dpop_validation_failed security event on every rejected proof so
 	// DPoP abuse / misconfiguration is visible to the monitoring console (#202).
@@ -811,6 +846,7 @@ func Bootstrap(cfg *config.Config) *App {
 			usedTokenCleanupStop: usedTokenCleanupStop,
 			webhookCacheStop:     webhookCacheStop,
 			webhookDispatchStop:  webhookDispatchStop,
+			stateSweepStop:       stateSweepStop,
 			dpopReplayCache:      dpopReplayCache,
 		}
 	}
@@ -853,6 +889,7 @@ func Bootstrap(cfg *config.Config) *App {
 		usedTokenCleanupStop: usedTokenCleanupStop,
 		webhookCacheStop:     webhookCacheStop,
 		webhookDispatchStop:  webhookDispatchStop,
+		stateSweepStop:       stateSweepStop,
 		dpopReplayCache:      dpopReplayCache,
 	}
 }

@@ -18,6 +18,23 @@ const (
 	DefaultMaxEntries = 10000
 )
 
+// Limiter is the rate-limiting behaviour the middleware depends on. The
+// in-process RateLimiter below and the shared-store limiter in internal/state
+// (B4) both satisfy it, so which backend is in use is a bootstrap decision the
+// middleware never sees.
+type Limiter interface {
+	// Allow records a request for key and reports whether it is within the limit.
+	Allow(key string) bool
+	// RemainingRequests reports how many requests remain in the current window.
+	RemainingRequests(key string) int
+	// ResetTime reports when the current window ends.
+	ResetTime(key string) time.Time
+	// Limit is the configured number of requests per window.
+	Limit() int
+	// Stop releases any background resources.
+	Stop()
+}
+
 // RateLimiterConfig holds configuration for the rate limiter
 type RateLimiterConfig struct {
 	Limit           int
@@ -198,6 +215,9 @@ func (rl *RateLimiter) ResetTime(key string) time.Time {
 	return now
 }
 
+// Limit returns the configured number of requests allowed per window.
+func (rl *RateLimiter) Limit() int { return rl.limit }
+
 // Stop gracefully stops the cleanup goroutine
 func (rl *RateLimiter) Stop() {
 	close(rl.stopCh)
@@ -260,7 +280,7 @@ func (rl *RateLimiter) cleanupExpired() {
 // trustedCIDRs controls which upstream proxies may supply X-Forwarded-For /
 // X-Real-IP headers.  Pass nil (or an empty slice) to always use RemoteAddr
 // directly and never trust proxy headers — the safe default.
-func RateLimitMiddleware(limiter *RateLimiter, trustedCIDRs []*net.IPNet) func(http.Handler) http.Handler {
+func RateLimitMiddleware(limiter Limiter, trustedCIDRs []*net.IPNet) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			key := GetClientIPSafe(r, trustedCIDRs)
@@ -274,7 +294,7 @@ func RateLimitMiddleware(limiter *RateLimiter, trustedCIDRs []*net.IPNet) func(h
 				}
 
 				w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
-				w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", limiter.limit))
+				w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", limiter.Limit()))
 				w.Header().Set("X-RateLimit-Remaining", "0")
 				w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", resetTime.Unix()))
 
@@ -283,7 +303,7 @@ func RateLimitMiddleware(limiter *RateLimiter, trustedCIDRs []*net.IPNet) func(h
 			}
 
 			remaining := limiter.RemainingRequests(key)
-			w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", limiter.limit))
+			w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", limiter.Limit()))
 			w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", remaining))
 
 			next.ServeHTTP(w, r)

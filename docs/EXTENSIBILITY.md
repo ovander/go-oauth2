@@ -2,8 +2,8 @@
 
 Plan A of `docs/program/PLAN-EXTENSIBILITY-OBSERVABILITY.md`. Delivered so far:
 **A1** per-client scope policy, **A6** in-process hooks, **A2** custom claims,
-**A3** outbound webhooks, and **A4** part 1 — the policy decision point, on the
-admin API.
+**A3** outbound webhooks, and **A4** parts 1–2 — the policy decision point, on
+the admin API and for applications.
 
 ## Per-client scope policy (A1)
 
@@ -419,12 +419,97 @@ logged — they are counted in `socrate_policy_decisions_total` — so the log
 stays a list of things worth reading. Rows older than
 `POLICY_DECISION_RETENTION_DAYS` (30) are swept hourly, by one instance.
 
-**Not yet:** the decide endpoint for applications (`POST /api/policy/decide`)
-and backendkit's PEP client are part 2; the console editor and decision-log
-views are part 3.
+### Applications: the decide endpoint (part 2)
+
+An application's backend asks the same PDP about its own users:
+
+```
+POST /api/apps/{app_id}/service/policy/decide      (admin port)
+Authorization: Bearer <the application's client_credentials token>
+X-Correlation-ID: <the app's request id>
+
+{"subject":  {"token": "<the user's access token>"},        // or {"user_id": 42}; omit for the app itself
+ "action":   "invoice.approve",
+ "resource": {"type": "invoice", "id": "inv-9", "attributes": {"amount": 25000, "owner_id": 42}},
+ "context":  {"ip": "203.0.113.5", "attributes": {"channel": "web"}}}
+
+→ 200 {"allow": false, "rule": "large-invoices-blocked", "reason": "denied_by_rule",
+       "obligations": [], "policy_version": 7, "mode": "shadow"}
+```
+
+**What the application can and cannot say.** The caller is the application
+proven by its client-credentials token, pinned to `{app_id}` — never a field in
+the body. The **subject is resolved by Socrate**: role, A2 attributes, forced
+password change, and the user's role *in the calling application*
+(`principal.app_role`). An application can only ask about **its own members**
+(or global admins): anyone else is `404 unknown subject`, the same answer as for
+an id that does not exist, so the endpoint cannot be used to discover users. What
+the application does supply — `action`, `resource`, `context` — are facts about
+its own domain that only it knows; `context.ip` is the end user's address as it
+observed it, and Socrate derives `context.ip_country` from it when GeoIP is
+configured.
+
+**Send the user's token, not their id**, whenever you have it. The token is
+verified with exactly the checks `AuthMiddleware` applies (signature, expiry,
+`token_version`, per-token revocation, lock), and it is the only source of
+`principal.scopes`, `principal.amr` and `principal.auth_time_age`. With a bare
+`user_id` those are absent, so a rule that depends on them is *unknown* — and a
+deny rule that is unknown denies. A revoked or expired subject token is a
+`400`, not a decision: that user has no session to decide for. A locked account
+is a deny (`subject_locked`) without evaluating anything.
+
+**Actions** are the application's own vocabulary (`invoice.approve`,
+`report.export`). The admin namespace (`"<METHOD> /api/admin…"`) is refused
+with `400`: those actions are decided only on the admin API's own requests.
+Scope rules to an application with `app.client_id`, since a rule whose
+`actions` is `*` applies to every application's actions as well as the admin
+API's. With the baseline alone, every application action is
+`no_applicable_rule` — write the application's allows before shadowing it.
+
+**The mode travels with the answer.** Every response carries `mode`, and the
+application's enforcement point acts on it: `off` — ignore; `shadow` — log a
+denial, proceed; `enforce` — refuse. An operator therefore moves every
+application from shadow to enforce by changing `POLICY_MODE` on Socrate, with
+no redeploy anywhere. In `off` the endpoint still answers (so rules can be
+tried), but nothing is recorded; in `shadow` and `enforce` denials are written
+to the decision log with `source = decide_api` and the calling application's
+`client_id`, under the request's correlation id.
+
+**Obligations** are returned, not checked: the application's PEP honours them
+against the user's token (backendkit's `pep` does). If no policy version can be
+loaded the answer is `503 {"error": "policy_unavailable", "mode": ...}`.
+
+**backendkit.** `socrate.Client.Decide` calls this endpoint with the cached
+service token and forwards the request id. The `pep` package is the
+enforcement point:
+
+```go
+enf, _ := pep.New(pep.Config{Decider: socrateClient})
+
+// route-level
+r.Use(enf.Middleware(func(r *http.Request) (string, socrate.PolicyResource, bool) {
+    return "invoice.read", socrate.PolicyResource{Type: "invoice"}, true
+}))
+
+// object-level, once the resource is loaded
+err := enf.Check(r.Context(), "invoice.approve", socrate.PolicyResource{
+    Type: "invoice", ID: inv.ID, Attributes: map[string]any{"amount": inv.Amount},
+}, pep.ContextFor(r))
+if pep.WriteDenial(w, err) { return }
+```
+
+It must run after `jwtauth.Middleware` (the user's own token is sent as the
+subject; without one it refuses `401` rather than deciding as the
+application). It answers `403 policy_denied`, `elevation_required` or
+`mfa_required` — the same codes as the admin API. When Socrate cannot be
+reached it goes by the last mode it saw: proceed in `off`/`shadow`, refuse
+`503` in `enforce`; before any decision has told it the mode it refuses, unless
+`FailOpenWhenModeUnknown` is set.
+
+**Part 3:** the console editor (oauth2-admin) and the decision-log view
+(oauth2-monitoring).
 
 ## Next
 
-- **A4 part 2** — `POST /api/policy/decide` for applications, and backendkit's
-  PEP client; **part 3** — the console editor and decision-log views.
+- **A4 part 3** — the console editor and decision-log views.
 - **A5** hosted-page branding and i18n.

@@ -198,4 +198,7 @@ const (
 	ReasonNoApplicable    = "no_applicable_rule"
 	ReasonPolicyUnloaded  = "policy_unavailable"
 	ReasonObligationUnmet = "obligation_unmet"
+	// ReasonSubjectLocked: the subject's account is locked, so nothing is
+	// evaluated — a locked account is refused whatever the rules say.
+	ReasonSubjectLocked = "subject_locked"
 )

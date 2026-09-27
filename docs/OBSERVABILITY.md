@@ -21,7 +21,7 @@ user, client id, IP address or token** — those belong in the audit log.
 | `socrate_security_events_total` | counter | `event_type` (every `SecurityEventType`: `login_success`, `login_failed`, `refresh_token_reuse`, `dpop_validation_failed`, `pkce_validation_failed`, `scope_denied`, `ip_blocked`, …), `success` | one counter per persisted audit event — the SOC console's raw signal as a time series |
 | `socrate_rate_limit_hits_total` | counter | `route` | 429s per route pattern |
 | `socrate_ip_blocks_total` | counter | — | requests refused by the block list |
-| `socrate_policy_decisions_total` | counter | `source` (`admin_pep`), `mode` (`shadow`/`enforce`), `outcome` (`allow`/`deny`/`error`) | A4 policy decisions; `error` means no policy version could be loaded |
+| `socrate_policy_decisions_total` | counter | `source` (`admin_pep`, `decide_api`), `mode` (`shadow`/`enforce`), `outcome` (`allow`/`deny`/`error`) | A4 policy decisions; `error` means no policy version could be loaded |
 | `socrate_policy_divergences_total` | counter | `source`, `kind` (`pdp_deny_code_allow`/`pdp_allow_code_deny`) | requests where the policy and the code gates disagreed — zero with the baseline; must be zero before a code gate is retired |
 | `socrate_signing_key_age_seconds` | gauge | — | age of the active RSA key; compare with `KEY_ROTATION_INTERVAL_SECONDS` |
 | `socrate_db_pool_{open_connections,in_use,idle,wait_count_total,wait_seconds_total}` | gauge | — | `sql.DB` pool |

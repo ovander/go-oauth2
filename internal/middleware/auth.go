@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
+	"github.com/ovandermoten/go-oauth2/internal/model"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 )
@@ -51,6 +52,85 @@ func isRevoked(ctx context.Context, usedTokenRepo repository.UsedTokenRepository
 	return err == nil && revoked
 }
 
+// UserTokenError says why a user access token was refused. Reason is empty
+// when the refusal is not a token-abuse signal (a locked account).
+type UserTokenError struct {
+	Reason  AuthRejectReason
+	Detail  string
+	Message string
+	Status  int
+}
+
+func (e *UserTokenError) Error() string { return e.Message }
+
+// UserTokenLocked is the Detail of the error for a valid token whose account
+// is locked.
+const UserTokenLocked = "account_locked"
+
+// VerifyUserToken runs every check AuthMiddleware applies to a user access
+// token — signature and expiry, a numeric user subject, the user's existence,
+// nuclear revocation (token_version), per-token revocation (jti) and account
+// lock — and returns the user and claims. It is the single implementation of
+// those checks, shared by AuthMiddleware and by anything else that accepts a
+// user's token on their behalf (the A4 decide endpoint).
+//
+// On error the user and claims are nil — except for a locked account (Detail
+// UserTokenLocked), where the token is valid and both are returned with the
+// error. A caller must never treat a non-nil user as success.
+func VerifyUserToken(ctx context.Context, tokenService *auth.TokenService, userRepo repository.UserRepository, usedTokenRepo repository.UsedTokenRepository, tokenString string) (*model.User, *auth.AccessTokenClaims, *UserTokenError) {
+	claims, err := tokenService.VerifyAccessToken(tokenString)
+	if err != nil {
+		if errors.Is(err, auth.ErrTokenExpired) {
+			return nil, nil, &UserTokenError{Reason: AuthRejectExpired, Detail: "token_expired", Message: "invalid or expired token", Status: http.StatusUnauthorized}
+		}
+		return nil, nil, &UserTokenError{Reason: AuthRejectInvalid, Detail: "verify_failed", Message: "invalid or expired token", Status: http.StatusUnauthorized}
+	}
+
+	userID, err := strconv.ParseUint(claims.Subject, 10, 64)
+	if err != nil {
+		return nil, nil, &UserTokenError{Reason: AuthRejectInvalid, Detail: "bad_subject_claim", Message: "invalid token claims", Status: http.StatusUnauthorized}
+	}
+
+	user, err := userRepo.FindByID(ctx, uint(userID))
+	if err != nil {
+		return nil, nil, &UserTokenError{Reason: AuthRejectInvalid, Detail: "user_not_found", Message: "user not found", Status: http.StatusUnauthorized}
+	}
+
+	// CRITICAL: Verify token version to support token revocation
+	// If the user's token version has been incremented (via logout, password reset, etc.),
+	// all previously issued tokens become invalid.
+	//
+	// FIND-01 fix: the previous guard `claims.TokenVersion > 0 &&` created a
+	// bypass for tokens minted when TokenVersion was 0 (every new user before
+	// their first nuclear revocation event).  After IncrementTokenVersion bumps
+	// the DB row to 1, old tokens with TokenVersion=0 passed the "> 0" guard
+	// as false and the check was silently skipped — the attacker remained
+	// authenticated despite the revocation.
+	//
+	// The correct comparison is user.TokenVersion > claims.TokenVersion, which
+	// matches the Introspect implementation (NEW-03 fix) and correctly catches
+	// the 0→1, 1→2, and any N→N+k transitions.
+	if user.TokenVersion > claims.TokenVersion {
+		return nil, nil, &UserTokenError{Reason: AuthRejectRevoked, Detail: "token_version_superseded", Message: "token has been revoked", Status: http.StatusUnauthorized}
+	}
+
+	// EPIC-14: reject a token whose JTI was individually revoked via
+	// /oauth/revoke, so per-token revocation propagates to this hot path
+	// (previously only Introspect honored the blacklist).
+	if isRevoked(ctx, usedTokenRepo, claims.ID) {
+		return nil, nil, &UserTokenError{Reason: AuthRejectRevoked, Detail: "jti_revoked", Message: "token has been revoked", Status: http.StatusUnauthorized}
+	}
+
+	// Check if user account is locked
+	if user.IsLocked() {
+		// The token itself is good, so the user and claims come back with
+		// the error: a caller deciding on the user's behalf still needs to
+		// know who is locked.
+		return user, claims, &UserTokenError{Detail: UserTokenLocked, Message: "account is locked", Status: http.StatusForbidden}
+	}
+	return user, claims, nil
+}
+
 // AuthMiddleware validates JWT tokens, verifies token version + revocation, and
 // adds user info to context.
 //
@@ -84,63 +164,12 @@ func AuthMiddleware(tokenService *auth.TokenService, userRepo repository.UserRep
 				return
 			}
 
-			claims, err := tokenService.VerifyAccessToken(tokenString)
-			if err != nil {
-				if errors.Is(err, auth.ErrTokenExpired) {
-					fire(r, AuthRejectExpired, "token_expired")
-				} else {
-					fire(r, AuthRejectInvalid, "verify_failed")
+			user, claims, terr := VerifyUserToken(r.Context(), tokenService, userRepo, usedTokenRepo, tokenString)
+			if terr != nil {
+				if terr.Reason != "" {
+					fire(r, terr.Reason, terr.Detail)
 				}
-				writeAuthError(w, "invalid or expired token", http.StatusUnauthorized)
-				return
-			}
-
-			userID, err := strconv.ParseUint(claims.Subject, 10, 64)
-			if err != nil {
-				fire(r, AuthRejectInvalid, "bad_subject_claim")
-				writeAuthError(w, "invalid token claims", http.StatusUnauthorized)
-				return
-			}
-
-			user, err := userRepo.FindByID(r.Context(), uint(userID))
-			if err != nil {
-				fire(r, AuthRejectInvalid, "user_not_found")
-				writeAuthError(w, "user not found", http.StatusUnauthorized)
-				return
-			}
-
-			// CRITICAL: Verify token version to support token revocation
-			// If the user's token version has been incremented (via logout, password reset, etc.),
-			// all previously issued tokens become invalid.
-			//
-			// FIND-01 fix: the previous guard `claims.TokenVersion > 0 &&` created a
-			// bypass for tokens minted when TokenVersion was 0 (every new user before
-			// their first nuclear revocation event).  After IncrementTokenVersion bumps
-			// the DB row to 1, old tokens with TokenVersion=0 passed the "> 0" guard
-			// as false and the check was silently skipped — the attacker remained
-			// authenticated despite the revocation.
-			//
-			// The correct comparison is user.TokenVersion > claims.TokenVersion, which
-			// matches the Introspect implementation (NEW-03 fix) and correctly catches
-			// the 0→1, 1→2, and any N→N+k transitions.
-			if user.TokenVersion > claims.TokenVersion {
-				fire(r, AuthRejectRevoked, "token_version_superseded")
-				writeAuthError(w, "token has been revoked", http.StatusUnauthorized)
-				return
-			}
-
-			// EPIC-14: reject a token whose JTI was individually revoked via
-			// /oauth/revoke, so per-token revocation propagates to this hot path
-			// (previously only Introspect honored the blacklist).
-			if isRevoked(r.Context(), usedTokenRepo, claims.ID) {
-				fire(r, AuthRejectRevoked, "jti_revoked")
-				writeAuthError(w, "token has been revoked", http.StatusUnauthorized)
-				return
-			}
-
-			// Check if user account is locked
-			if user.IsLocked() {
-				writeAuthError(w, "account is locked", http.StatusForbidden)
+				writeAuthError(w, terr.Message, terr.Status)
 				return
 			}
 

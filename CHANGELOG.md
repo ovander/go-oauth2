@@ -36,6 +36,24 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ### Added
 
+- **Policy decisions for applications (A4 part 2 / EPIC-11).**
+  `POST /api/apps/{app_id}/service/policy/decide` lets an application's
+  backend, authenticated by its client-credentials token, ask the PDP about one
+  of its own users. The subject is resolved by Socrate — role, attributes,
+  forced password change and role in the calling application — from either the
+  user's access token (verified with exactly `AuthMiddleware`'s checks, now
+  shared as `middleware.VerifyUserToken`, and the only source of `scopes`,
+  `amr` and `auth_time`) or a user id; a user who is not a member of the
+  calling application is `404`, indistinguishable from one that does not exist.
+  The application supplies only the action, the resource and the request
+  context. The admin action namespace is refused; a locked subject is denied
+  without evaluation. Every answer carries the central `POLICY_MODE`, so the
+  application's enforcement point knows whether to ignore, log or honour it —
+  one switch on Socrate moves every application from shadow to enforce with no
+  redeploy. Denials in shadow and enforce go to the decision log with
+  `source=decide_api`, the caller's `client_id` and its correlation id. The
+  matching backendkit release adds `socrate.Client.Decide` and the `pep`
+  enforcement package.
 - **Policy decision point on the admin API (A4 part 1 / EPIC-10 / RFC-005).**
   Authorisation rules as data: `internal/policy` evaluates declarative JSON
   rules — RBAC over the global role, ABAC over the A2 user attributes, token

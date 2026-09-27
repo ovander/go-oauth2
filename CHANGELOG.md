@@ -226,6 +226,10 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ### Changed
 
+- **golangci-lint v2.5.0 → v2.14.0** in CI, still built with go.mod's
+  toolchain. v2.5.0 cannot load Go 1.27's export data, so this is the
+  prerequisite for moving to Go 1.27; it found two issues, both fixed (see
+  Security for the DPoP one).
 - **Build toolchain: Go 1.25.13 → Go 1.26.8.** Go 1.25 went out of support
   when Go 1.27 was released, and the 2026-08-28 security releases shipped for
   1.26 and 1.27 only. `go.mod` now pins `toolchain go1.26.8` (the `go`
@@ -247,6 +251,17 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ### Security
 
+- **DPoP proof keys are parsed with `ecdsa.ParseUncompressedPublicKey`**
+  instead of the deprecated `elliptic.Curve.IsOnCurve` (flagged by
+  staticcheck SA1019 once golangci-lint moved to v2.14.0). The key in a DPoP
+  proof header is attacker-chosen; off-curve points, coordinates ≥ p and the
+  point at infinity were already rejected and still are — now by the
+  constant-time `crypto/internal/nistec` code — and are covered by new tests.
+  One tightening: a coordinate longer than 32 bytes is now refused
+  (RFC 7518 §6.2.1.2 requires full-length coordinates), where leading zero
+  bytes were previously tolerated. A coordinate one byte short (an encoder
+  dropping a leading zero) is still accepted and yields the same thumbprint,
+  so no existing binding changes.
 - **PKCE by omission closed (P3-4).** An authorization request that carried a
   `code_challenge` but no `code_challenge_method` was stored with an empty
   method and verified at the token endpoint as `verifier == challenge` — plain

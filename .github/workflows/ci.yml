@@ -99,11 +99,12 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.5.0
-          # Build golangci-lint with the job's toolchain (go.mod's). The prebuilt
-          # v2.5.0 binary is compiled with Go 1.25 and refuses a module whose
-          # toolchain directive targets a newer Go ("the Go language version
-          # used to build golangci-lint is lower than the targeted Go version").
+          version: v2.14.0
+          # Build golangci-lint with the job's toolchain (go.mod's). A prebuilt
+          # binary compiled with an older Go refuses a module whose toolchain
+          # directive targets a newer one ("the Go language version used to
+          # build golangci-lint is lower than the targeted Go version"), and a
+          # linter older than the Go it reads cannot load its export data.
           install-mode: goinstall
 
   govulncheck:

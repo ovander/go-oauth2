@@ -24,7 +24,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
 	"net/url"
 	"strings"
 	"time"
@@ -183,13 +182,32 @@ func parseECPublicKey(m map[string]interface{}) (*ecdsa.PublicKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: bad y", ErrInvalidJWK)
 	}
-	x := new(big.Int).SetBytes(xb)
-	y := new(big.Int).SetBytes(yb)
-	if !elliptic.P256().IsOnCurve(x, y) {
+	// RFC 7518 §6.2.1.2 requires full-length (32-byte) coordinates. A longer
+	// value cannot be a P-256 coordinate and is refused. A shorter one is a
+	// known encoder bug (a leading zero byte dropped) and is left-padded: it
+	// names the same point, and the thumbprint is computed from the canonical
+	// 32-byte form either way, so accepting it cannot change which key a
+	// token is bound to.
+	if len(xb) > p256CoordSize || len(yb) > p256CoordSize {
+		return nil, fmt.Errorf("%w: coordinate longer than %d bytes", ErrInvalidJWK, p256CoordSize)
+	}
+	// SEC 1 uncompressed point: 0x04 || X || Y. ParseUncompressedPublicKey
+	// rejects a point that is not on the curve, a coordinate >= p, and the
+	// point at infinity — the checks the deprecated elliptic.Curve.IsOnCurve
+	// was used for, done by the constant-time crypto/internal/nistec code.
+	point := make([]byte, 0, 1+2*p256CoordSize)
+	point = append(point, 0x04)
+	point = append(point, leftPad(xb, p256CoordSize)...)
+	point = append(point, leftPad(yb, p256CoordSize)...)
+	pub, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), point)
+	if err != nil {
 		return nil, fmt.Errorf("%w: point not on P-256", ErrInvalidJWK)
 	}
-	return &ecdsa.PublicKey{Curve: elliptic.P256(), X: x, Y: y}, nil
+	return pub, nil
 }
+
+// p256CoordSize is the byte length of a P-256 field element.
+const p256CoordSize = 32
 
 // thumbprint computes the RFC 7638 JWK SHA-256 thumbprint of an EC P-256 public
 // key. The required members are serialized in lexicographic order with no

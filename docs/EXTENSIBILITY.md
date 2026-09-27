@@ -411,7 +411,10 @@ and restore in the admin audit trail (`policy_updated`, `policy_restored`).
 
 **The decision log** carries the request's correlation id, so a denial seen by
 a user is one query away:
-`GET /api/admin/policy/decisions?correlation_id=…`. Agreeing allows are not
+`GET /api/admin/policy/decisions?correlation_id=…` (superadmin), or
+`GET /api/admin/security/policy-decisions?correlation_id=…` from the
+monitoring console, which reads the log (never the rules) with
+`monitoring:read`. Agreeing allows are not
 logged — they are counted in `socrate_policy_decisions_total` — so the log
 stays a list of things worth reading. Rows older than
 `POLICY_DECISION_RETENTION_DAYS` (30) are swept hourly, by one instance.

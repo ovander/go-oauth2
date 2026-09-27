@@ -197,3 +197,36 @@ func TestPostgresStore_DecisionLog_FiltersAndSweep(t *testing.T) {
 		t.Fatalf("sweep removed %d, %v; want 1 (the 40-day-old row)", n, err)
 	}
 }
+
+func TestPostgresStore_SummaryAndSourceFilters(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	s := policy.NewService(policy.NewPostgresStore(db), policy.ModeEnforce, time.Minute)
+
+	old := time.Now().Add(-48 * time.Hour).UTC()
+	for _, r := range []policy.DecisionRecord{
+		{CreatedAt: old, Source: policy.SourceAdminPEP, Mode: "shadow", Action: "a", Reason: "r"},
+		{Source: policy.SourceAdminPEP, Mode: "shadow", Action: "a", Reason: "r", Divergence: policy.DivergencePDPStricter},
+		{Source: "decide_api", Mode: "enforce", Enforced: true, Action: "b", Reason: "r", ClientID: "billing"},
+		{Source: "decide_api", Mode: "enforce", Enforced: true, Action: "b", Reason: "r", ClientID: "crm"},
+		{Source: policy.SourceAdminPEP, Mode: "shadow", Allow: true, Action: "c", Reason: "r", Divergence: policy.DivergencePDPLooser},
+	} {
+		rec := r
+		s.Record(ctx, &rec)
+	}
+
+	sum, err := s.SummarizeDecisions(ctx, time.Now().Add(-24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.Denials != 3 || sum.EnforcedDenials != 2 ||
+		sum.Divergences[policy.DivergencePDPStricter] != 1 || sum.Divergences[policy.DivergencePDPLooser] != 1 ||
+		sum.DenialsBySource["decide_api"] != 2 || sum.DenialsBySource[policy.SourceAdminPEP] != 1 {
+		t.Fatalf("summary = %+v (the 48h-old row must be outside the window)", sum)
+	}
+
+	rows, _ := s.Decisions(ctx, policy.DecisionFilter{Source: "decide_api", ClientID: "crm", Limit: 10})
+	if len(rows) != 1 || rows[0].ClientID != "crm" {
+		t.Fatalf("source+client filter = %+v", rows)
+	}
+}

@@ -5,10 +5,11 @@
 domains. **Target after this plan:** both at 8/10, overall ≈ 84/100, with no flag day: every new
 control ships `off → observe/shadow → enforce`, exactly as the existing modes do.
 
-**Status 2026-09-04:** *Extensibility & policy* **7.0/10**, *Observability & scale* **7.5/10**,
-overall **≈ 82/100**. Delivered: A1, A2, A3, A6, B1, B3, B4 (two of five stores), B5, B6, B7.
-Remaining: **A4** (policy decision point) and **A5** (branding/i18n) on track A, **B2**
-(OpenTelemetry traces) and the rest of B4's stores on track B. See §4 for how the score is read.
+**Status 2026-09-27:** *Extensibility & policy* **7.5/10**, *Observability & scale* **7.5/10**,
+overall **≈ 83/100**. Delivered: A1, A2, A3, **A4** (all three parts), A6, B1, B3, B4 (two of
+five stores), B5, B6, B7. Remaining: **A5** (branding/i18n) on track A; **B2** (OpenTelemetry
+traces) and the rest of B4's stores on track B. See §4 for how the score is read and how it moved
+since 2026-09-04 (7.0 / 7.5 / ≈ 82).
 
 The plan maps onto the program's epics so nothing here is a new direction:
 EPIC-4 Observability (RFC-008), EPIC-10 Policy Engine (RFC-005), EPIC-11 backendkit PEP
@@ -115,7 +116,7 @@ are replayable from the admin API. Delivery is at-least-once by construction —
 the lease means a crashed pass retries rather than drops — so the payload's
 stable `event_id` is the subscriber's deduplication key.
 
-### A4. Policy decision point, shadow first (EPIC-10 / RFC-005) — **L** — ◧ parts 1–2 (engine, admin PEP, decide API + backendkit PEP) delivered
+### A4. Policy decision point, shadow first (EPIC-10 / RFC-005) — **L** — ✅ delivered (3 parts)
 - Contract (small on purpose):
   `POST /api/policy/decide` `{principal, app, action, resource, context}` →
   `{allow, reason, obligations[]}`; the same function is callable in-process.
@@ -174,8 +175,27 @@ package. Deviations:
   never take an application down, and an enforced one never silently opens.
 
 Not done: per-application modes (one global `POLICY_MODE` for now) and a batch endpoint for
-filtering lists. **Part 3:** the console editor (oauth2-admin) and the decision-log view
-(oauth2-monitoring).
+filtering lists.
+
+**As delivered (part 3 of 3: consoles).** The plan's "console editor that validates before
+save" and the SOC traceability of denials:
+
+- **oauth2-admin — Security → Access policy** (superadmin). Mode and version; a JSON rule
+  editor over a copy of the loaded version, with server validation that lists every problem by
+  rule id and path; save from the loaded base (a `409` keeps the draft and offers a reload),
+  step-up through the existing elevation dialog; a simulator against the current version *or
+  the unsaved draft*, with a per-rule trace; version history with forward-only restore; recent
+  denials and divergences for watching a rule in shadow. Any page the policy refuses now says
+  why (`policy_denied`, `mfa_required`, `policy_unavailable` → sentences).
+- **oauth2-monitoring — Policy Decisions** (viewers, `monitoring:read`). Mode, summary tiles
+  (denials, enforced denials, divergences stricter/looser, denials by source), filters by
+  correlation id, outcome, source, calling application and period, cursor paging, and a
+  deep link from every security event to its decisions by correlation id.
+- **Server:** `GET /api/admin/security/policy-decisions` and `…/summary` give the SOC the
+  decision log under `monitoring:read`. Deviation: the plan put the log in the SOC console
+  without saying who may read it; decision rows are security telemetry, like the security
+  events that console already shows, so global admins with `monitoring:read` read them — and
+  the **rules** stay superadmin-only.
 
 ### A5. Hosted-page branding and i18n — **M**
 - Per-app branding on the `App` record: product name, logo URL (allowlisted to the app's own
@@ -320,13 +340,37 @@ could meet.
 | 1 — quick wins | 1–3 | A1, A6, B1, B3, B7 | 5.5 | 6.5 | 78 |
 | 2 — substance | 4–9 | A2, A3, B4 (Postgres adapter), B6 | 7.0 | 7.0 | 81 |
 | 3 — platform | 10–17 | A4 (shadow), A5, B2, B5 (two-instance validation) | 8.0 | 8.0 | 84 |
-| **actual, 2026-09-04** | — | phases 1 and 2 complete, plus B5 and B6 from phase 3 | **7.0** | **7.5** | **≈ 82** |
+| actual, 2026-09-04 | — | phases 1 and 2 complete, plus B5 and B6 from phase 3 | 7.0 | 7.5 | ≈ 82 |
+| **actual, 2026-09-27** | — | phases 1 and 2, plus A4, B5 and B6 from phase 3 | **7.5** | **7.5** | **≈ 83** |
 
 Order inside each phase is by dependency: A6 before A2/A3; B4 before B5; B1 before B7.
-Redis and `POLICY_MODE=enforce` are deliberately outside the plan's exit criteria.
+Redis and `POLICY_MODE=enforce` are deliberately outside the plan's exit criteria (enforce
+shipped anyway, with the guarantee that it can only remove access).
 
-**How the actual row is read.** Only merged, tested work counts; an item is scored on what a
+**How the actual rows are read.** Only merged, tested work counts; an item is scored on what a
 deployment can switch on, not on what compiles.
+
+**2026-09-27 — A4 lands.**
+
+- *Extensibility 7.0 → 7.5.* A4 closes the gap §1 names as "authorisation logic is duplicated
+  in every app": one declarative, versioned policy, evaluated for the admin API and — through
+  backendkit's `pep` — for every application, rolled out by one central switch, with an editor
+  and a simulator for superadmins and a decision log for the SOC. It goes well past the plan's
+  phase-3 bar (A4 *shadow*): enforce, applications and consoles all shipped. It still stops at
+  7.5, not the plan's 8.0, because **A5** is not started — the hosted login is still
+  Socrate-branded and English-only, which is a real blocker for any customer-facing
+  deployment — and over-delivering one item does not substitute for a missing one. A5 is the
+  remaining half point.
+- *Observability 7.5, unchanged.* A4 adds authorisation telemetry (the decision log,
+  `socrate_policy_decisions_total`, `socrate_policy_divergences_total` and two alert rules),
+  but the two reasons below still hold: **B2** is not started and **B4** covers two of five
+  stores. Nothing in A4 changes either.
+- *Overall ≈ 82 → ≈ 83.* One point short of the plan's 84; the gap is A5 and B2.
+- *Not scored here:* the suite's toolchain moved from an out-of-support Go 1.25 to 1.27.1
+  (with CI drift guards), golangci-lint to v2.14.0 (now also linting both BFFs), and DPoP key
+  parsing off a deprecated API. That is build and security hygiene, outside these two domains.
+
+**2026-09-04 — phases 1 and 2.**
 
 - *Extensibility 4.5 → 7.0.* A1 gives per-client scope policy, A2 declarative custom claims, A3
   outbound webhooks end to end (subscriptions, transactional outbox, signed dispatcher), A6

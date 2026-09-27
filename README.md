@@ -209,7 +209,7 @@ first-party browser app.
 
 ## Maturity
 
-Socrate is **v1.2.0** on the v1.x line (`main` carries the pass-3/pass-4 security fixes, unreleased) —
+Socrate is **v1.3.0** on the v1.x line —
 a single-instance, production-capable identity server with two operator consoles.
 
 | ✅ Production ready (today) | ◻️ Roadmap |

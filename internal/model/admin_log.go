@@ -32,6 +32,11 @@ const (
 	AdminActionWebhookDeleted       AdminAction = "webhook_deleted"
 	AdminActionWebhookSecretRotated AdminAction = "webhook_secret_rotated" //nolint:gosec // G101 false positive: action enum constant, not a credential
 	AdminActionWebhookRequeued      AdminAction = "webhook_delivery_requeued"
+
+	// Policy rule-set changes (A4). Each save or restore creates a new
+	// version; the admin log records who made it and from which base.
+	AdminActionPolicyUpdated  AdminAction = "policy_updated"
+	AdminActionPolicyRestored AdminAction = "policy_restored"
 )
 
 type AdminLog struct {

@@ -96,6 +96,12 @@ type RouterConfig struct {
 	// rather than as another positional parameter through three router
 	// constructors.
 	WebhookHandler *handler.WebhookHandler
+	// PolicyPEP is the A4 enforcement point on the admin API. Nil, or a PDP in
+	// POLICY_MODE=off, leaves every admin route exactly as it was.
+	PolicyPEP *middleware.PolicyPEP
+	// PolicyHandler serves the superadmin policy administration API. Nil
+	// leaves those routes unregistered.
+	PolicyHandler *handler.PolicyHandler
 }
 
 // Routers holds both the OAuth and Admin routers for separate port binding
@@ -444,6 +450,12 @@ func newAdminRouter(
 	// ==========================================
 	r.Route("/api/admin", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo, config.AuthRejectSink))
+		// A4: the policy enforcement point runs after authentication and in
+		// front of every code gate below, so in shadow mode it sees — and can
+		// be compared against — every decision those gates make, including
+		// the ones that refuse a non-admin outright. In enforce mode a deny
+		// stops the request here; an allow still has to pass every gate.
+		r.Use(config.PolicyPEP.Middleware("/api/admin", r))
 		// P3-1 / CRIT-01: the admin API is the Tier-0 control plane and is for
 		// global admins only. AuthMiddleware only authenticates; without this
 		// gate any authenticated user — including a self-signup on any client —
@@ -528,7 +540,6 @@ func newAdminRouter(
 			r.Get("/app-usage", dashboardHandler.GetAppUsage)
 		})
 
-		// Superadmin management — admin console. Superadmin-only (P3-1): a
 		// Webhook subscriptions and the delivery outbox (A3) — admin console.
 		// A subscription is an egress channel for identity events, so the whole
 		// area is global-admin only (enforced again in the handler) and the
@@ -558,6 +569,29 @@ func newAdminRouter(
 			})
 		}
 
+		// Policy administration (A4) — superadmin only, and every write needs
+		// fresh step-up: in enforce mode whoever edits the policy can lock
+		// every other admin out. These routes are exempt from the PEP itself,
+		// so no rule can make the policy unfixable; the code gates here are
+		// what protect them.
+		if config.PolicyHandler != nil {
+			ph := config.PolicyHandler
+			r.Route("/policy", func(r chi.Router) {
+				r.Use(adminScope)
+				r.Use(middleware.RequireRole("superadmin"))
+				r.Get("/", ph.Get)
+				r.With(freshAuth).Put("/", ph.Save)
+				r.Get("/catalogue", ph.Catalogue)
+				r.Get("/decisions", ph.Decisions)
+				r.Post("/validate", ph.Validate)
+				r.Post("/simulate", ph.Simulate)
+				r.Get("/versions", ph.ListVersions)
+				r.Get("/versions/{version}", ph.GetVersion)
+				r.With(freshAuth).Post("/versions/{version}/restore", ph.Restore)
+			})
+		}
+
+		// Superadmin management — admin console. Superadmin-only (P3-1): a
 		// global "admin" must not be able to enumerate, create, reset or delete
 		// superadmin accounts. Mirrors AdminLogin, which already restricts the
 		// admin portal password login to model.UserRoleSuperadmin.
@@ -647,6 +681,13 @@ func newAdminRouter(
 			r.Get("/test-db", settingsHandler.TestDB)
 			r.Get("/test-cache", settingsHandler.TestCache)
 		})
+
+		// A4: every route is registered; publish them as the policy editor's
+		// action catalogue, so a rule is written against real actions.
+		if config.PolicyHandler != nil {
+			actions, exempt := middleware.PolicyActions("/api/admin", r)
+			config.PolicyHandler.SetAdminActions(actions, exempt)
+		}
 	})
 
 	// ==========================================

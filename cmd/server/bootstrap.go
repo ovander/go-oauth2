@@ -15,6 +15,7 @@ import (
 	"github.com/ovandermoten/go-oauth2/internal/metrics"
 	"github.com/ovandermoten/go-oauth2/internal/middleware"
 	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovandermoten/go-oauth2/internal/policy"
 	"github.com/ovandermoten/go-oauth2/internal/repository"
 	"github.com/ovandermoten/go-oauth2/internal/service"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
@@ -67,6 +68,9 @@ type App struct {
 	// stateSweepStop stops the shared-state sweeper (B4). Nil unless
 	// STATE_BACKEND=postgres.
 	stateSweepStop func()
+	// policyDecisionSweepStop stops the A4 decision-log retention sweep.
+	// Nil when retention is disabled (POLICY_DECISION_RETENTION_DAYS=0).
+	policyDecisionSweepStop func()
 	// dpopReplayCache backs DPoP observe-mode replay detection; nil when DPoP is
 	// off. Stopped on shutdown.
 	dpopReplayCache *dpop.MemoryReplayCache
@@ -137,6 +141,7 @@ func LogStartupSummary(cfg *config.Config) {
 		"refresh_reuse_mode":  cfg.RefreshReuseMode,
 		"audience_mode":       cfg.AudienceMode,
 		"admin_mfa_policy":    cfg.AdminMFAPolicy,
+		"policy_mode":         cfg.PolicyMode,
 		// Admin-console session hardening.
 		"admin_console_pkce":   cfg.AdminConsoleClientID != "",
 		"admin_elevation":      dur(cfg.AdminElevationMaxAge),
@@ -235,6 +240,9 @@ func (a *App) Stop() {
 	}
 	if a.stateSweepStop != nil {
 		a.stateSweepStop()
+	}
+	if a.policyDecisionSweepStop != nil {
+		a.policyDecisionSweepStop()
 	}
 	if a.dpopReplayCache != nil {
 		a.dpopReplayCache.Stop()
@@ -722,6 +730,42 @@ func Bootstrap(cfg *config.Config) *App {
 		}).Info("B4: shared state enabled — rate limits and DPoP replay are cluster-wide")
 	}
 
+	// ==========================================
+	// Policy decision point (A4)
+	// ==========================================
+	// The store and the policy API are always available, so an operator can
+	// author and simulate rules before turning anything on; POLICY_MODE only
+	// decides whether the admin API consults them. Version 1 is seeded with a
+	// baseline that restates the existing code gates as rules, which is what
+	// makes shadow mode's divergence counter meaningful from the first request.
+	pdp := policy.NewService(policy.NewPostgresStore(db), policy.Mode(cfg.PolicyMode), cfg.PolicyRefreshInterval)
+	if seeded, err := pdp.EnsureBaseline(context.Background()); err != nil {
+		// Not fatal: in shadow mode nothing depends on it, and in enforce
+		// mode the admin API answers 503 policy_unavailable — except the
+		// policy routes, from which the baseline can be restored.
+		logger.WithFields(logger.Fields{"error": err.Error(), "mode": cfg.PolicyMode}).
+			Error("A4: could not seed the baseline policy")
+	} else if seeded {
+		logger.Info("A4: seeded policy version 1 (baseline mirroring the admin API's code gates)")
+	}
+	var policyDecisionSweepStop func()
+	if cfg.PolicyDecisionRetention > 0 {
+		retention := cfg.PolicyDecisionRetention
+		policyDecisionSweepStop = cluster.Every(jobDB, cluster.LockPolicyDecisionSweep, "policy_decision_sweep",
+			time.Hour, func(ctx context.Context) error {
+				n, err := pdp.SweepDecisions(ctx, retention)
+				if err == nil && n > 0 {
+					logger.WithFields(logger.Fields{"deleted": n}).Info("A4: swept expired policy decisions")
+				}
+				return err
+			})
+	}
+	logger.WithFields(logger.Fields{
+		"mode":             cfg.PolicyMode,
+		"refresh_interval": cfg.PolicyRefreshInterval.String(),
+		"retention":        cfg.PolicyDecisionRetention.String(),
+	}).Info("A4: policy decision point configured")
+
 	// B5: readiness reports the dependencies this instance needs to serve a
 	// token, so a load balancer takes it out of rotation for a missing signing
 	// key or an unreachable shared-state backend, not only for a dead database.
@@ -799,6 +843,19 @@ func Bootstrap(cfg *config.Config) *App {
 		// present, so an operator can prepare subscriptions before flipping
 		// WEBHOOKS_MODE=on.
 		WebhookHandler: handler.NewWebhookHandler(webhookService, adminLogService),
+		// A4: the PEP is a pass-through in POLICY_MODE=off; the policy API is
+		// registered regardless, so rules can be prepared before shadowing.
+		PolicyPEP:     middleware.NewPolicyPEP(pdp, cfg.AdminElevationMaxAge),
+		PolicyHandler: handler.NewPolicyHandler(pdp, adminLogService),
+	}
+	if geoIPService != nil && geoIPService.IsConfigured() {
+		geo := geoIPService
+		routerConfig.PolicyPEP.SetCountryLookup(func(ip string) string {
+			if r := geo.Lookup(ip); r != nil && r.IsValid {
+				return r.CountryCode
+			}
+			return ""
+		})
 	}
 	if dpopCache != nil {
 		routerConfig.DPoPReplayCache = dpopCache
@@ -901,6 +958,8 @@ func Bootstrap(cfg *config.Config) *App {
 			webhookDispatchStop:  webhookDispatchStop,
 			stateSweepStop:       stateSweepStop,
 			dpopReplayCache:      dpopReplayCache,
+
+			policyDecisionSweepStop: policyDecisionSweepStop,
 		}
 	}
 
@@ -944,5 +1003,7 @@ func Bootstrap(cfg *config.Config) *App {
 		webhookDispatchStop:  webhookDispatchStop,
 		stateSweepStop:       stateSweepStop,
 		dpopReplayCache:      dpopReplayCache,
+
+		policyDecisionSweepStop: policyDecisionSweepStop,
 	}
 }

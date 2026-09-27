@@ -1,8 +1,9 @@
 # Extensibility — hooks, scope policy, custom claims (and what comes next)
 
 Plan A of `docs/program/PLAN-EXTENSIBILITY-OBSERVABILITY.md`. Delivered so far:
-**A1** per-client scope policy, **A6** in-process hooks, **A2** custom claims.
-A3 (webhooks) builds on the hooks below.
+**A1** per-client scope policy, **A6** in-process hooks, **A2** custom claims,
+**A3** outbound webhooks, and **A4** part 1 — the policy decision point, on the
+admin API.
 
 ## Per-client scope policy (A1)
 
@@ -265,8 +266,162 @@ produces are already shared, since they are rows in `blocked_ips`; only the
 pre-block counting is local, which makes brute-force escalation N times slower
 to trigger across N instances.
 
+## Policy decision point (A4)
+
+Authorisation on the admin API has so far been code: `RequireGlobalAdmin`,
+`RequireRole("superadmin")`, `RequireFreshAuth` on sixteen destructive routes,
+`RequirePasswordChangeComplete`. A4 adds a policy decision point (PDP) — rules
+held as data, versioned, testable before they are live — and an enforcement
+point (PEP) in front of those gates, rolled out the same way as every other
+control here: `off → shadow → enforce`.
+
+### The decision
+
+```
+Decide({principal, app, action, resource, context}) → {allow, rule, reason, obligations, policy_version}
+```
+
+On the admin API the PEP builds the input from the request:
+
+| Field | From |
+|---|---|
+| `action` | `"<METHOD> <route pattern>"`, e.g. `DELETE /api/admin/apps/{id}` — the matched chi pattern, never the raw path, so it is the same however the router is mounted |
+| `principal` | the authenticated user (`id`, `role`, `attributes`, `must_change_password`) and their token (`scopes`, `amr`, `auth_time`, `client_id`) |
+| `resource` | `type` = first path segment (`apps`, `users`, `webhooks`…), `id` = the route's `{id}` |
+| `context` | `ip` (the resolved client IP), `ip_country` (only when a GeoLite2 database is configured) and the time |
+
+`GET /api/admin/policy/catalogue` lists every admin action, attribute,
+operator and obligation, so an editor can offer choices instead of free text.
+
+### Rules
+
+```json
+{
+  "id": "no-client-deletion-off-network",
+  "description": "Deleting an OAuth client needs the office network and MFA.",
+  "effect": "deny",
+  "actions": ["DELETE /api/admin/apps/{id}"],
+  "when": {"any": [
+    {"not": {"attr": "context.ip", "op": "cidr", "value": ["10.0.0.0/8"]}},
+    {"not": {"attr": "principal.amr", "op": "contains", "value": "mfa"}}
+  ]}
+}
+```
+
+- **`actions`** are globs; `*` matches any run of characters. `* /api/admin/*`
+  is every admin route; `* /api/admin/superadmins*` is the superadmin tree.
+- **`when`** is a tree of `all` / `any` / `not` over comparisons
+  `{"attr", "op", "value"}`, or `{"attr", "op", "ref"}` to compare two
+  attributes — which is what an object-level check looks like
+  (`resource.attributes.owner_id eq ref principal.id`). Omitted means always.
+- **Operators:** `eq`, `ne`, `in`, `not_in`, `contains` (list attributes),
+  `lt`/`lte`/`gt`/`gte` (numbers), `starts_with`, `cidr`, `exists`.
+- **Attributes:** `action`; `principal.{kind,id,role,client_id,app_role,scopes,amr,auth_time_age,must_change_password}`;
+  `app.{id,client_id}`; `resource.{type,id}`; `context.{ip,ip_country,hour_utc}`;
+  and the free-form maps `principal.attributes.<key>` (the A2 user attributes),
+  `resource.attributes.<key>`, `context.attributes.<key>`.
+- **`obligations`** on an allow: `require_fresh_auth` (the step-up window,
+  answered with `elevation_required` so the consoles' existing step-up flow
+  handles it) and `require_mfa` (`amr` must contain `mfa`).
+
+Every save is validated as a whole and every problem is reported at once — an
+unknown attribute, an operator that cannot apply (`eq` on `principal.scopes`,
+which is a list), a malformed CIDR. The point is to refuse, at save time, the
+rules that would otherwise silently never match.
+
+### How rules combine
+
+**Deny overrides; default deny.** Any applicable deny wins; otherwise any
+applicable allow wins, carrying the union of the obligations of every
+applicable allow; otherwise the answer is `no_applicable_rule`, a deny. Rule
+order never matters.
+
+**Missing data makes the policy stricter, never looser.** A comparison against
+an attribute that is absent — a user with no `department`, a token with no
+`auth_time` — is neither true nor false but *unknown*. An unknown allow does
+not allow; an unknown **deny** denies (`deny_rule_indeterminate`). Otherwise a
+deny rule written as `department ne "finance"` would quietly stop applying to
+every user who has no department at all. Use `exists` to test for presence
+explicitly; it is never unknown.
+
+This matters for `context.ip_country` in particular: without a GeoIP database
+it is always absent, so a deny rule that tests it denies every request. That is
+the intended fail-closed behaviour — "the country cannot be verified" — and
+shadow mode will show it as divergences long before enforce would act on it.
+
+### Versions
+
+The rule set is stored as immutable numbered versions (`policy_versions`,
+migration `0023`). A save names the version it was based on and is refused
+with `409` if someone else saved in between, so a concurrent change is never
+silently overwritten. Restoring an old version writes it forward as a new one,
+so the history is never rewritten and every decision in the log is attributable
+to the exact rules that made it. Each instance caches the current version and
+checks for a newer one every `POLICY_REFRESH_INTERVAL` (10s); its own saves
+apply immediately.
+
+**Version 1 is a baseline** that restates the admin API's code gates as rules:
+
+| Code gate | Baseline rule |
+|---|---|
+| `RequireGlobalAdmin` | `global-admins` — allow `* /api/admin/*` for `admin`/`superadmin` |
+| `RequireRole("superadmin")` on `/superadmins` | `superadmin-management` — deny unless `superadmin` |
+| `RequirePasswordChangeComplete` | `password-change-pending` — deny while `must_change_password` |
+| `RequireFreshAuth` on 16 routes | `destructive-step-up` — allow with `require_fresh_auth` |
+
+A router test walks every admin route for every kind of principal and asserts
+the baseline and the code agree everywhere, and that the baseline's step-up
+list is exactly the set of routes the router wraps in `RequireFreshAuth` — so
+the two cannot drift apart unnoticed.
+
+`ADMIN_SCOPE_MODE`'s scope gates are **not** in the baseline, because a rule
+cannot see that environment variable and would be wrong in one of its two
+modes. With `ADMIN_SCOPE_MODE=enforce`, add the equivalent rules before reading
+shadow divergences, e.g. a deny on `* /api/admin/dashboard*` unless
+`principal.scopes contains "monitoring:read"` or `"admin"`.
+
+### Rollout: `POLICY_MODE`
+
+- **`off`** (default) — nothing is consulted. The policy API works, so rules
+  can be written and simulated first.
+- **`shadow`** — every admin request is evaluated; the response is never
+  changed. The PEP compares the policy's decision with what the code gates did
+  and records, in `policy_decisions` (migration `0024`), every would-be denial
+  and every disagreement: `pdp_deny_code_allow` (the policy is stricter) or
+  `pdp_allow_code_deny` (looser). `socrate_policy_divergences_total` counts
+  them. With the untouched baseline it should read zero; anything else is a bug
+  in one of the two, or a rule someone added on purpose.
+- **`enforce`** — a deny is answered `403 policy_denied` (or
+  `elevation_required` / `mfa_required` for an unmet obligation) before the code
+  gates run. **An allow does not bypass them**: the request must still pass
+  every gate, so enforcing can only remove access, never grant it. If no policy
+  version can be loaded at all, the admin API fails closed with
+  `503 policy_unavailable`; a store outage with a version already loaded keeps
+  deciding on that version.
+
+Retiring a code gate in favour of its rule is a later, separate step, taken
+once its divergence count has been zero for a release.
+
+**The policy editor is exempt from the policy.** `/api/admin/policy/*`,
+`/elevate` and `/change-password` are never gated by the PEP — otherwise one
+bad rule in enforce mode would lock out the only place it can be fixed. They
+remain behind the code gates, and the policy API is the most tightly gated
+surface there is: superadmin only, fresh step-up on every write, every save
+and restore in the admin audit trail (`policy_updated`, `policy_restored`).
+
+**The decision log** carries the request's correlation id, so a denial seen by
+a user is one query away:
+`GET /api/admin/policy/decisions?correlation_id=…`. Agreeing allows are not
+logged — they are counted in `socrate_policy_decisions_total` — so the log
+stays a list of things worth reading. Rows older than
+`POLICY_DECISION_RETENTION_DAYS` (30) are swept hourly, by one instance.
+
+**Not yet:** the decide endpoint for applications (`POST /api/policy/decide`)
+and backendkit's PEP client are part 2; the console editor and decision-log
+views are part 3.
+
 ## Next
 
-- **A4 policy decision point** (shadow first), **A5** hosted-page branding.
-- **B5 multi-instance readiness** — advisory-lock-guarded key rotation and
-  leader-elected sweepers, which is what B4 unblocks.
+- **A4 part 2** — `POST /api/policy/decide` for applications, and backendkit's
+  PEP client; **part 3** — the console editor and decision-log views.
+- **A5** hosted-page branding and i18n.

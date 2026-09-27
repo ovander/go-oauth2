@@ -641,6 +641,28 @@ curl -s -o /dev/null -w '%{http_code}\n' 'https://admin.example.com/api/admin/%2
 - **Blocked IPs and lockouts** — visible and reversible in the monitoring
   console (auto-defense) and the admin console (user unlock).
 
+### 8.6 Turning on the admin policy (A4)
+
+The policy decision point ships `off`. To adopt it:
+
+1. **Shadow.** Set `POLICY_MODE=shadow` and restart. Version 1 of the policy is
+   a baseline that restates the admin API's existing gates, so
+   `socrate_policy_divergences_total` should stay at **zero**. If it does not,
+   read `GET /api/admin/policy/decisions?divergence=true` (superadmin) before
+   anything else — each row names the action, the rule and the status the
+   request ended with. With `ADMIN_SCOPE_MODE=enforce`, add the scope rules
+   from `docs/EXTENSIBILITY.md` first, or every scope refusal shows up here.
+2. **Add rules.** Save, then watch the new rule's `pdp_deny_code_allow` rows in
+   shadow for as long as it takes to see normal traffic. `POST /policy/simulate`
+   answers "what would this request get, and why" without touching traffic.
+3. **Enforce.** Set `POLICY_MODE=enforce` and restart. An allow never bypasses
+   the code gates, so this can only take access away.
+
+If a rule locks admins out in enforce mode, the policy API itself is exempt:
+a superadmin can still `POST /api/admin/policy/versions/{v}/restore` a known-good
+version (after `/elevate`). Setting `POLICY_MODE=shadow` and restarting is the
+blunt alternative.
+
 ---
 
 ## 8bis. Running two Socrate instances (B5)

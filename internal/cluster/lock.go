@@ -50,6 +50,8 @@ const (
 	LockAuditScan int64 = 0x5343524155444954 // "SCRAUDIT"
 	// LockStateSweep guards the B4 shared-state sweep.
 	LockStateSweep int64 = 0x5343525354415445 // "SCRSTATE"
+	// LockPolicyDecisionSweep guards the A4 decision-log retention sweep.
+	LockPolicyDecisionSweep int64 = 0x534352504f4c4453 // "SCRPOLDS"
 )
 
 // TryWithLock runs fn only if this instance can take the advisory lock without

@@ -115,7 +115,7 @@ are replayable from the admin API. Delivery is at-least-once by construction —
 the lease means a crashed pass retries rather than drops — so the payload's
 stable `event_id` is the subscriber's deduplication key.
 
-### A4. Policy decision point, shadow first (EPIC-10 / RFC-005) — **L**
+### A4. Policy decision point, shadow first (EPIC-10 / RFC-005) — **L** — ◧ part 1 (engine + admin PEP) delivered
 - Contract (small on purpose):
   `POST /api/policy/decide` `{principal, app, action, resource, context}` →
   `{allow, reason, obligations[]}`; the same function is callable in-process.
@@ -128,6 +128,38 @@ stable `event_id` is the subscriber's deduplication key.
   existing gates (`RequireGlobalAdmin`, `RequireAppAdmin`, `RequireFreshAuth`) become rules, not
   code, only after shadow shows parity for a release.
 - Decision log rows carry the correlation id, so a denial is traceable in the SOC console.
+
+**As delivered (part 1 of 3: engine, store, admin API enforcement point).** `internal/policy`
+with the contract above as an in-process function; `POLICY_MODE=off|shadow|enforce` on the admin
+API; the superadmin policy API with validate-before-save, a simulator returning a per-rule trace
+(the policy test harness EPIC-10 asks for), versions and restore; the decision log with
+correlation ids. Deviations, each deliberate:
+
+- **Versions, not rows.** The plan named backendkit's `tiering.PolicyRepository` pattern (a row
+  per rule, upserted). A PDP needs every decision attributable to an exact rule set and any
+  change reversible, so the whole set is stored as an immutable numbered version with
+  optimistic concurrency; restore writes forward. Same repository-plus-cached-service shape.
+- **10-second freshness, not a 5-minute TTL.** Each instance checks the latest version number
+  (one `MAX()`) every `POLICY_REFRESH_INTERVAL` and reloads only when it moved. Five minutes of
+  staleness after a deny rule is saved on another instance is too long for a security control.
+- **Three-valued evaluation.** Not in the plan: a condition over a missing attribute is
+  *unknown*, and an unknown deny denies. Without it a deny rule silently stops applying to
+  exactly the principals whose data is incomplete.
+- **Enforce never grants.** The PEP sits in front of the code gates and an allow does not skip
+  them, so `enforce` is purely additive restriction until a gate is retired explicitly.
+- **The editor is exempt.** `/api/admin/policy/*`, `/elevate` and `/change-password` are never
+  gated by the PEP, so a bad rule in enforce cannot lock out the place it would be fixed.
+- **Parity is measured against the response.** The PEP compares its decision with the status the
+  request ended with (401/403 = the code refused). A handler's own business-rule 403 therefore
+  also counts as a code refusal; the log row carries the status and rule so such cases read at
+  a glance.
+- **Scope gates are not in the baseline.** `ADMIN_SCOPE_MODE` is invisible to a rule, so a
+  baseline mirroring it would be wrong in one of its two modes; the docs give the rules to add.
+
+**Part 2:** `POST /api/policy/decide` for applications (principal resolved server-side from a
+user id or a presented access token, the calling app taken from its client-credentials token,
+never from the body) and backendkit's PEP client. **Part 3:** the console editor (oauth2-admin)
+and the decision-log view (oauth2-monitoring).
 
 ### A5. Hosted-page branding and i18n — **M**
 - Per-app branding on the `App` record: product name, logo URL (allowlisted to the app's own

@@ -7,9 +7,10 @@
 set -euo pipefail
 
 FLOOR="${TIER_A_MIN:-55.0}"
-TIER_A="./internal/service/...,./internal/shared/auth/...,./internal/middleware/...,./config/..."
+# internal/policy (A4) is Tier A: it decides who may use the admin API.
+TIER_A="./internal/service/...,./internal/shared/auth/...,./internal/middleware/...,./internal/policy/...,./config/..."
 
-go test ./internal/service/... ./internal/shared/auth/... ./internal/middleware/... ./config/... \
+go test ./internal/service/... ./internal/shared/auth/... ./internal/middleware/... ./internal/policy/... ./config/... \
   -coverpkg="$TIER_A" -coverprofile=tierA.out >/dev/null
 
 COV="$(go tool cover -func=tierA.out | tail -1 | awk '{print $3}' | tr -d '%')"

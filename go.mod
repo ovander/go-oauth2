@@ -18,7 +18,11 @@ require (
 	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/sirupsen/logrus v1.9.3
-	golang.org/x/crypto v0.28.0
+	// Newest x/crypto that still declares go 1.25: v0.56.0+ require go 1.26,
+	// which would raise the go directive above and with it the GODEBUG
+	// defaults. Only x/crypto/bcrypt is imported; the advisories left open at
+	// this version (ssh, openpgp) sit in packages this module does not use.
+	golang.org/x/crypto v0.55.0
 	gorm.io/driver/postgres v1.5.9
 	gorm.io/gorm v1.25.12
 )
@@ -40,6 +44,6 @@ require (
 	github.com/prometheus/procfs v0.21.1 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )

@@ -269,6 +269,15 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ### Security
 
+- **deps: `golang.org/x/crypto` `v0.28.0` → `v0.55.0`** (and `golang.org/x/text`
+  `v0.40.0` → `v0.41.0` with it). `govulncheck` listed 22 advisories against
+  v0.28.0, none reachable — only `x/crypto/bcrypt` is imported — and 3 remain
+  at v0.55.0: GO-2026-6354/6355 in `x/crypto/ssh` (fixed in v0.56.0) and
+  GO-2026-5932 (`x/crypto/openpgp`, no fix), all in packages this module does
+  not use. v0.55.0 is the newest release that still declares `go 1.25`;
+  v0.56.0+ require `go 1.26`, which would raise the `go` directive and change
+  the GODEBUG defaults the module is built with, so that step waits for a
+  deliberate directive bump.
 - **DPoP proof keys are parsed with `ecdsa.ParseUncompressedPublicKey`**
   instead of the deprecated `elliptic.Curve.IsOnCurve` (flagged by
   staticcheck SA1019 once golangci-lint moved to v2.14.0). The key in a DPoP

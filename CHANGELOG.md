@@ -226,6 +226,14 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ### Changed
 
+- **Build toolchain: Go 1.26.8 → Go 1.27.1** (`go.mod` toolchain line and
+  `golang:1.27.1-alpine`; CI follows go.mod and fails on drift). The `go`
+  line stays `1.25.13`, and that line — not the toolchain — sets GODEBUG
+  defaults, so the defaults Go 1.26 and 1.27 changed (`cryptocustomrand`,
+  `tlssecpmlkem`, `urlstrictcolons`, `tracebacklabels`,
+  `x509sslcertoverrideplatform`) keep their previous behaviour until that
+  line is raised deliberately. Build, vet, golangci-lint v2.14.0 and the full
+  `-race` suite (with the PostgreSQL integration tests) pass on 1.27.1.
 - **golangci-lint v2.5.0 → v2.14.0** in CI, still built with go.mod's
   toolchain. v2.5.0 cannot load Go 1.27's export data, so this is the
   prerequisite for moving to Go 1.27; it found two issues, both fixed (see

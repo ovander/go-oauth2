@@ -570,8 +570,8 @@ VPS_HOST=deploy@vps.example.com oauth2-admin/deploy/scripts/push.sh
 health-checks (`:8081/health`, `:8090/bff/healthz`, `:8080/health`,
 `:8091/bff/healthz`), rolling back on failure.
 
-Build toolchains: Go **1.26.8** everywhere — `toolchain go1.26.8` in every
-`go.mod` (Socrate, backendkit, both BFFs) and `golang:1.26.8-alpine` in every
+Build toolchains: Go **1.27.1** everywhere — `toolchain go1.27.1` in every
+`go.mod` (Socrate, backendkit, both BFFs) and `golang:1.27.1-alpine` in every
 Dockerfile, with CI failing if the two drift — and Node 20. Go 1.25 is out of
 support since Go 1.27's release; move the pin forward with each Go patch
 release, in all four repositories together.

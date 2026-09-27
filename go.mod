@@ -7,7 +7,7 @@ go 1.25.13
 // directive above stays the language minimum; this line decides what CI and
 // local builds actually compile with (GOTOOLCHAIN=auto fetches it). Keep it
 // equal to the Dockerfile's golang image tag.
-toolchain go1.26.8
+toolchain go1.27.1
 
 require (
 	github.com/go-chi/chi/v5 v5.3.0

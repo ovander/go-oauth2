@@ -102,6 +102,10 @@ type RouterConfig struct {
 	// PolicyHandler serves the superadmin policy administration API. Nil
 	// leaves those routes unregistered.
 	PolicyHandler *handler.PolicyHandler
+	// PolicyDecideHandler serves the A4 decide endpoint for applications
+	// (POST /api/apps/{app_id}/service/policy/decide). Nil leaves it
+	// unregistered.
+	PolicyDecideHandler *handler.PolicyDecideHandler
 }
 
 // Routers holds both the OAuth and Admin routers for separate port binding
@@ -734,6 +738,13 @@ func newAdminRouter(
 		// ServiceAccountMiddleware (sub=app:{id} + URL cross-check).
 		if magicLinkHandler != nil {
 			r.Post("/magic-link", magicLinkHandler.Request)
+		}
+
+		// A4: an application's backend asks the policy decision point about
+		// one of its own users. The application is the one proven above; the
+		// subject is resolved server-side and must belong to it.
+		if config.PolicyDecideHandler != nil {
+			r.Post("/policy/decide", config.PolicyDecideHandler.Decide)
 		}
 	})
 

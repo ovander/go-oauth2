@@ -44,6 +44,8 @@ type VersionSummary struct {
 // Decision sources and divergence kinds.
 const (
 	SourceAdminPEP = "admin_pep"
+	// SourceDecideAPI is an application asking through the decide endpoint.
+	SourceDecideAPI = "decide_api"
 
 	// DivergencePDPStricter: the PDP would deny a request the code gates let
 	// through. In enforce mode this is a request the PDP actually refused.

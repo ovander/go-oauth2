@@ -115,7 +115,7 @@ are replayable from the admin API. Delivery is at-least-once by construction —
 the lease means a crashed pass retries rather than drops — so the payload's
 stable `event_id` is the subscriber's deduplication key.
 
-### A4. Policy decision point, shadow first (EPIC-10 / RFC-005) — **L** — ◧ part 1 (engine + admin PEP) delivered
+### A4. Policy decision point, shadow first (EPIC-10 / RFC-005) — **L** — ◧ parts 1–2 (engine, admin PEP, decide API + backendkit PEP) delivered
 - Contract (small on purpose):
   `POST /api/policy/decide` `{principal, app, action, resource, context}` →
   `{allow, reason, obligations[]}`; the same function is callable in-process.
@@ -156,10 +156,26 @@ correlation ids. Deviations, each deliberate:
 - **Scope gates are not in the baseline.** `ADMIN_SCOPE_MODE` is invisible to a rule, so a
   baseline mirroring it would be wrong in one of its two modes; the docs give the rules to add.
 
-**Part 2:** `POST /api/policy/decide` for applications (principal resolved server-side from a
-user id or a presented access token, the calling app taken from its client-credentials token,
-never from the body) and backendkit's PEP client. **Part 3:** the console editor (oauth2-admin)
-and the decision-log view (oauth2-monitoring).
+**As delivered (part 2 of 3: applications).** The decide endpoint and backendkit's `pep`
+package. Deviations:
+
+- **The route is `POST /api/apps/{app_id}/service/policy/decide`**, not `/api/policy/decide`: it
+  joins the existing service-account routes and reuses `ServiceAccountMiddleware`, whose
+  `{app_id}`-to-token pinning is exactly the "which application is asking" guarantee needed.
+- **The subject is resolved, never asserted.** An application sends the user's token or id;
+  role, attributes and app role come from Socrate's records, and only members of the calling
+  application can be asked about (anyone else is an indistinguishable 404).
+- **The mode travels with every answer** and the application's PEP acts on it, so rollout
+  stays one central switch rather than a per-application flag.
+- **Obligations are honoured by the PEP**, as on the admin API; backendkit's `jwtauth` now
+  exposes `auth_time` and `amr` for that.
+- **Outage behaviour follows the last mode seen**: proceed in off/shadow, refuse in enforce,
+  refuse before any decision unless `FailOpenWhenModeUnknown` — so a shadow rollout can
+  never take an application down, and an enforced one never silently opens.
+
+Not done: per-application modes (one global `POLICY_MODE` for now) and a batch endpoint for
+filtering lists. **Part 3:** the console editor (oauth2-admin) and the decision-log view
+(oauth2-monitoring).
 
 ### A5. Hosted-page branding and i18n — **M**
 - Per-app branding on the `App` record: product name, logo URL (allowlisted to the app's own

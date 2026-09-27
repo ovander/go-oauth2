@@ -347,6 +347,25 @@ routes** on the Admin router, which are scoped to that exact app:
 
 - `POST /api/apps/{app_id}/service/users` — create a user inside the app.
 - `POST /api/apps/{app_id}/service/magic-link` — trigger a magic-link email.
+- `POST /api/apps/{app_id}/service/policy/decide` — ask the policy decision
+  point about one of the app's users (A4):
+  ```json
+  { "subject": {"token": "<user access token>"},
+    "action": "invoice.approve",
+    "resource": {"type": "invoice", "id": "inv-9", "attributes": {"amount": 25000}},
+    "context": {"ip": "203.0.113.5"} }
+  ```
+  → `200 {"allow", "rule", "reason", "obligations", "policy_version", "mode"}`.
+  `subject` is `{"token": …}` (verified like any bearer token; supplies scopes,
+  amr, auth_time), `{"user_id": n}`, or omitted for the application itself.
+  The subject must be a member of the app (or a global admin): otherwise
+  `404 unknown subject`. `400` for a malformed body, an unknown field, both
+  subject forms, an invalid/revoked/expired subject token, or an action in the
+  admin namespace (`"<METHOD> /api/admin…"`). A locked subject is a deny with
+  reason `subject_locked`. `503 {"error": "policy_unavailable", "mode"}` when
+  no policy version can be loaded. Act on `mode`: `off` ignore, `shadow` log,
+  `enforce` honour. Send `X-Correlation-ID` to find a denial in the decision
+  log. See `docs/EXTENSIBILITY.md`.
 
 `ServiceAccountMiddleware` enforces that the `{app_id}` in the URL matches the
 app encoded in the token, so an app can never act on another app's resources.
@@ -692,5 +711,6 @@ on both routers as JSON.
 | GET | `/api/apps/{app_id}/logs` | app admin | App activity logs |
 | POST | `/api/apps/{app_id}/service/users` | service account | M2M create user |
 | POST | `/api/apps/{app_id}/service/magic-link` | service account | M2M magic link |
+| POST | `/api/apps/{app_id}/service/policy/decide` | service account | A4 policy decision for the app's user |
 </content>
 </invoke>

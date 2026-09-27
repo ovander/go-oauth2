@@ -847,15 +847,21 @@ func Bootstrap(cfg *config.Config) *App {
 		// registered regardless, so rules can be prepared before shadowing.
 		PolicyPEP:     middleware.NewPolicyPEP(pdp, cfg.AdminElevationMaxAge),
 		PolicyHandler: handler.NewPolicyHandler(pdp, adminLogService),
+		// A4 part 2: applications consult the same PDP. Registered in every
+		// mode; the response carries the mode, which is how an application's
+		// enforcement point knows whether to act on the answer.
+		PolicyDecideHandler: handler.NewPolicyDecideHandler(pdp, tokenService, userRepo, usedTokenRepo, userAppRoleRepo),
 	}
 	if geoIPService != nil && geoIPService.IsConfigured() {
 		geo := geoIPService
-		routerConfig.PolicyPEP.SetCountryLookup(func(ip string) string {
+		countryOf := func(ip string) string {
 			if r := geo.Lookup(ip); r != nil && r.IsValid {
 				return r.CountryCode
 			}
 			return ""
-		})
+		}
+		routerConfig.PolicyPEP.SetCountryLookup(countryOf)
+		routerConfig.PolicyDecideHandler.SetCountryLookup(countryOf)
 	}
 	if dpopCache != nil {
 		routerConfig.DPoPReplayCache = dpopCache

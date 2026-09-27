@@ -63,3 +63,40 @@ type PolicyCatalogueResponse struct {
 	Operators     []string `json:"operators"`
 	Obligations   []string `json:"obligations"`
 }
+
+// PolicyDecideRequest is an application's question to the PDP (A4 part 2).
+// The calling application is taken from its client-credentials token, never
+// from the body, and the subject is resolved server-side: an application can
+// describe the resource and the request context, but not who the user is or
+// what they hold.
+type PolicyDecideRequest struct {
+	// Subject is the user the decision is about. Omitted: the application
+	// itself is the principal (kind "client").
+	Subject  *PolicySubject      `json:"subject,omitempty"`
+	Action   string              `json:"action"`
+	Resource policy.Resource     `json:"resource"`
+	Context  PolicyDecideContext `json:"context"`
+}
+
+// PolicySubject names the user: either their access token (preferred — it is
+// verified, and supplies scopes, amr and auth_time) or their user id.
+type PolicySubject struct {
+	Token  string `json:"token,omitempty"`
+	UserID uint   `json:"user_id,omitempty"`
+}
+
+// PolicyDecideContext is the request context as the application observed it.
+type PolicyDecideContext struct {
+	// IP is the end user's address as the application saw it. Asserted by
+	// the caller, like everything else it says about its own request.
+	IP         string         `json:"ip,omitempty"`
+	Attributes map[string]any `json:"attributes,omitempty"`
+}
+
+// PolicyDecideResponse is the decision plus the mode it was made under. The
+// mode is how an application's enforcement point knows whether to act on it:
+// off — ignore; shadow — log a denial, allow; enforce — honour it.
+type PolicyDecideResponse struct {
+	policy.Decision
+	Mode string `json:"mode"`
+}

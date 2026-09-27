@@ -658,6 +658,12 @@ The policy decision point ships `off`. To adopt it:
 3. **Enforce.** Set `POLICY_MODE=enforce` and restart. An allow never bypasses
    the code gates, so this can only take access away.
 
+**Applications** built on backendkit consult the same policy through its
+`pep` package and follow the same `POLICY_MODE` — shadow and enforce apply to
+them at the same moment as to the admin API. Write each application's allow
+rules (scoped with `app.client_id`) before shadowing, or every one of its
+actions shows up as a `no_applicable_rule` would-be denial.
+
 If a rule locks admins out in enforce mode, the policy API itself is exempt:
 a superadmin can still `POST /api/admin/policy/versions/{v}/restore` a known-good
 version (after `/elevate`). Setting `POLICY_MODE=shadow` and restarting is the

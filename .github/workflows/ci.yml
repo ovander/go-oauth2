@@ -51,6 +51,18 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # go.mod's toolchain line is the single source of truth for the Go that
+      # builds Socrate. Fail loudly if this job compiled with anything else, or
+      # if the Dockerfile's image has drifted from it — the release image is
+      # what actually ships.
+      - name: Toolchain matches go.mod (CI and Dockerfile)
+        run: |
+          want=$(awk '/^toolchain /{print $2}' go.mod)
+          got=$(go env GOVERSION)
+          image=go$(sed -nE 's/^FROM golang:([0-9.]+)-alpine.*/\1/p' Dockerfile)
+          echo "go.mod toolchain: $want · CI: $got · Dockerfile: $image"
+          test -n "$want" && test "$got" = "$want" && test "$image" = "$want"
+
       - name: Download modules
         run: go mod download
 
@@ -88,6 +100,11 @@ jobs:
         uses: golangci/golangci-lint-action@v8
         with:
           version: v2.5.0
+          # Build golangci-lint with the job's toolchain (go.mod's). The prebuilt
+          # v2.5.0 binary is compiled with Go 1.25 and refuses a module whose
+          # toolchain directive targets a newer Go ("the Go language version
+          # used to build golangci-lint is lower than the targeted Go version").
+          install-mode: goinstall
 
   govulncheck:
     name: govulncheck

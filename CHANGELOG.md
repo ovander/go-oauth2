@@ -226,6 +226,15 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ### Changed
 
+- **Build toolchain: Go 1.25.13 → Go 1.26.8.** Go 1.25 went out of support
+  when Go 1.27 was released, and the 2026-08-28 security releases shipped for
+  1.26 and 1.27 only. `go.mod` now pins `toolchain go1.26.8` (the `go`
+  language minimum stays 1.25.13), the Dockerfile builds on
+  `golang:1.26.8-alpine` — previously `golang:1.25-alpine` — and CI fails if
+  the job's Go or the Dockerfile's image drifts from the pin. golangci-lint is
+  now built with the job's toolchain, since the prebuilt v2.5.0 binary (Go
+  1.25) refuses a module targeting Go 1.26. The suite builds, vets, lints and
+  passes `-race` on 1.26.8, and on 1.27.1 as well.
 - **Documented: client-secret verification is bcrypt cost 12 (~273 ms), which
   caps every confidential-client endpoint at ~14 requests/second per 4 vCPU.**
   That covers `client_credentials`, `introspect`, `revoke`, and the

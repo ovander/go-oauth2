@@ -2,6 +2,13 @@ module github.com/ovandermoten/go-oauth2
 
 go 1.25.13
 
+// Build, test and ship with a pinned toolchain: Go 1.25 is out of support
+// since Go 1.27's release, so it receives no more security fixes. The go
+// directive above stays the language minimum; this line decides what CI and
+// local builds actually compile with (GOTOOLCHAIN=auto fetches it). Keep it
+// equal to the Dockerfile's golang image tag.
+toolchain go1.26.8
+
 require (
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-chi/cors v1.2.1

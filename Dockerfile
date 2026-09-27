@@ -4,7 +4,10 @@
 # Runtime needs (mount as read-only volumes):
 #   /opt/socrate/keys   RSA signing keys (see `make gen-keys`)
 #   /opt/socrate/data   optional GeoIP databases
-FROM golang:1.25-alpine AS build
+# Pinned to the exact patch release in go.mod's toolchain line; CI fails if the
+# two drift. The golang images set GOTOOLCHAIN=local, so this tag — not go.mod —
+# is the Go that compiles the shipped binary.
+FROM golang:1.26.8-alpine AS build
 WORKDIR /src
 RUN apk add --no-cache ca-certificates
 COPY go.mod go.sum ./

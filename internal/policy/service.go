@@ -272,3 +272,14 @@ func (s *Service) Decisions(ctx context.Context, f DecisionFilter) ([]DecisionRe
 func (s *Service) SweepDecisions(ctx context.Context, retention time.Duration) (int64, error) {
 	return s.store.SweepDecisions(ctx, s.now().Add(-retention))
 }
+
+// SummarizeDecisions counts decision-log rows since the given time.
+func (s *Service) SummarizeDecisions(ctx context.Context, since time.Time) (DecisionSummary, error) {
+	return s.store.SummarizeDecisions(ctx, since)
+}
+
+// LatestVersion is the number of the newest stored rule-set version, 0 when
+// none exists.
+func (s *Service) LatestVersion(ctx context.Context) (int64, error) {
+	return s.store.LatestVersion(ctx)
+}

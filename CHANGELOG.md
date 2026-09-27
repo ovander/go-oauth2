@@ -68,6 +68,16 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
   `POLICY_DECISION_RETENTION_DAYS` (30) is swept by one instance under an
   advisory lock. The decide endpoint for applications and backendkit's PEP
   client are part 2; the console editor is part 3. See `docs/EXTENSIBILITY.md`.
+- **The policy decision log for the SOC (A4 part 3).**
+  `GET /api/admin/security/policy-decisions` serves the decision log to the
+  monitoring console — global admins with `monitoring:read` — with filters for
+  correlation id, outcome, divergence, source, calling client and time, and
+  `…/policy-decisions/summary` returns the dashboard counts (denials, enforced
+  denials, divergences by kind, denials by source) for a window, grouped in the
+  database. Decision rows are security telemetry, the same class as the
+  security events that console already shows; the rules themselves remain
+  superadmin-only under `/api/admin/policy`. The console views are in
+  oauth2-admin (policy editor) and oauth2-monitoring (decision log).
 - **Multi-instance readiness (B5 / EPIC-13).** `internal/cluster` coordinates the
   background jobs through PostgreSQL advisory locks, so each runs once across
   the cluster rather than once per instance: **schema migration** takes a

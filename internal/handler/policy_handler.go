@@ -243,42 +243,65 @@ func (h *PolicyHandler) Catalogue(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GET /api/admin/policy/decisions?correlation_id=&allow=&divergence=true&since=&before_id=&limit=
+// GET /api/admin/policy/decisions?correlation_id=&allow=&divergence=true&source=&client_id=&since=&before_id=&limit=
 func (h *PolicyHandler) Decisions(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.requireSuperadmin(w, r); !ok {
 		return
 	}
-	q := r.URL.Query()
-	f := policy.DecisionFilter{
-		CorrelationID:  q.Get("correlation_id"),
-		DivergenceOnly: q.Get("divergence") == "true",
-		Limit:          queryInt(r, "limit", 100, 1, 500),
+	h.writeDecisions(w, r)
+}
+
+// GET /api/admin/security/policy-decisions — the same log for the SOC.
+//
+// Global admins with monitoring:read may read it: a decision row is security
+// telemetry (who was refused what, when, from where, under which rule id),
+// the same class of data as the security events the monitoring console
+// already shows. The rules themselves stay superadmin-only.
+func (h *PolicyHandler) SOCDecisions(w http.ResponseWriter, r *http.Request) {
+	if !requireGlobalAdminUser(w, r) {
+		return
 	}
-	if raw := q.Get("allow"); raw != "" {
-		b, err := strconv.ParseBool(raw)
-		if err != nil {
-			writeError(w, "invalid allow", http.StatusBadRequest)
-			return
-		}
-		f.Allow = &b
+	h.writeDecisions(w, r)
+}
+
+// GET /api/admin/security/policy-decisions/summary?since= — counts for the
+// SOC dashboard. since defaults to 24 hours ago.
+func (h *PolicyHandler) SOCSummary(w http.ResponseWriter, r *http.Request) {
+	if !requireGlobalAdminUser(w, r) {
+		return
 	}
-	if raw := q.Get("since"); raw != "" {
+	since := time.Now().Add(-24 * time.Hour)
+	if raw := r.URL.Query().Get("since"); raw != "" {
 		t, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
 			writeError(w, "invalid since: want RFC 3339", http.StatusBadRequest)
 			return
 		}
-		f.Since = t
+		since = t
 	}
-	if raw := q.Get("before_id"); raw != "" {
-		id, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil {
-			writeError(w, "invalid before_id", http.StatusBadRequest)
-			return
-		}
-		f.BeforeID = id
+	sum, err := h.pdp.SummarizeDecisions(r.Context(), since)
+	if err != nil {
+		writePolicyServiceError(w, err)
+		return
 	}
+	version, err := h.pdp.LatestVersion(r.Context())
+	if err != nil {
+		writePolicyServiceError(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{
+		"mode":           string(h.pdp.Mode()),
+		"policy_version": version,
+		"summary":        sum,
+	})
+}
 
+func (h *PolicyHandler) writeDecisions(w http.ResponseWriter, r *http.Request) {
+	f, msg := parseDecisionFilter(r)
+	if msg != "" {
+		writeError(w, msg, http.StatusBadRequest)
+		return
+	}
 	rows, err := h.pdp.Decisions(r.Context(), f)
 	if err != nil {
 		writePolicyServiceError(w, err)
@@ -287,7 +310,57 @@ func (h *PolicyHandler) Decisions(w http.ResponseWriter, r *http.Request) {
 	if rows == nil {
 		rows = []policy.DecisionRecord{}
 	}
-	writeJSON(w, map[string]any{"decisions": rows})
+	writeJSON(w, map[string]any{"decisions": rows, "mode": string(h.pdp.Mode())})
+}
+
+// parseDecisionFilter reads the decision-log query parameters, or returns a
+// message describing the first invalid one.
+func parseDecisionFilter(r *http.Request) (policy.DecisionFilter, string) {
+	q := r.URL.Query()
+	f := policy.DecisionFilter{
+		CorrelationID:  q.Get("correlation_id"),
+		DivergenceOnly: q.Get("divergence") == "true",
+		Source:         q.Get("source"),
+		ClientID:       q.Get("client_id"),
+		Limit:          queryInt(r, "limit", 100, 1, 500),
+	}
+	if raw := q.Get("allow"); raw != "" {
+		b, err := strconv.ParseBool(raw)
+		if err != nil {
+			return f, "invalid allow"
+		}
+		f.Allow = &b
+	}
+	if raw := q.Get("since"); raw != "" {
+		t, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return f, "invalid since: want RFC 3339"
+		}
+		f.Since = t
+	}
+	if raw := q.Get("before_id"); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			return f, "invalid before_id"
+		}
+		f.BeforeID = id
+	}
+	return f, ""
+}
+
+// requireGlobalAdminUser is the handler-level twin of RequireGlobalAdmin,
+// kept so these handlers stay safe if ever mounted outside the admin group.
+func requireGlobalAdminUser(w http.ResponseWriter, r *http.Request) bool {
+	user, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
+	if user == nil {
+		writeError(w, "unauthorized", http.StatusUnauthorized)
+		return false
+	}
+	if !user.IsGlobalAdmin() {
+		writeError(w, "forbidden: global admin required", http.StatusForbidden)
+		return false
+	}
+	return true
 }
 
 func (h *PolicyHandler) logAction(r *http.Request, adminID uint, action model.AdminAction, details map[string]interface{}) {

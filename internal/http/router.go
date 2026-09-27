@@ -625,6 +625,13 @@ func newAdminRouter(
 			r.With(freshAuth, monWrite).Post("/blocked-ips", monitoringHandler.BlockIP)
 			r.With(freshAuth, monWrite).Delete("/blocked-ips/{id}", monitoringHandler.UnblockIP)
 			r.Get("/ip-reputation/{ip}", monitoringHandler.GetIPReputation)
+
+			// A4: the policy decision log, read-only, for the SOC. The rules
+			// themselves stay under /policy (superadmin only).
+			if config.PolicyHandler != nil {
+				r.Get("/policy-decisions", config.PolicyHandler.SOCDecisions)
+				r.Get("/policy-decisions/summary", config.PolicyHandler.SOCSummary)
+			}
 		})
 
 		// Real-time event streams (monitoring console).

@@ -582,6 +582,14 @@ and `503 {"error": "policy_unavailable"}` if no policy version exists. Saves and
 restores are recorded in the admin audit trail (`policy_updated`,
 `policy_restored`).
 
+**For the SOC** (global admin, `monitoring:read` — the monitoring console):
+`GET /api/admin/security/policy-decisions` returns the same decision log with
+the same filters, plus `?source=admin_pep|decide_api` and `?client_id=`, and
+the current `mode`; `GET /api/admin/security/policy-decisions/summary?since=`
+(default: the last 24 h) returns
+`{"mode", "policy_version", "summary": {"since", "denials", "enforced_denials", "divergences": {kind: n}, "denials_by_source": {source: n}}}`.
+Neither exposes the rules.
+
 ### 8.4 Other admin areas
 `/api/admin/stats`, `/activity`, `/dashboard/*`, `/superadmins`,
 `/security/*` (events, threats, geo, blocked-ips, ip-reputation),

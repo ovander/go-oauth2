@@ -91,15 +91,47 @@ func (m *MemoryStore) Insert(_ context.Context, v *Version) error {
 func (m *MemoryStore) AppendDecision(_ context.Context, r *DecisionRecord) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	r.ID = int64(len(m.decisions) + 1)
 	m.decisions = append(m.decisions, *r)
 	return nil
 }
 
-// Decisions implements Store.
-func (m *MemoryStore) Decisions(context.Context, DecisionFilter) ([]DecisionRecord, error) {
+// Decisions implements Store, applying the filter the way PostgresStore does.
+func (m *MemoryStore) Decisions(_ context.Context, f DecisionFilter) ([]DecisionRecord, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return append([]DecisionRecord(nil), m.decisions...), nil
+	var out []DecisionRecord
+	for i := len(m.decisions) - 1; i >= 0; i-- { // newest first
+		d := m.decisions[i]
+		switch {
+		case f.CorrelationID != "" && d.CorrelationID != f.CorrelationID,
+			f.Allow != nil && d.Allow != *f.Allow,
+			f.DivergenceOnly && d.Divergence == "",
+			!f.Since.IsZero() && d.CreatedAt.Before(f.Since),
+			f.BeforeID > 0 && d.ID >= f.BeforeID,
+			f.Source != "" && d.Source != f.Source,
+			f.ClientID != "" && d.ClientID != f.ClientID:
+			continue
+		}
+		out = append(out, d)
+		if f.Limit > 0 && len(out) == f.Limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+// SummarizeDecisions implements Store.
+func (m *MemoryStore) SummarizeDecisions(_ context.Context, since time.Time) (DecisionSummary, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	sum := newDecisionSummary(since)
+	for _, d := range m.decisions {
+		if !d.CreatedAt.Before(since) {
+			sum.addSummaryRow(d.Source, d.Allow, d.Enforced, d.Divergence, 1)
+		}
+	}
+	return sum, nil
 }
 
 // SweepDecisions implements Store.

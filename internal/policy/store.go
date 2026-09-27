@@ -91,7 +91,44 @@ type DecisionFilter struct {
 	Since          time.Time
 	// BeforeID pages backwards: only rows with a smaller id.
 	BeforeID int64
+	// Source is SourceAdminPEP or the decide endpoint's source.
+	Source string
+	// ClientID is the client the decision concerned — for the decide
+	// endpoint, the calling application.
+	ClientID string
 	Limit    int
+}
+
+// DecisionSummary counts decision-log rows since a point in time — the
+// numbers a SOC dashboard shows next to the list.
+type DecisionSummary struct {
+	Since time.Time `json:"since"`
+	// Denials counts every logged denial, would-be (shadow) or real.
+	Denials int64 `json:"denials"`
+	// EnforcedDenials counts the denials that were answered with a refusal.
+	EnforcedDenials int64 `json:"enforced_denials"`
+	// Divergences counts disagreements with the code gates, by kind.
+	Divergences map[string]int64 `json:"divergences"`
+	// DenialsBySource splits Denials by where the decision was asked.
+	DenialsBySource map[string]int64 `json:"denials_by_source"`
+}
+
+// addSummaryRow folds one (source, allow, enforced, divergence) group into s.
+func (s *DecisionSummary) addSummaryRow(source string, allow, enforced bool, divergence string, n int64) {
+	if !allow {
+		s.Denials += n
+		s.DenialsBySource[source] += n
+		if enforced {
+			s.EnforcedDenials += n
+		}
+	}
+	if divergence != "" {
+		s.Divergences[divergence] += n
+	}
+}
+
+func newDecisionSummary(since time.Time) DecisionSummary {
+	return DecisionSummary{Since: since, Divergences: map[string]int64{}, DenialsBySource: map[string]int64{}}
 }
 
 // Store persists rule-set versions and the decision log.
@@ -105,6 +142,7 @@ type Store interface {
 	AppendDecision(ctx context.Context, rec *DecisionRecord) error
 	Decisions(ctx context.Context, f DecisionFilter) ([]DecisionRecord, error)
 	SweepDecisions(ctx context.Context, before time.Time) (int64, error)
+	SummarizeDecisions(ctx context.Context, since time.Time) (DecisionSummary, error)
 }
 
 // PostgresStore is the Store over the policy_versions and policy_decisions
@@ -261,6 +299,12 @@ func (s *PostgresStore) Decisions(ctx context.Context, f DecisionFilter) ([]Deci
 	if f.BeforeID > 0 {
 		q = q.Where("id < ?", f.BeforeID)
 	}
+	if f.Source != "" {
+		q = q.Where("source = ?", f.Source)
+	}
+	if f.ClientID != "" {
+		q = q.Where("client_id = ?", f.ClientID)
+	}
 
 	var rows []decisionRow
 	if err := q.Find(&rows).Error; err != nil {
@@ -284,4 +328,29 @@ func (s *PostgresStore) Decisions(ctx context.Context, f DecisionFilter) ([]Deci
 func (s *PostgresStore) SweepDecisions(ctx context.Context, before time.Time) (int64, error) {
 	res := s.db.WithContext(ctx).Exec(`DELETE FROM policy_decisions WHERE created_at < ?`, before)
 	return res.RowsAffected, res.Error
+}
+
+// SummarizeDecisions counts decision-log rows since the given time, grouped in
+// the database so the cost does not grow with the number of rows returned.
+func (s *PostgresStore) SummarizeDecisions(ctx context.Context, since time.Time) (DecisionSummary, error) {
+	var rows []struct {
+		Source     string
+		Allow      bool
+		Enforced   bool
+		Divergence string
+		N          int64
+	}
+	err := s.db.WithContext(ctx).Raw(
+		`SELECT source, allow, enforced, divergence, count(*) AS n
+		 FROM policy_decisions WHERE created_at >= ?
+		 GROUP BY source, allow, enforced, divergence`, since,
+	).Scan(&rows).Error
+	if err != nil {
+		return DecisionSummary{}, err
+	}
+	sum := newDecisionSummary(since)
+	for _, r := range rows {
+		sum.addSummaryRow(r.Source, r.Allow, r.Enforced, r.Divergence, r.N)
+	}
+	return sum, nil
 }

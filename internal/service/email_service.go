@@ -221,7 +221,7 @@ func (s *smtpEmailService) sendEmail(to, subject, htmlBody string) error {
 	// Build message
 	var message strings.Builder
 	for k, v := range headers {
-		message.WriteString(fmt.Sprintf("%s: %s\r\n", k, v))
+		fmt.Fprintf(&message, "%s: %s\r\n", k, v)
 	}
 	message.WriteString("\r\n")
 	message.WriteString(qpBuf.String())

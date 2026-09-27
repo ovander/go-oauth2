@@ -232,3 +232,68 @@ func TestVerify_Malformed(t *testing.T) {
 		t.Fatal("expected an error for a malformed proof")
 	}
 }
+
+// jwkWith returns a P-256 JWK with the given raw coordinate bytes.
+func jwkWith(x, y []byte) map[string]interface{} {
+	return map[string]interface{}{
+		"kty": "EC", "crv": "P-256",
+		"x": base64.RawURLEncoding.EncodeToString(x),
+		"y": base64.RawURLEncoding.EncodeToString(y),
+	}
+}
+
+// The key in a proof's header is attacker-chosen. Whatever it is, the parser
+// must accept only real P-256 points — an off-curve point is the classic
+// invalid-curve input.
+func TestParseECPublicKey_RejectsInvalidPoints(t *testing.T) {
+	k, _ := newKey(t)
+	x, y := leftPad(k.X.Bytes(), 32), leftPad(k.Y.Bytes(), 32)
+
+	offCurve := append([]byte(nil), y...)
+	offCurve[31] ^= 0x01
+
+	// p itself: a coordinate that is not a field element.
+	p := elliptic.P256().Params().P.Bytes()
+
+	cases := map[string]map[string]interface{}{
+		"off-curve point":        jwkWith(x, offCurve),
+		"point at infinity":      jwkWith(make([]byte, 32), make([]byte, 32)),
+		"x equal to the modulus": jwkWith(p, y),
+		"33-byte coordinate":     jwkWith(append([]byte{0}, x...), y),
+	}
+	for name, jwk := range cases {
+		if _, err := parseECPublicKey(jwk); !errors.Is(err, ErrInvalidJWK) {
+			t.Errorf("%s: err = %v, want ErrInvalidJWK", name, err)
+		}
+	}
+
+	if pub, err := parseECPublicKey(jwkWith(x, y)); err != nil || pub.X.Cmp(k.X) != 0 || pub.Y.Cmp(k.Y) != 0 {
+		t.Fatalf("valid key: pub=%v err=%v", pub, err)
+	}
+}
+
+// A coordinate with its leading zero byte dropped names the same point. It is
+// accepted, and — the part that matters — binds to the same thumbprint as the
+// canonical encoding, so the lenient parse cannot change a token's binding.
+func TestParseECPublicKey_ShortCoordinate_SameThumbprint(t *testing.T) {
+	var k *ecdsa.PrivateKey
+	for {
+		k, _ = newKey(t)
+		if len(k.X.Bytes()) < 32 { // ~1 key in 256 has a leading zero byte
+			break
+		}
+	}
+	short, err := parseECPublicKey(jwkWith(k.X.Bytes(), leftPad(k.Y.Bytes(), 32)))
+	if err != nil {
+		t.Fatalf("short coordinate rejected: %v", err)
+	}
+	full, err := parseECPublicKey(jwkWith(leftPad(k.X.Bytes(), 32), leftPad(k.Y.Bytes(), 32)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts, _ := thumbprint(short)
+	tf, _ := thumbprint(full)
+	if ts != tf {
+		t.Fatalf("thumbprints differ: %s vs %s", ts, tf)
+	}
+}

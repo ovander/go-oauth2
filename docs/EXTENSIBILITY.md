@@ -2,8 +2,8 @@
 
 Plan A of `docs/program/PLAN-EXTENSIBILITY-OBSERVABILITY.md`. Delivered so far:
 **A1** per-client scope policy, **A6** in-process hooks, **A2** custom claims,
-**A3** outbound webhooks, and **A4** parts 1–2 — the policy decision point, on
-the admin API and for applications.
+**A3** outbound webhooks, and **A4** — the policy decision point, on the admin API,
+for applications and in both consoles.
 
 ## Per-client scope policy (A1)
 
@@ -506,10 +506,19 @@ reached it goes by the last mode it saw: proceed in `off`/`shadow`, refuse
 `503` in `enforce`; before any decision has told it the mode it refuses, unless
 `FailOpenWhenModeUnknown` is set.
 
-**Part 3:** the console editor (oauth2-admin) and the decision-log view
-(oauth2-monitoring).
+### Consoles (part 3)
+
+- **Admin console → Security → Access policy** (superadmin): the rules as JSON with server
+  validation that reports every problem by path, save from the loaded version (conflicts keep
+  your draft), a simulator against the current version or your unsaved draft with a per-rule
+  trace, version history with restore, and the recent denials and divergences to watch a rule
+  in shadow.
+- **Monitoring console → Policy Decisions** (`monitoring:read`): the decision log with summary
+  counts and filters by correlation id, outcome, source, calling application and period;
+  every security event links to its decisions. Served by
+  `GET /api/admin/security/policy-decisions` (and `…/summary`), which exposes the log, never
+  the rules.
 
 ## Next
 
-- **A4 part 3** — the console editor and decision-log views.
 - **A5** hosted-page branding and i18n.

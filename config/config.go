@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/ovandermoten/go-oauth2/internal/policy"
 	"github.com/ovandermoten/go-oauth2/internal/state"
 	"github.com/ovandermoten/go-oauth2/pkg/logger"
 )
@@ -186,6 +187,18 @@ type Config struct {
 	// StateOpTimeout bounds a single shared-state round trip, so a slow
 	// database degrades the limiter rather than the request path.
 	StateOpTimeout time.Duration
+	// PolicyMode is the A4 rollout switch, POLICY_MODE: "off" (default — the
+	// policy API works but nothing is consulted), "shadow" (every admin
+	// request is evaluated and compared with the code gates, nothing is
+	// refused), or "enforce" (a policy deny is refused with 403; an allow
+	// still has to pass every code gate).
+	PolicyMode string
+	// PolicyRefreshInterval bounds how long another instance's policy save
+	// takes to be seen here. POLICY_REFRESH_INTERVAL (seconds, default 10).
+	PolicyRefreshInterval time.Duration
+	// PolicyDecisionRetention is how long decision-log rows are kept.
+	// POLICY_DECISION_RETENTION_DAYS (default 30).
+	PolicyDecisionRetention time.Duration
 	// SecretKeyBase is a cryptographic secret (≥32 bytes in production) used
 	// for two purposes:
 	//   1. CSRF cookie signing in the OAuth authorization handler (CRIT-03):
@@ -351,6 +364,9 @@ func Load() *Config {
 		StateBackend:            state.NormalizeBackend(getEnv("STATE_BACKEND", "memory")),
 		StateSweepInterval:      time.Duration(getEnvInt("STATE_SWEEP_INTERVAL", 300)) * time.Second,
 		StateOpTimeout:          time.Duration(getEnvInt("STATE_OP_TIMEOUT_MS", 2000)) * time.Millisecond,
+		PolicyMode:              string(policy.NormalizeMode(getEnv("POLICY_MODE", "off"))),
+		PolicyRefreshInterval:   time.Duration(getEnvInt("POLICY_REFRESH_INTERVAL", 10)) * time.Second,
+		PolicyDecisionRetention: time.Duration(getEnvInt("POLICY_DECISION_RETENTION_DAYS", 30)) * 24 * time.Hour,
 
 		// Rate Limiting
 		// LOW-03 fix: window env vars now have an explicit _MS suffix so

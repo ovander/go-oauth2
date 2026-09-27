@@ -546,6 +546,42 @@ Every subscription change is recorded in the admin audit trail
 `docs/EXTENSIBILITY.md` for the payload shape, the transactional-outbox
 guarantee and the SSRF rules.
 
+### 8.3.2 Policy — `/api/admin/policy`
+
+The policy decision point's rule set (A4). **Superadmin only**; `PUT /` and
+`POST /versions/{v}/restore` additionally require fresh step-up. These routes
+are exempt from the policy itself, so a bad rule can always be fixed. Whether
+the admin API consults the policy is `POLICY_MODE` (`off` default | `shadow` |
+`enforce`); see `docs/EXTENSIBILITY.md` for the rule language.
+
+- `GET /` — the current version → `{"version": 4, "rules": [...], "note": "...", "created_by": 1, "created_at": "...", "mode": "shadow"}`
+- `PUT /` — save a new version:
+  ```json
+  { "base_version": 4, "note": "office network only",
+    "rules": [ { "id": "global-admins", "effect": "allow",
+                 "actions": ["* /api/admin/*"],
+                 "when": {"attr": "principal.role", "op": "in", "value": ["admin", "superadmin"]} } ] }
+  ```
+  `base_version` must be the latest version: `409` if someone saved in
+  between. An invalid set is `422` with every problem listed:
+  `{"error": "invalid_policy", "errors": [{"rule": "x", "path": "when.attr", "message": "unknown attribute \"context.ipp\""}]}`
+- `POST /validate` — `{"rules": [...]}` → `200 {"valid": true}` or the `422` above; stores nothing
+- `POST /simulate` — `{"input": {principal, app, action, resource, context}, "rules"?: [...], "at"?: "RFC 3339"}`
+  → `{"decision": {...}, "trace": [{"rule", "effect", "action_matched", "result", "missing_attributes"}]}`.
+  Against `rules` when given (a draft), otherwise the current version.
+- `GET /catalogue` — every gated admin action, the exempt ones, attributes, operators, obligations
+- `GET /versions` (`?limit=`, `?before=`) · `GET /versions/{v}`
+- `POST /versions/{v}/restore` — `{"base_version": n}`; saves version `v`'s rules as a new version
+- `GET /decisions` — the decision log, newest first: `?correlation_id=`,
+  `?allow=true|false`, `?divergence=true`, `?since=` (RFC 3339), `?before_id=`,
+  `?limit=` (≤ 500)
+
+In `enforce` mode a refused admin request gets `403 {"error": "policy_denied"}`
+— or `elevation_required` / `mfa_required` when an allow's obligation is unmet —
+and `503 {"error": "policy_unavailable"}` if no policy version exists. Saves and
+restores are recorded in the admin audit trail (`policy_updated`,
+`policy_restored`).
+
 ### 8.4 Other admin areas
 `/api/admin/stats`, `/activity`, `/dashboard/*`, `/superadmins`,
 `/security/*` (events, threats, geo, blocked-ips, ip-reputation),

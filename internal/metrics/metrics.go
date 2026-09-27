@@ -54,6 +54,14 @@ var (
 		Namespace: ns, Name: "ip_blocks_total",
 		Help: "Requests refused because the client IP is blocked.",
 	})
+	policyDecisions = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: ns, Subsystem: "policy", Name: "decisions_total",
+		Help: "Policy decisions (A4) by source, POLICY_MODE and outcome (allow, deny, error).",
+	}, []string{"source", "mode", "outcome"})
+	policyDivergences = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: ns, Subsystem: "policy", Name: "divergences_total",
+		Help: "Requests where the policy decision and the code gates disagreed, by kind. Must be zero before a code gate is retired.",
+	}, []string{"source", "kind"})
 	buildInfo = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: ns, Name: "build_info",
 		Help: "Build metadata (always 1).",
@@ -151,6 +159,15 @@ func RateLimited(r *http.Request) { rateLimitHits.WithLabelValues(RoutePattern(r
 
 // IPBlocked records a request refused by the IP block list.
 func IPBlocked() { ipBlocks.Inc() }
+
+// PolicyDecision records one policy decision.
+func PolicyDecision(source, mode, outcome string) {
+	policyDecisions.WithLabelValues(source, mode, outcome).Inc()
+}
+
+// PolicyDivergence records one disagreement between the policy and the code
+// gates it shadows.
+func PolicyDivergence(source, kind string) { policyDivergences.WithLabelValues(source, kind).Inc() }
 
 // auditRepo decorates the security audit repository so every persisted event
 // is also counted — one hook covers logins, refresh reuse, DPoP and PKCE

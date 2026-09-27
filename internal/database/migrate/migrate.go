@@ -510,6 +510,69 @@ var migrations = []Migration{
 			).Error
 		},
 	},
+	{
+		// A4: the policy rule set, as immutable numbered versions. The version
+		// number is the primary key, which is what makes a concurrent save from
+		// a stale base fail instead of silently overwriting. Plain SQL with no
+		// GORM model in the AutoMigrate list, so the two can never disagree
+		// about index names (see 0022).
+		ID:   "0023",
+		Name: "create_policy_versions",
+		Run: func(db *gorm.DB) error {
+			return db.Exec(`CREATE TABLE IF NOT EXISTS policy_versions (
+				version    BIGINT      PRIMARY KEY,
+				rules      JSONB       NOT NULL,
+				note       TEXT        NOT NULL DEFAULT '',
+				created_by BIGINT,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+			)`).Error
+		},
+	},
+	{
+		// A4: the decision log — denials, would-be denials and every
+		// disagreement between the policy and the code gates. Logged, unlike
+		// the B4 tables: it is evidence, and it is swept by age rather than
+		// lost on a crash.
+		ID:   "0024",
+		Name: "create_policy_decisions",
+		Run: func(db *gorm.DB) error {
+			stmts := []string{
+				`CREATE TABLE IF NOT EXISTS policy_decisions (
+					id             BIGSERIAL   PRIMARY KEY,
+					created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+					correlation_id TEXT        NOT NULL DEFAULT '',
+					source         TEXT        NOT NULL,
+					mode           TEXT        NOT NULL,
+					enforced       BOOLEAN     NOT NULL DEFAULT false,
+					allow          BOOLEAN     NOT NULL,
+					divergence     TEXT        NOT NULL DEFAULT '',
+					action         TEXT        NOT NULL,
+					rule_id        TEXT        NOT NULL DEFAULT '',
+					reason         TEXT        NOT NULL DEFAULT '',
+					policy_version BIGINT      NOT NULL DEFAULT 0,
+					principal_kind TEXT        NOT NULL DEFAULT '',
+					principal_id   BIGINT,
+					client_id      TEXT        NOT NULL DEFAULT '',
+					resource_type  TEXT        NOT NULL DEFAULT '',
+					resource_id    TEXT        NOT NULL DEFAULT '',
+					ip_address     TEXT        NOT NULL DEFAULT '',
+					status_code    INTEGER     NOT NULL DEFAULT 0
+				)`,
+				`CREATE INDEX IF NOT EXISTS idx_policy_decisions_created_at
+					ON policy_decisions (created_at)`,
+				`CREATE INDEX IF NOT EXISTS idx_policy_decisions_correlation_id
+					ON policy_decisions (correlation_id) WHERE correlation_id <> ''`,
+				`CREATE INDEX IF NOT EXISTS idx_policy_decisions_divergence
+					ON policy_decisions (id) WHERE divergence <> ''`,
+			}
+			for _, stmt := range stmts {
+				if err := db.Exec(stmt).Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

@@ -36,6 +36,38 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ### Added
 
+- **Policy decision point on the admin API (A4 part 1 / EPIC-10 / RFC-005).**
+  Authorisation rules as data: `internal/policy` evaluates declarative JSON
+  rules — RBAC over the global role, ABAC over the A2 user attributes, token
+  facts (`scopes`, `amr`, `auth_time` age) and request context (IP, CIDR,
+  country with GeoIP, hour) — with `all`/`any`/`not`, attribute-to-attribute
+  comparisons for object-level checks, and `require_fresh_auth` /
+  `require_mfa` obligations. **Deny overrides, default deny**, and a comparison
+  against a missing attribute is *unknown* rather than false: an unknown allow
+  does not allow and an unknown deny denies, so incomplete data can make the
+  policy stricter, never looser. The rule set is stored as immutable numbered
+  versions (migration `0023`) with optimistic concurrency (`409` on a stale
+  base) and forward-only restore; every save is validated as a whole and every
+  problem reported at once. Version 1 is seeded with a **baseline that restates
+  the existing code gates** (`RequireGlobalAdmin`, superadmin-only management,
+  forced password change, step-up on the 16 destructive routes) — a router
+  test walks every admin route for every kind of principal and asserts the two
+  agree everywhere. `POLICY_MODE=off|shadow|enforce` (default `off`): in
+  `shadow` the admin API's new enforcement point evaluates every request,
+  never changes a response, and records every would-be denial and every
+  disagreement with the code gates (`pdp_deny_code_allow` /
+  `pdp_allow_code_deny`) in a decision log keyed by correlation id
+  (migration `0024`) and `socrate_policy_divergences_total`; in `enforce` a deny
+  is `403 policy_denied` (or `elevation_required` / `mfa_required`), and an
+  allow still has to pass every code gate — enforcing can remove access, never
+  grant it. The superadmin-only policy API (`/api/admin/policy`: get, save,
+  validate, simulate with a per-rule trace, versions, restore, catalogue,
+  decisions; step-up on writes; `policy_updated` / `policy_restored` audited)
+  is exempt from the policy it edits, so a bad rule can never make itself
+  unfixable. `POLICY_REFRESH_INTERVAL` bounds cross-instance staleness (10s);
+  `POLICY_DECISION_RETENTION_DAYS` (30) is swept by one instance under an
+  advisory lock. The decide endpoint for applications and backendkit's PEP
+  client are part 2; the console editor is part 3. See `docs/EXTENSIBILITY.md`.
 - **Multi-instance readiness (B5 / EPIC-13).** `internal/cluster` coordinates the
   background jobs through PostgreSQL advisory locks, so each runs once across
   the cluster rather than once per instance: **schema migration** takes a

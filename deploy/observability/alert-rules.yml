@@ -81,3 +81,13 @@ groups:
         labels: { severity: info }
         annotations:
           summary: "A client requested a scope outside its allowed_scopes policy (SCOPE_POLICY_MODE)"
+      - alert: SocratePolicyDivergence
+        expr: increase(socrate_policy_divergences_total[1h]) > 0
+        labels: { severity: info }
+        annotations:
+          summary: "The admin policy and the code gates disagreed (POLICY_MODE) — read /api/admin/policy/decisions?divergence=true"
+      - alert: SocratePolicyUnavailable
+        expr: increase(socrate_policy_decisions_total{outcome="error"}[5m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "No policy version could be loaded; in enforce mode the admin API is answering 503 policy_unavailable"

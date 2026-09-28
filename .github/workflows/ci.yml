@@ -96,6 +96,14 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Build golangci-lint with go.mod's toolchain
+        # setup-go installs the `go` line (1.25.x). golangci-lint v2.14 needs
+        # go >= 1.26, so `go install` outside the module would switch to the
+        # oldest toolchain line that satisfies it (go1.26.x), and that binary
+        # then refuses a module whose toolchain targets a newer Go. Pin the
+        # switch to go.mod's toolchain line instead.
+        run: echo "GOTOOLCHAIN=$(awk '/^toolchain/{print $2}' go.mod)" >> "$GITHUB_ENV"
+
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:

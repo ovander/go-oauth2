@@ -1,0 +1,36 @@
+/
+   buttons: ["View All","Manage"]
+   inputs: []  rows=0
+/events
+   buttons: ["Clear","Apply Filters","First Page","Previous Page","1","2","3","4","5","Next Page","Last Page"]
+   inputs: ["input:All Types","input:All Severities","input:Filter by IP","input:From","input:To"]  rows=20
+/threats
+   buttons: ["Block IP"]
+   inputs: []  rows=1
+/geo
+   buttons: []
+   inputs: []  rows=2
+/sessions
+   buttons: ["First Page","Previous Page","1","2","3","4","5","Next Page","Last Page"]
+   inputs: ["input:All items unselected"]  rows=1
+/tokens
+   buttons: []
+   inputs: []  rows=3
+/alerts
+   buttons: ["ALERT RULES","ALERT HISTORY","New Rule","Create First Rule"]
+   inputs: []  rows=2
+/blocked-ips
+   buttons: ["Block IP"]
+   inputs: []  rows=1
+/policy-decisions
+   buttons: ["Apply","Reset"]
+   inputs: ["input:From a user's error report or ","input:","input:"]  rows=13
+/audit-logs
+   buttons: ["Export CSV","Apply Filters","First Page","Previous Page","1","Next Page","Last Page"]
+   inputs: ["input:e.g. unlock_user"]  rows=17
+/reports
+   buttons: ["Generate Report","Last 7 Days Summary","This Month Summary","Last Month Summary"]
+   inputs: []  rows=0
+/settings
+   buttons: ["Sign Out"]
+   inputs: []  rows=0

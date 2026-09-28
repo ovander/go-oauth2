@@ -1,0 +1,28 @@
+?   	github.com/ovandermoten/go-oauth2/cmd/seed	[no test files]
+ok  	github.com/ovandermoten/go-oauth2/cmd/server	1.962s
+ok  	github.com/ovandermoten/go-oauth2/config	1.046s
+?   	github.com/ovandermoten/go-oauth2/deploy/perf/seed	[no test files]
+ok  	github.com/ovandermoten/go-oauth2/internal/cluster	1.255s
+ok  	github.com/ovandermoten/go-oauth2/internal/contextkeys	1.017s
+ok  	github.com/ovandermoten/go-oauth2/internal/database/migrate	1.244s
+?   	github.com/ovandermoten/go-oauth2/internal/dto	[no test files]
+ok  	github.com/ovandermoten/go-oauth2/internal/handler	11.158s
+ok  	github.com/ovandermoten/go-oauth2/internal/hooks	1.029s
+ok  	github.com/ovandermoten/go-oauth2/internal/http	16.054s
+ok  	github.com/ovandermoten/go-oauth2/internal/metrics	1.048s
+ok  	github.com/ovandermoten/go-oauth2/internal/middleware	6.735s
+ok  	github.com/ovandermoten/go-oauth2/internal/model	1.022s
+ok  	github.com/ovandermoten/go-oauth2/internal/policy	1.395s
+ok  	github.com/ovandermoten/go-oauth2/internal/repository	1.036s
+ok  	github.com/ovandermoten/go-oauth2/internal/service	223.503s
+ok  	github.com/ovandermoten/go-oauth2/internal/shared/auth	61.500s
+ok  	github.com/ovandermoten/go-oauth2/internal/shared/auth/dpop	1.134s
+ok  	github.com/ovandermoten/go-oauth2/internal/shared/auth/tokenexchange	1.014s
+ok  	github.com/ovandermoten/go-oauth2/internal/shared/auth/totp	1.017s
+ok  	github.com/ovandermoten/go-oauth2/internal/shared/ssrf	1.028s
+ok  	github.com/ovandermoten/go-oauth2/internal/state	1.278s
+?   	github.com/ovandermoten/go-oauth2/internal/version	[no test files]
+ok  	github.com/ovandermoten/go-oauth2/internal/web	1.970s
+ok  	github.com/ovandermoten/go-oauth2/pkg/database	1.021s
+ok  	github.com/ovandermoten/go-oauth2/pkg/logger	1.731s
+?   	github.com/ovandermoten/go-oauth2/web	[no test files]

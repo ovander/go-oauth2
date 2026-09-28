@@ -1,0 +1,42 @@
+PASS  no rules → default deny  200 allow=False reason=no_applicable_rule rule=None obl=None
+PASS  eq matches → allow  200 allow=True reason=allowed_by_rule rule=admins obl=None
+PASS  eq does not match → default deny  200 allow=False reason=no_applicable_rule rule=None obl=None
+PASS  action not listed → rule does not apply  200 allow=False reason=no_applicable_rule rule=None obl=None
+PASS  action wildcard  200 allow=True reason=allowed_by_rule rule=w obl=None
+PASS  rule without condition applies to everyone  200 allow=True reason=allowed_by_rule rule=all obl=None
+PASS  disabled rule is ignored  200 allow=False reason=no_applicable_rule rule=None obl=None
+PASS  deny overrides allow  200 allow=False reason=denied_by_rule rule=block obl=None
+PASS  deny that does not match leaves allow  200 allow=True reason=allowed_by_rule rule=all obl=None
+PASS  ne  200 allow=True reason=allowed_by_rule rule=r obl=None
+PASS  in  200 allow=True reason=allowed_by_rule rule=r obl=None
+PASS  not_in  200 allow=True reason=allowed_by_rule rule=r obl=None
+PASS  gt on resource attribute (1200 > 1000)  200 allow=True reason=allowed_by_rule rule=r obl=None
+PASS  lte on resource attribute (1200 <= 1000 false)  200 allow=False reason=no_applicable_rule rule=None obl=None
+PASS  gte/lt boundary (1000 >= 1000)  200 allow=True reason=allowed_by_rule rule=r obl=None
+PASS  contains on a list (scopes has openid)  200 allow=True reason=allowed_by_rule rule=r obl=None
+PASS  starts_with  200 allow=True reason=allowed_by_rule rule=r obl=None
+FAIL  cidr match  422 allow=None reason=None rule=None obl=None
+FAIL  cidr no match  422 allow=None reason=None rule=None obl=None
+PASS  exists  200 allow=True reason=allowed_by_rule rule=r obl=None
+PASS  ref: owner equals principal id  200 allow=True reason=allowed_by_rule rule=r obl=None
+PASS  ref: owner differs  200 allow=False reason=no_applicable_rule rule=None obl=None
+PASS  all: both hold  200 allow=True reason=allowed_by_rule rule=r obl=None
+PASS  all: one fails  200 allow=False reason=no_applicable_rule rule=None obl=None
+PASS  any: one holds  200 allow=True reason=allowed_by_rule rule=r obl=None
+PASS  not  200 allow=True reason=allowed_by_rule rule=r obl=None
+PASS  unknown attr on an allow → does not allow  200 allow=False reason=no_applicable_rule rule=None obl=None
+PASS  unknown attr on a deny → denies  200 allow=False reason=deny_rule_indeterminate rule=r obl=None
+PASS  not(unknown) is still unknown (no allow)  200 allow=False reason=no_applicable_rule rule=None obl=None
+PASS  require_mfa obligation surfaces  200 allow=True reason=allowed_by_rule rule=r obl=['require_mfa']
+PASS    obligations returned  ['require_mfa']
+PASS  validate: good rule set  200 {"rule_count": 1, "valid": true}
+PASS  validate: unknown operator refused  422 {"error": "invalid_policy", "errors": [{"rule": "r", "path": "when.op", "message": "unknown operator \"regex\""}]}
+PASS  validate: unknown attribute refused  422 {"error": "invalid_policy", "errors": [{"rule": "r", "path": "when.attr", "message": "unknown attribute \"principal.shoe_size\""}]}
+PASS  validate: bad effect refused  422 {"error": "invalid_policy", "errors": [{"rule": "r", "path": "effect", "message": "must be \"allow\" or \"deny\""}]}
+PASS  validate: duplicate rule ids refused  422 {"error": "invalid_policy", "errors": [{"rule": "r", "path": "id", "message": "duplicate rule id"}]}
+PASS  validate: empty actions refused  422 {"error": "invalid_policy", "errors": [{"rule": "r", "path": "actions", "message": "at least one action pattern is required"}]}
+PASS  deny-all on the admin API: policy page stays reachable (fix path)  PUT=200 then GET /policy=200, GET /users=403
+FAIL  restore the previous version repairs access  restore=409 then /users=403
+PASS  stale base_version refused (optimistic concurrency)  409 {'error': 'policy was changed by someone else; reload and re-apply'}
+
+37/40 passed

@@ -1,3 +1,7 @@
+# CANONICAL unit for the Socrate server. go-oauth2 owns the `socrate` binary, so
+# this file is the source of truth. The oauth2-monitoring deploy kit ships a copy
+# it installs during its umbrella bootstrap; keep that copy byte-identical to this
+# one (its header notes the same). Change this file, then mirror it there.
 [Unit]
 Description=Socrate OAuth 2.1 / OIDC server (public OAuth :8080, admin API :8081 loopback)
 Documentation=https://github.com/ovander/go-oauth2

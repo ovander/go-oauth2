@@ -14,12 +14,14 @@ package handler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovandermoten/go-oauth2/internal/service"
 	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
 )
 
@@ -196,5 +198,38 @@ func TestHIGH01_Token_UnrecognisedError_StaticDescription(t *testing.T) {
 	// Must contain the static generic description.
 	if !strings.Contains(body, "an internal error occurred") {
 		t.Errorf("expected 'an internal error occurred' in Token error body, got:\n%s", body)
+	}
+}
+
+// deadGrantTokenSvc returns a wrapped "user left the app" error from Token().
+type deadGrantTokenSvc struct {
+	critOAuthService
+	err error
+}
+
+func (s *deadGrantTokenSvc) Token(_ context.Context, _ dto.TokenRequest, _, _ string) (*dto.TokenResponse, error) {
+	return nil, s.err
+}
+
+// A refresh whose user no longer has access to the client (removed from the
+// app, or deleted) is a dead grant: invalid_grant/400, never server_error/500.
+// A BFF treats a 500 as transient and keeps retrying; invalid_grant lets it
+// end the session and send the user back to login.
+func TestToken_DeadGrant_IsInvalidGrant(t *testing.T) {
+	for name, err := range map[string]error{
+		"role not found": fmt.Errorf("%w: user has no role for app", service.ErrRoleNotFound),
+		"user not found": fmt.Errorf("%w: user_id=9", service.ErrUserNotFound),
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := &OAuthHandler{oauthService: &deadGrantTokenSvc{err: err}, secretKey: critTestSecretKey}
+			req := httptest.NewRequest(http.MethodPost, "/oauth/token",
+				strings.NewReader("grant_type=refresh_token&refresh_token=sometoken"))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			rec := httptest.NewRecorder()
+			h.Token(rec, req)
+			if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"invalid_grant"`) {
+				t.Errorf("got %d %s, want 400 invalid_grant", rec.Code, rec.Body.String())
+			}
+		})
 	}
 }

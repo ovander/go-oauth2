@@ -777,9 +777,18 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 		return nil, fmt.Errorf("%w: user_id=%d", ErrAccountLocked, userID)
 	}
 
+	// Same rule as code issuance and hosted login: a global admin needs no
+	// per-app membership row and is treated as the app's admin. Without it a
+	// superadmin's first refresh on the admin console — which has no seeded
+	// membership — failed, so every console session died with its first
+	// access token. Re-checked here on every refresh, so a demoted admin loses
+	// it at the next one.
 	userAppRole, err := s.userAppRoleRepo.FindByUserAndApp(ctx, user.ID, app.ID)
 	if err != nil {
-		return nil, fmt.Errorf("%w: user has no role for app", ErrRoleNotFound)
+		if !user.IsGlobalAdmin() {
+			return nil, fmt.Errorf("%w: user has no role for app", ErrRoleNotFound)
+		}
+		userAppRole = &model.UserAppRole{UserID: user.ID, AppID: app.ID, Role: model.AppRoleAdmin}
 	}
 
 	appRoles, _ := s.userAppRoleRepo.GetUserRolesMap(ctx, user.ID)
@@ -1120,6 +1129,23 @@ func mapActClaim(a *auth.ActClaim) *dto.ActClaim {
 // 7009 §2.2 the endpoint must still behave as if revocation succeeded (the
 // caller always gets 200), so an ownership mismatch is logged and the call
 // returns nil without touching the used-token blacklist.
+// revokedTokenOwner is the user a token_revoked audit event is recorded
+// against. The client-authenticated /oauth/revoke path does not know the user
+// (userID is 0), so it falls back to the token's own numeric subject; a
+// service token (sub "app:{id}") or an unparseable subject is recorded with no
+// user rather than user 0, which the audit table's foreign key rejects — that
+// used to drop every such event.
+func revokedTokenOwner(userID uint, subject string) *uint {
+	if userID != 0 {
+		return &userID
+	}
+	if id, err := strconv.ParseUint(subject, 10, 64); err == nil && id != 0 {
+		u := uint(id)
+		return &u
+	}
+	return nil
+}
+
 func (s *oauthService) Revoke(ctx context.Context, token string, userID uint, requestingClientID string) error {
 	// Attempt per-token revocation via JTI blacklist.
 	if token != "" && s.usedTokenRepo != nil {
@@ -1141,7 +1167,7 @@ func (s *oauthService) Revoke(ctx context.Context, token string, userID uint, re
 				// caller per RFC 7009 (revocation always returns 200).
 				logger.FromContext(ctx).Errorf("MED-01: failed to blacklist token JTI %s: %v", claims.ID, markErr)
 			}
-			s.logSecurityEvent(ctx, model.SecurityEventTokenRevoked, &userID, nil, true, map[string]interface{}{
+			s.logSecurityEvent(ctx, model.SecurityEventTokenRevoked, revokedTokenOwner(userID, claims.Subject), nil, true, map[string]interface{}{
 				"action": "revoke_token",
 				"jti":    claims.ID,
 			})
@@ -1163,7 +1189,7 @@ func (s *oauthService) Revoke(ctx context.Context, token string, userID uint, re
 				!errors.Is(markErr, repository.ErrTokenAlreadyUsed) {
 				logger.FromContext(ctx).Errorf("MED-01: failed to blacklist refresh token JTI %s: %v", rClaims.ID, markErr)
 			}
-			s.logSecurityEvent(ctx, model.SecurityEventTokenRevoked, &userID, nil, true, map[string]interface{}{
+			s.logSecurityEvent(ctx, model.SecurityEventTokenRevoked, revokedTokenOwner(userID, rClaims.Subject), nil, true, map[string]interface{}{
 				"action": "revoke_refresh_token",
 				"jti":    rClaims.ID,
 			})

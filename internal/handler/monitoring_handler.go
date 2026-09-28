@@ -26,6 +26,18 @@ type MonitoringHandler struct {
 	blockedIPRepo      repository.BlockedIPRepository
 	securityAuditRepo  repository.SecurityAuditLogRepository
 	geoIPService       service.GeoIPService
+
+	// auditScanningEnabled mirrors AuditIntegrityScanInterval > 0: whether the
+	// background tamper-evidence scanner actually runs. Set via
+	// SetAuditScanningEnabled at wiring time; false by default.
+	auditScanningEnabled bool
+}
+
+// SetAuditScanningEnabled records whether the background audit-integrity
+// scanner is running, so GetAuditIntegrity does not report "verified" for a log
+// that is merely stamped but never checked (F8).
+func (h *MonitoringHandler) SetAuditScanningEnabled(enabled bool) {
+	h.auditScanningEnabled = enabled
 }
 
 // NewMonitoringHandler creates a new monitoring handler
@@ -388,17 +400,24 @@ func (h *MonitoringHandler) GetAuditIntegrity(w http.ResponseWriter, r *http.Req
 	if total > 0 {
 		coverage = int((stamped * 100) / total)
 	}
+	// Status precedence: recorded violations always win; then "not_configured"
+	// (nothing is even stamped); then "not_scanning" — rows are stamped but the
+	// background scanner is off, so nothing has actually verified them and we
+	// must not claim "verified" (F8); otherwise "verified".
 	status := "verified"
 	switch {
-	case !configured:
-		status = "not_configured"
 	case violations > 0:
 		status = "violations_detected"
+	case !configured:
+		status = "not_configured"
+	case !h.auditScanningEnabled:
+		status = "not_scanning"
 	}
 
 	writeJSON(w, dto.AuditIntegrityResponse{
 		Period:           period,
 		Configured:       configured,
+		Scanning:         h.auditScanningEnabled,
 		Status:           status,
 		TotalEvents:      total,
 		StampedEvents:    stamped,
@@ -970,16 +989,27 @@ func (h *MonitoringHandler) StreamEvents(w http.ResponseWriter, r *http.Request)
 	severityFilter := r.URL.Query().Get("severity")
 	eventTypeFilter := r.URL.Query().Get("event_type")
 
-	// Track last event ID for polling
+	// Create a context that cancels when client disconnects
+	ctx := r.Context()
+
+	// Track last event ID for polling. A live feed must start at the current
+	// tip, not at 0: with a large backlog, replaying id>0 in 50-row pages every
+	// 2s never reaches recent events within the connection's lifetime, so the
+	// stream would show only ancient events and never anything live (F3). When
+	// the client resumes with last_event_id we honour it; otherwise we seed from
+	// MAX(id) so only genuinely new events are streamed.
 	var lastEventID uint
 	if lastID := r.URL.Query().Get("last_event_id"); lastID != "" {
 		if id, err := strconv.ParseUint(lastID, 10, 64); err == nil {
 			lastEventID = uint(id)
 		}
+	} else if h.db != nil {
+		var maxID uint
+		if err := h.db.WithContext(ctx).Model(&model.SecurityAuditLog{}).
+			Select("COALESCE(MAX(id), 0)").Scan(&maxID).Error; err == nil {
+			lastEventID = maxID
+		}
 	}
-
-	// Create a context that cancels when client disconnects
-	ctx := r.Context()
 
 	// Send initial heartbeat
 	_, _ = w.Write([]byte("event: heartbeat\ndata: {\"status\":\"connected\"}\n\n"))

@@ -104,8 +104,13 @@ type AuditIntegrityViolation struct {
 type AuditIntegrityResponse struct {
 	Period string `json:"period"`
 	// Configured is true when integrity stamping is active (rows carry a row_hash).
-	Configured       bool                      `json:"configured"`
-	Status           string                    `json:"status"` // verified | violations_detected | not_configured
+	Configured bool `json:"configured"`
+	// Scanning is true when the background integrity scanner is enabled
+	// (AUDIT_INTEGRITY_SCAN_INTERVAL_SECONDS > 0). Rows are stamped at write
+	// time regardless, but nothing verifies them unless the scanner runs, so
+	// this distinguishes "checked and clean" from "stamped but never checked".
+	Scanning         bool                      `json:"scanning"`
+	Status           string                    `json:"status"` // verified | violations_detected | not_configured | not_scanning
 	TotalEvents      int64                     `json:"total_events"`
 	StampedEvents    int64                     `json:"stamped_events"`
 	ChainedEvents    int64                     `json:"chained_events"`

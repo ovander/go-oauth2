@@ -646,6 +646,9 @@ func Bootstrap(cfg *config.Config) *App {
 	healthHandler := handler.NewHealthHandler(db)
 	appLogsHandler := handler.NewAppLogsHandler(appActivityLogService)
 	monitoringHandler := handler.NewMonitoringHandler(db, alertRuleRepo, triggeredAlertRepo, blockedIPRepo, securityAuditRepo, geoIPService)
+	// So the audit-integrity endpoint reports "not_scanning" rather than
+	// "verified" when the background scanner is disabled (F8).
+	monitoringHandler.SetAuditScanningEnabled(cfg.AuditIntegrityScanInterval > 0)
 	adminLogsHandler := handler.NewAdminLogsHandler(db)
 	settingsHandler := handler.NewSettingsHandler(cfg, db)
 

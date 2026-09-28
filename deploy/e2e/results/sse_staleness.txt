@@ -1,0 +1,2 @@
+stream delivered over ~14s: {"count":350,"min":1,"max":359}
+interpretation: if max << current max audit id, the newest events never arrive within the stream lifetime.

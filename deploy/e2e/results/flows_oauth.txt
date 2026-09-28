@@ -1,0 +1,23 @@
+PASS  MFA re-enrol + confirm  204
+PASS  recovery codes issued  200 n=10 
+PASS  login with a recovery code  200 
+PASS  recovery code is single-use  401 {'error': 'invalid mfa code'}
+PASS  MFA disabled again  204
+PASS  refresh_token grant  200 
+PASS  refresh token rotated  
+PASS  reuse of a rotated refresh token refused  400 {'error': 'invalid_grant', 'error_description': 'invalid or expired refresh token'}
+FAIL  reuse detection revokes the family (successor refused too)  200 {'access_token': '<jwt-redacted>', 'refresh_token': '<jwt-redacted>', 'id_token': '<jwt-redacted>', 'token_type': 'Bearer', 'expires_in': 30, 'scope': 'openid email profile offline_access', 'roles': ['user'], 'app_roles': {'6yDCjH-zfgzEJrIfUWfPXQ': 'user'}}
+FAIL  refresh with a wrong client secret refused  400 {'error': 'invalid_grant', 'error_description': 'invalid or expired refresh token'}
+PASS  introspect active access token  200 {'active': True, 'scope': 'openid email profile offline_access', 'client_id': '6yDCjH-zfgzEJrIfUWfPXQ', 'username': 'car
+PASS  introspect without client auth refused  401 {'error': 'invalid_client', 'error_description': 'client authentication required'}
+PASS  revoke refresh token  200
+PASS  revoked refresh token refused  400 {'error': 'invalid_grant', 'error_description': 'invalid or expired refresh token'}
+PASS  introspect garbage → inactive  200 {'active': False}
+PASS  access token lifetime honours ACCESS_TOKEN_TTL  exp-iat=30
+PASS  expired access token refused  401
+PASS  API logout  200 {'message': 'Logged out successfully'}
+PASS  access token dead after logout  401
+PASS  refresh token dead after logout  400 {'error': 'invalid_grant', 'error_description': 'invalid or expired refresh token'}
+PASS  OIDC end-session refuses an unregistered post-logout redirect  200 {'message': 'logout successful'}
+
+19/21 passed

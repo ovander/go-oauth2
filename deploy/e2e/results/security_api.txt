@@ -1,0 +1,63 @@
+PASS  CORS preflight from http://evil.example  200 ACAO=None ACAC=None
+PASS  CORS preflight from http://admin.localhost:9001  200 ACAO=http://admin.localhost:9001 ACAC=true
+PASS  CORS: Origin null not reflected  ACAO=None
+PASS  authorize with the registered redirect_uri renders login  200
+PASS  redirect_uri variant refused: http://app.localhost:9003/bff/callback/../../evil  400 Location=
+PASS  redirect_uri variant refused: http://app.localhost:9003/bff/callbackx  400 Location=
+PASS  redirect_uri variant refused: http://app.localhost:9003/bff/callback?next=http://evil.exam  400 Location=
+PASS  redirect_uri variant refused: http://evil.example/bff/callback  400 Location=
+PASS  redirect_uri variant refused: http://app.localhost:9003.evil.example/bff/callback  400 Location=
+FAIL  redirect_uri variant refused: HTTP://app.localhost:9003/bff/callback  200 Location=
+PASS  redirect_uri variant refused: http://app.localhost:9003/bff/callback#frag  400 Location=
+PASS  redirect_uri variant refused: javascript:alert(1)  400 Location=
+PASS  redirect_uri host swap refused  400
+FAIL  PKCE method=plain refused  200 
+FAIL  authorize without PKCE refused (require_pkce client)  200 
+FAIL  implicit grant (response_type=token) refused  200 
+PASS  admin BFF return_to sanitised: //evil.example  302
+PASS  admin BFF return_to sanitised: https://evil.example/  302
+PASS  admin BFF return_to sanitised: /\evil.example  302
+PASS  admin BFF return_to sanitised: /%2F%2Fevil.example  302
+PASS  admin BFF return_to sanitised: javascript:alert(1)  302
+PASS  plain/app-admin user refused: GET /api/admin/users  403 {'error': 'policy_denied'}
+PASS  plain/app-admin user refused: POST /api/admin/superadmins  403 {'error': 'policy_denied'}
+PASS  plain/app-admin user refused: GET /api/apps/2/users  403 {'error': 'forbidden'}
+PASS  plain/app-admin user refused: PUT /api/admin/policy  403 {'error': 'forbidden'}
+PASS  app admin cannot grant a non-app role  400 {'error': 'invalid role: must be one of admin, manager, editor, viewer, user'}
+PASS  profile update cannot change own role (mass assignment)  PUT=200 userinfo role=admin
+FAIL  superadmin token issued to another app is refused by the admin API (audience)  200 aud=['6yDCjH-zfgzEJrIfUWfPXQ']
+PASS  payload tampering (role=superadmin) refused  
+PASS  alg confusion (HS256 keyed with the public JWKS) refused  
+PASS  unknown kid refused  
+PASS  jku header ignored/refused  
+PASS  refresh token not accepted as an access token  
+PASS  ID token not accepted as an access token  
+PASS  injection probe handled: /api/admin/security/events?ip_address=%27%20OR%201%3D1--  200 {"events": [], "total": 0, "page": 1, "page_size": 20}
+PASS  injection probe handled: /api/admin/security/events?event_type=login_failed%27;DROP%2  200 {"events": [{"id": 426, "event_type": "invalid_token_used", "severity": "warning
+PASS  injection probe handled: /api/admin/users?search=%27%29%20OR%20%281%3D1  200 {"users": [{"id": 3, "email": "carol1790618120@e2e.test", "name": "Carol", "role
+PASS  injection probe handled: /api/admin/logs?action=x%27%20UNION%20SELECT%201--  200 {"logs": [], "total_count": 0, "page": 1, "page_size": 25}
+PASS  injection probe handled: /api/admin/security/events?sort=id;DROP  200 {"events": [{"id": 426, "event_type": "invalid_token_used", "severity": "warning
+PASS  injection probe handled: /api/admin/security/events?page_size=100000000  200 {"events": [{"id": 426, "event_type": "invalid_token_used", "severity": "warning
+PASS  SQLi in login refused cleanly  401 {'error': 'invalid credentials'}
+PASS  BFF refuses non-canonical path /api/admin/%2e%2e/%2e%2e/health  404
+PASS  BFF refuses non-canonical path /api/admin/..%2f..%2fhealth  404
+PASS  BFF refuses non-canonical path /api/apps/%2e%2e/admin/users  404
+PASS  BFF refuses non-canonical path /api/admin//users  404
+PASS  BFF refuses non-canonical path /api/profile/../admin/users  404
+PASS  login: unknown email and wrong password answer identically  401 {'error': 'invalid credentials'} vs 401 {'error': 'invalid credentials'}
+FAIL  signup with an existing email does not reveal it (or is documented)  400 {'error': 'email already exists'}
+PASS  weak password refused: short  400 {'error': 'password validation failed: password must be at least 12 characters'}
+PASS  weak password refused: password  400 {'error': 'password validation failed: password must be at least 12 characters'}
+PASS  weak password refused: 12345678  400 {'error': 'password validation failed: password must be at least 12 characters'}
+PASS  weak password refused: aaaaaaaaaaaa  400 {'error': 'password validation failed: password must contain at least one uppercase letter'}
+Traceback (most recent call last):
+  File "/tmp/claude-0/-home-user/10903af6-b852-5fc5-ad91-37b2219a8478/scratchpad/e2e/security.py", line 129, in <module>
+    enr = req("POST", f"{PUB}/api/profile/mfa/enroll", {}, token=cl["access_token"])[1]
+                                                                 ~~^^^^^^^^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable
+FAIL  TOTP brute force locks the account  wrong codes → [401, 401, 401, 401, 401, 401, 401, 401]; right code then → 200 {'access_token': '<jwt-redacted>', 'refresh_token': '<jwt-redacted>', 'id_token': '<jwt-redacted>', 'token_type': 'Bearer', 'expires_in': 900, 'user_id': 3, 'app': {'id': 3, 'name': 'E2E demo app', 'client_id': '6yDCjH-zfgzEJrIfUWfPXQ', 'active': False, 'is_public': False, 'require_pkce': False, 'require_dpop': False, 'allow_token_exchange': False, 'allow_impersonation': False, 'audiences': None, 'allowed_scopes': None, 'claim_mappings': None, 'redirect_uris': None, 'created_at': '0001-01-01T00:00:00Z'}, 'roles': ['user'], 'app_roles': {'6yDCjH-zfgzEJrIfUWfPXQ': 'user'}}
+PASS  token response has Cache-Control: no-store  Cache-Control=no-store Pragma=no-cache
+PASS  404 does not leak stack/framework  404 b'404 page not found\n'
+PASS  malformed JSON → 400 without internals  400 b'{"error":"invalid JSON"}\n'
+
+3/4 passed

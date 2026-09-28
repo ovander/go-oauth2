@@ -1,0 +1,45 @@
+/
+   buttons: ["7d","14d","30d","Refresh Health","View All Logs","Manage Apps","New Application","New User","Security Logs","Settings"]
+   inputs: []  rows=0
+/apps
+   buttons: ["New Application"]
+   inputs: ["input:Search applications..."]  rows=0
+/apps/3
+   buttons: ["Deactivate","Settings","Users","Activity","Add URI","Save Changes","Rotate Secret"]
+   inputs: ["input:","input:https://myapp.example.com","input:https://myapp.example.com/call","input:","input:"]  rows=1
+/users
+   buttons: ["Invite User","All Users","Superadmins","Activity Log","First Page","Previous Page","1","Next Page","Last Page"]
+   inputs: []  rows=5
+/users/3
+   buttons: ["Revoke All Tokens","Unlock Account","Block User","Delete User"]
+   inputs: []  rows=21
+/security
+   buttons: ["View All Events","Go live","View Locked Accounts","Active Sessions","Blocked IPs","Alert Rules","Generate Report"]
+   inputs: []  rows=0
+/security/events
+   buttons: ["Clear Filters","First Page","Previous Page","1","2","3","4","5","Next Page","Last Page"]
+   inputs: ["input:IP Address","input:Date Range"]  rows=25
+/security/sessions
+   buttons: ["Apply","Clear","First Page","Previous Page","1","2","3","4","5","Next Page","Last Page"]
+   inputs: ["input:User ID","input:App ID"]  rows=1
+/security/blocked-ips
+   buttons: ["Block IP","Check"]
+   inputs: ["input:e.g. 203.0.113.42"]  rows=1
+/security/alerts
+   buttons: ["New Rule"]
+   inputs: []  rows=2
+/security/reports
+   buttons: ["Generate"]
+   inputs: ["input:Select range","input:All sections"]  rows=1
+/security/policy
+   buttons: ["Refresh","Edit rules","Simulate"]
+   inputs: ["input:DELETE /api/admin/apps/{id}","textarea:","textarea:","textarea:","input:","input:"]  rows=22
+/logs
+   buttons: ["Export","Clear Filters","First Page","Previous Page","1","Next Page","Last Page"]
+   inputs: ["input:Date Range"]  rows=17
+/settings
+   buttons: ["Test Connections"]
+   inputs: ["input:","input:"]  rows=0
+/profile
+   buttons: undefined
+   inputs: undefined  rows=undefined

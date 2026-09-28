@@ -60,6 +60,10 @@ sudo chmod 0700 /var/lib/socrate/keys
 
 ## Deploy
 
+> Before deploying, run through [`PRE-DEPLOY-CHECKLIST.md`](PRE-DEPLOY-CHECKLIST.md)
+> on the VPS — it covers the env, keys, DB backup, Caddy, firewall and post-deploy
+> smoke checks that live only on the box.
+
 **Production path (recommended):** use the umbrella `push.sh` in the
 `oauth2-monitoring` deploy kit — it builds this repo's binary, installs it to
 `/usr/local/bin/socrate`, restarts the service, **health-checks** it, and rolls

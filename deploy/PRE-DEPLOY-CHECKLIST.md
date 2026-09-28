@@ -8,11 +8,29 @@ verdict in [`docs/E2E-SECURITY-PERF-REPORT-v1.3.0.md`](../docs/E2E-SECURITY-PERF
 Commands assume the canonical paths from [`deploy/README.md`](README.md) and the
 multi-app runbook [`docs/DEPLOYMENT-VPS-MULTI-APP.md`](../docs/DEPLOYMENT-VPS-MULTI-APP.md).
 
+> **Automated pass:** most of the checks below are scripted in
+> [`deploy/scripts/vps-audit.sh`](scripts/vps-audit.sh) — a read-only auditor that
+> makes no changes. Run it on the VPS and review every WARN/FAIL:
+> ```bash
+> sudo bash deploy/scripts/vps-audit.sh
+> ```
+> It is a first pass, not a substitute for the human checks (DB backup restore,
+> firewall intent, hostnames) below.
+
 ## 0. Release identity
 - [ ] The commit to deploy is **tagged** (e.g. `v1.3.0`); deploy that tag, not a
       moving branch: `SOCRATE_REF=v1.3.0 ./oauth2-monitoring/deploy/scripts/push.sh <mon-tag>`.
 - [ ] After deploy, `curl -s localhost:8081/metrics | grep socrate_build_info`
       shows the **real version**, not `dev`.
+
+## 0a. Hostnames match THIS VPS
+The deploy kit's examples use `*.vandermoten.eu`. If this box serves other
+hostnames, every reference must use the real ones or logins/callbacks break:
+- [ ] `OAUTH_ISSUER` / `BFF_OAUTH_PUBLIC_URL` / `BFF_PUBLIC_ORIGIN` use this VPS's
+      public hostnames
+- [ ] Caddy site blocks under `/etc/caddy/sites/` use those hostnames and have TLS
+- [ ] Every registered client's `redirect_uri` uses those hostnames (check via the
+      admin console → Applications)
 
 ## 1. Env files (`/etc/socrate/*.env`)
 Perms first — secrets must not be world-readable:

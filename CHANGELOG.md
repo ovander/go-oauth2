@@ -10,6 +10,21 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-27
+
+Minor release on the **v1.x — Foundations & Additive Capabilities** line. It is
+the first tag since v1.1.1, so it also ships everything listed under 1.2.0
+below, which was never tagged on its own. Closes the pass-3 and pass-4 security
+findings, adds the extensibility surface (per-client scope policy, declarative
+custom claims, in-process hooks, outbound webhooks, and the policy decision
+point: on the admin API in `off`/`shadow`/`enforce` modes, as a decide
+endpoint for applications, and with a decision log for the SOC),
+observability (Prometheus metrics, log-redaction guard, k6 baseline) and
+multi-instance groundwork (shared state, cluster locks), and moves the build
+toolchain to Go 1.27.1. Migrations `0015`–`0024` run forward only: take a
+database backup before upgrading. Read the upgrade notes below first — P3-1
+and P3-9 change who may call the admin API and how MFA is disabled.
+
 > **Upgrade note (P3-2):** client-IP attribution no longer trusts headers from
 > arbitrary peers. `TRUSTED_PROXIES` now **defaults to loopback**
 > (`127.0.0.1/32,::1/128`), which matches the documented same-host Caddy/BFF
@@ -419,6 +434,8 @@ Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md
   chi release only *deprecates* `RealIP` — the actual fix is the item above).
 
 ## [1.2.0] - 2026-06-25
+
+> Never tagged: these changes first shipped in a tag with **v1.3.0**.
 
 Minor release on the **v1.x — Foundations & Additive Capabilities** line
 (non-breaking). Hardens the Tier-0 admin control plane (loopback bind,

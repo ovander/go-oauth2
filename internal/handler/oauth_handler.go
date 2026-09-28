@@ -773,6 +773,12 @@ func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, service.ErrAccountLocked):
 			// P3-3: a locked account's refresh token is no longer honoured.
 			writeOAuthError(w, "invalid_grant", "account is locked", http.StatusBadRequest)
+		case errors.Is(err, service.ErrRoleNotFound), errors.Is(err, service.ErrUserNotFound):
+			// The grant's user left the app (or no longer exists). That is a
+			// dead grant, not a server fault: invalid_grant lets a BFF end the
+			// session and send the user back to login instead of retrying a
+			// "transient" 500 forever.
+			writeOAuthError(w, "invalid_grant", "the grant's user has no access to this client", http.StatusBadRequest)
 		case errors.Is(err, service.ErrAppInactive):
 			// P3-3: a deactivated client gets no tokens from any grant.
 			writeOAuthError(w, "unauthorized_client", "client is deactivated", http.StatusBadRequest)

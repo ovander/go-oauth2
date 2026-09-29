@@ -10,6 +10,18 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Audit rows written by the auth and OAuth services carry the client IP and User-Agent.**
+  `authService`/`oauthService.logSecurityEvent` wrote every row with both empty, so login, lockout,
+  password, MFA and token events had no IP: the monitoring console's Geo analytics, location
+  anomalies, sessions, suspicious IPs and unique-attacker counts saw none of them. The builder now
+  takes both from the request context, where `middleware.ClientIP` already stores the
+  trusted-proxy-aware IP (it now also stores the User-Agent, `contextkeys.UserAgentKey`); the
+  User-Agent is cut to the 500-byte column on a character boundary. Rate limiting, IP blocking and
+  auto-defense were not affected: they read the IP from the request directly. Rows written before
+  the upgrade keep their empty IP.
+
 ## [1.4.0] - 2026-09-29
 
 Minor release on the **v1.x** line, and the first under the Apache-2.0 licence and the

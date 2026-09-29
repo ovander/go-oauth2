@@ -18,7 +18,7 @@ VERSION    := $(shell git describe --tags --always --dirty 2>/dev/null || echo "
 COMMIT     := $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
 BUILD_TIME := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 BRANCH     := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
-MODULE     := github.com/ovandermoten/go-oauth2
+MODULE     := github.com/ovander/go-oauth2
 
 LDFLAGS := -ldflags "\
   -X '$(MODULE)/internal/version.Version=$(VERSION)' \

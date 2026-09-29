@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/repository"
+	"github.com/ovander/go-oauth2/internal/repository"
 )
 
 // ---------------------------------------------------------------------------

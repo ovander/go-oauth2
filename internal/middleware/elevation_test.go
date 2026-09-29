@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/contextkeys"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
 
 func runFresh(t *testing.T, maxAge time.Duration, claims *auth.AccessTokenClaims) (*httptest.ResponseRecorder, bool) {

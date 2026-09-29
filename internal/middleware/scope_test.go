@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/contextkeys"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
 
 func withClaims(scope string) *http.Request {

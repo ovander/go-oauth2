@@ -21,8 +21,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/repository"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/repository"
 )
 
 const ns = "socrate"

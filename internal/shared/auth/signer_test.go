@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/model"
 )
 
 // newTestKeyManager is defined in keys_test.go (same package) and returns a

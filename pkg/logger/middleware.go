@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
+	"github.com/ovander/go-oauth2/internal/contextkeys"
 	"github.com/sirupsen/logrus"
 )
 

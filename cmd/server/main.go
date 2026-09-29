@@ -9,9 +9,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/config"
-	"github.com/ovandermoten/go-oauth2/internal/version"
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/config"
+	"github.com/ovander/go-oauth2/internal/version"
+	"github.com/ovander/go-oauth2/pkg/logger"
 )
 
 func main() {

@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/contextkeys"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
 
 // RequireScope gates a route on an OAuth scope present in the access token's

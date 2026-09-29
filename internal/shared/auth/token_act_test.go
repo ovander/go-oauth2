@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/model"
 )
 
 // The act (actor) claim must survive signing + verification, including a nested

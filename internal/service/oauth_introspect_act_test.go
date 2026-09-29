@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
 
 // Introspection must surface the actor (act) chain for a token minted via token

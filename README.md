@@ -12,7 +12,7 @@ Enterprise-grade identity for secure multi-tenant SaaS.
 [![Go](https://img.shields.io/badge/Go-1.25%2B%20(toolchain%201.26)-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Release](https://img.shields.io/badge/release-v1.2.0-blue)](CHANGELOG.md)
 [![Coverage](https://img.shields.io/badge/Tier_A_coverage-ratchet-success)](docs/program/TEST-STRATEGY.md)
-[![Go Report](https://img.shields.io/badge/go_report-A-brightgreen)](https://goreportcard.com/report/github.com/ovandermoten/go-oauth2)
+[![Go Report](https://img.shields.io/badge/go_report-A-brightgreen)](https://goreportcard.com/report/github.com/ovander/go-oauth2)
 [![OpenSSF Scorecard](https://img.shields.io/badge/OpenSSF-scorecard-informational)](https://securityscorecards.dev)
 [![Security audited](https://img.shields.io/badge/security%20audit-pass%204%20%C2%B7%2091%2F100-success)](docs/CR-socrate-suite-security-pass4.md)
 [![SemVer](https://img.shields.io/badge/SemVer-2.0-orange)](https://semver.org)

@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/database/migrate"
-	"github.com/ovandermoten/go-oauth2/internal/dto"
-	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/database/migrate"
+	"github.com/ovander/go-oauth2/internal/dto"
+	"github.com/ovander/go-oauth2/internal/model"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

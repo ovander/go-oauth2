@@ -2,14 +2,14 @@ package middleware
 
 import (
 	"context"
-	"github.com/ovandermoten/go-oauth2/internal/metrics"
+	"github.com/ovander/go-oauth2/internal/metrics"
 	"net"
 	"net/http"
 	"sync"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/repository"
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/internal/repository"
+	"github.com/ovander/go-oauth2/pkg/logger"
 )
 
 // IPBlockChecker provides IP blocking functionality with caching

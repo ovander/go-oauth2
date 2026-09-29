@@ -7,11 +7,11 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/config"
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
-	"github.com/ovandermoten/go-oauth2/pkg/database"
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/config"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/pkg/database"
+	"github.com/ovander/go-oauth2/pkg/logger"
 )
 
 func main() {

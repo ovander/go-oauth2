@@ -18,8 +18,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	glogger "gorm.io/gorm/logger"

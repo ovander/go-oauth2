@@ -26,8 +26,8 @@ import (
     "context"
     "errors"
 
-    "github.com/ovandermoten/go-oauth2/internal/hooks"
-    "github.com/ovandermoten/go-oauth2/internal/model"
+    "github.com/ovander/go-oauth2/internal/hooks"
+    "github.com/ovander/go-oauth2/internal/model"
 )
 
 func init() {

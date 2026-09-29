@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovander/go-oauth2/internal/dto"
 )
 
 // jwksOAuthService embeds the panic-by-default mock and returns an empty JWKS so

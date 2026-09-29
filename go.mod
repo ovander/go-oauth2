@@ -1,4 +1,4 @@
-module github.com/ovandermoten/go-oauth2
+module github.com/ovander/go-oauth2
 
 go 1.25.13
 

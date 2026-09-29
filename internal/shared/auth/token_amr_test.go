@@ -3,7 +3,7 @@ package auth
 import (
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/model"
 )
 
 // GenerateTokenSetWithAuth stamps amr/acr (RFC 8176) on both the access and ID

@@ -8,8 +8,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/dto"
-	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/dto"
+	"github.com/ovander/go-oauth2/internal/model"
 )
 
 // A public client with RequirePKCE=false must still be rejected at the

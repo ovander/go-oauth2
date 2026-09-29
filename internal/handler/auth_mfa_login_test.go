@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/dto"
-	"github.com/ovandermoten/go-oauth2/internal/service"
+	"github.com/ovander/go-oauth2/internal/dto"
+	"github.com/ovander/go-oauth2/internal/service"
 )
 
 // mfaLoginAuthService embeds the no-op med03AuthService (which already satisfies

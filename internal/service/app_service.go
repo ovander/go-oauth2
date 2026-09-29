@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/dto"
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/repository"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/internal/dto"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/repository"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/pkg/logger"
 	"gorm.io/gorm"
 )
 

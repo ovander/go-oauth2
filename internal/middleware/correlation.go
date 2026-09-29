@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
-	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
+	"github.com/ovander/go-oauth2/internal/contextkeys"
 )
 
 const (

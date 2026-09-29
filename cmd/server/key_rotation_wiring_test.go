@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
 
 func TestKeyRetentionFor_UsesConfiguredWhenPositive(t *testing.T) {

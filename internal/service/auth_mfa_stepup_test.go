@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/model"
 )
 
 // stubMFAVerifier is a minimal MFAService for exercising login step-up. Only

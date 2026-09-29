@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/database/migrate"
+	"github.com/ovander/go-oauth2/internal/database/migrate"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	glogger "gorm.io/gorm/logger"

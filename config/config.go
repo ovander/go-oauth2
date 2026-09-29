@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/ovandermoten/go-oauth2/internal/policy"
-	"github.com/ovandermoten/go-oauth2/internal/state"
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/internal/policy"
+	"github.com/ovander/go-oauth2/internal/state"
+	"github.com/ovander/go-oauth2/pkg/logger"
 )
 
 // Config holds all application configuration

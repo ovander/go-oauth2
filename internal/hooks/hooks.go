@@ -29,8 +29,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/pkg/logger"
 )
 
 // ErrVetoed wraps a BeforeTokenIssue error so services and handlers can map

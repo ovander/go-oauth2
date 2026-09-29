@@ -10,12 +10,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
-	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
-	"github.com/ovandermoten/go-oauth2/internal/metrics"
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/policy"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/internal/contextkeys"
+	"github.com/ovander/go-oauth2/internal/metrics"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/policy"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/pkg/logger"
 )
 
 // PolicyPEP is the admin API's policy enforcement point (A4). It consults the

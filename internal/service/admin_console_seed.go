@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/pkg/logger"
 )
 
 // adminClientStore is the narrow slice of the app repository that admin-console

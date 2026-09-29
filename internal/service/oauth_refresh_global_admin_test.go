@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
 
 // newRefreshNoMembershipSvc wires a refresh grant for user on a public client

@@ -24,10 +24,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/dto"
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/service"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/dto"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/service"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
 
 // m1m2AuthService is a configurable service.AuthService stub: each method

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/pkg/logger"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	glogger "gorm.io/gorm/logger"

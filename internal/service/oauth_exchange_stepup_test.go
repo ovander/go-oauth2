@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
 
 // mintTokenAt mints a subject access token whose auth_time is `age` in the past,

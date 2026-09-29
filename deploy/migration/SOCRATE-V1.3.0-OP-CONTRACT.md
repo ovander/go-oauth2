@@ -2,7 +2,7 @@
 
 The values below are the OpenID Provider metadata and token facts for **Socrate
 v1.3.0**, derived directly from the server source (module
-`github.com/ovandermoten/go-oauth2`, at the v1.3.0 level). Use this as the source of
+`github.com/ovander/go-oauth2`, at the v1.3.0 level). Use this as the source of
 truth for compatibility work when the live discovery document is not reachable (e.g.
 an audit environment with blocked egress).
 

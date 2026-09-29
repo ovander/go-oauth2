@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"github.com/oschwald/geoip2-golang"
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/pkg/logger"
 )
 
 // GeoIPResult contains geographic information for an IP address

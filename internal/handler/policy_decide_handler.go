@@ -7,13 +7,13 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ovandermoten/go-oauth2/internal/dto"
-	"github.com/ovandermoten/go-oauth2/internal/metrics"
-	"github.com/ovandermoten/go-oauth2/internal/middleware"
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/policy"
-	"github.com/ovandermoten/go-oauth2/internal/repository"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/dto"
+	"github.com/ovander/go-oauth2/internal/metrics"
+	"github.com/ovander/go-oauth2/internal/middleware"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/policy"
+	"github.com/ovander/go-oauth2/internal/repository"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
 
 // Bounds on what an application may send. The body is already capped by

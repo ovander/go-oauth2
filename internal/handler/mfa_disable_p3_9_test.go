@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/service"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/service"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
 
 // P3-9: POST /api/profile/mfa/disable must re-verify the account (password +

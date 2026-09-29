@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/repository"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/contextkeys"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/repository"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
 
 // AuthRejectReason classifies why AuthMiddleware rejected a *present* bearer

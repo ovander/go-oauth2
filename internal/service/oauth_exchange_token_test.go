@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth/tokenexchange"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/shared/auth/tokenexchange"
 )
 
 // newShadowExchangeSvc builds an oauthService in shadow mode with a real token

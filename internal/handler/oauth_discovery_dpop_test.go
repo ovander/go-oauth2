@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovander/go-oauth2/internal/dto"
 )
 
 // cfgOAuthService returns a fixed discovery document so the handler's DPoP

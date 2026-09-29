@@ -27,7 +27,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/pkg/logger"
 	"gorm.io/gorm"
 )
 

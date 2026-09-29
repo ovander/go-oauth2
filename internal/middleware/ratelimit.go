@@ -3,14 +3,14 @@ package middleware
 import (
 	"container/list"
 	"fmt"
-	"github.com/ovandermoten/go-oauth2/internal/metrics"
+	"github.com/ovander/go-oauth2/internal/metrics"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/pkg/logger"
 )
 
 const (

@@ -11,7 +11,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/model"
 )
 
 // reuseUserRepo wraps high04UserRepo to count IncrementTokenVersion calls.

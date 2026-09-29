@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
-	"github.com/ovandermoten/go-oauth2/internal/shared/ssrf"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/shared/ssrf"
 )
 
 // dispatcherHarness wires a service, a repo and a live test server together,

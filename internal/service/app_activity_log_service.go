@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/repository"
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/repository"
+	"github.com/ovander/go-oauth2/pkg/logger"
 )
 
 type AppActivityLogService interface {

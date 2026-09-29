@@ -3,7 +3,7 @@ package dto
 import (
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/policy"
+	"github.com/ovander/go-oauth2/internal/policy"
 )
 
 // SavePolicyRequest replaces the rule set (A4). BaseVersion must be the

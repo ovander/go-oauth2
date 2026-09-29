@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/model"
 )
 
 // Introspection must surface the DPoP confirmation (cnf.jkt) for a

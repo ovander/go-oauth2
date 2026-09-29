@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/pkg/logger"
 )
 
 // DefaultRefreshInterval bounds how long another instance's save takes to be

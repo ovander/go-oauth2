@@ -573,6 +573,21 @@ var migrations = []Migration{
 			return nil
 		},
 	},
+	{
+		// B5: when each scheduled job last completed, cluster-wide. The
+		// advisory lock alone only stops two instances running a job at the
+		// same moment; instances tick at different times, so without this a
+		// job ran once per instance per interval (N key rotations instead of
+		// one). Keyed by the job's advisory-lock key; one row per job.
+		ID:   "0025",
+		Name: "create_cluster_job_runs",
+		Run: func(db *gorm.DB) error {
+			return db.Exec(`CREATE TABLE IF NOT EXISTS cluster_job_runs (
+				lock_key    BIGINT      PRIMARY KEY,
+				last_run_at TIMESTAMPTZ NOT NULL
+			)`).Error
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

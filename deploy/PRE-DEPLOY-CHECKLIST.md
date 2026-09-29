@@ -46,7 +46,7 @@ Both BFF env files (`admin-bff.env`, `bff.env`):
 - [ ] Keys are backed up somewhere the DB backup is not (losing them invalidates all tokens)
 
 ## 3. Database
-- [ ] **Backup taken and restore-tested** before any migration (0015→0024 are
+- [ ] **Backup taken and restore-tested** before any migration (0015→0025 are
       forward-only; rollback = restore)
 - [ ] Postgres listens on loopback only (`ss -lntp | grep 5432` → 127.0.0.1)
 - [ ] The DB user has only the privileges it needs

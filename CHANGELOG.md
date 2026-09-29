@@ -12,6 +12,18 @@ Capabilities**, non-breaking).
 
 ### Fixed
 
+- **Scheduled jobs run once per interval across a cluster, as documented.** With the shared
+  (`STATE_BACKEND=postgres`) scheduler, the advisory lock only stopped two instances running a job
+  at the same moment. Instances tick on their own schedules, so each ran it once per interval:
+  N instances rotated the signing key N times as often (the "once per cluster" promise in
+  `bootstrap.go`). `cluster.Every` now also records each job's last completed run in the new
+  `cluster_job_runs` table (**migration 0025**) and skips a tick when another instance completed
+  the job within 90% of the interval; a failed run is not recorded, so the next tick retries. If
+  the table cannot be read it falls back to the previous behaviour and logs a warning.
+  Single-instance deployments (the default in-memory state backend) are unaffected.
+  `TestTryWithLock_OnlyOneOfManyRuns` no longer depends on timing (it holds the lock until every
+  other caller has tried), and the lock tests close their connection pools, so
+  `go test -race -count=50` no longer exhausts `max_connections`.
 - **Audit rows written by the auth and OAuth services carry the client IP and User-Agent.**
   `authService`/`oauthService.logSecurityEvent` wrote every row with both empty, so login, lockout,
   password, MFA and token events had no IP: the monitoring console's Geo analytics, location

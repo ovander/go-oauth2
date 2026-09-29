@@ -57,8 +57,13 @@ const (
 // TryWithLock runs fn only if this instance can take the advisory lock without
 // waiting. It reports whether fn ran.
 //
+// It guarantees mutual exclusion — at most one caller runs fn at a time — not
+// "once": a caller that tries after the holder released the lock takes it and
+// runs fn again. For once-per-interval scheduling use Every, which adds the
+// cluster-wide last-run record on top.
+//
 // This is the right shape for a periodic job: each instance tries on every
-// tick, exactly one wins, and the lock is released as soon as the work is done.
+// tick, one wins, and the lock is released as soon as the work is done.
 // There is no long-lived leader to fail over from — if the winner dies mid-job
 // its connection drops and the lock is gone, so the next tick simply elects
 // someone else.

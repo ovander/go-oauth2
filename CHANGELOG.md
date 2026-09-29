@@ -10,6 +10,16 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Client-lifecycle audit events use the trusted client IP.** `LogFromRequest` (the admin API's
+  OAuth client lifecycle events) read the leftmost `X-Forwarded-For`, then `X-Real-IP`, from any
+  peer, ignoring `TRUSTED_PROXIES`, so a peer could choose the address that was audited. It now
+  uses the IP `middleware.ClientIP` resolved (forwarding headers honoured only from trusted
+  proxies), falling back to the bare peer address; the unused `extractIPAddress` is removed. The
+  User-Agent there is also cut on a character boundary, so an over-long one can no longer make
+  PostgreSQL reject the row.
+
 ## [1.5.0] - 2026-09-29
 
 Minor release on the **v1.x** line. It fixes three defects found after v1.4.0 went live — audit

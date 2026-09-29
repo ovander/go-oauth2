@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"time"
 	"unicode/utf8"
@@ -159,54 +160,39 @@ func newSecurityAuditLog(ctx context.Context, eventType model.SecurityEventType,
 }
 
 func (s *securityAuditService) LogFromRequest(ctx context.Context, r *http.Request, event SecurityEvent) error {
-	// Extract IP address from request
+	// The client IP resolved once per request by middleware.ClientIP, which honours
+	// forwarding headers only from TRUSTED_PROXIES. Never read them here: any peer
+	// can send X-Forwarded-For.
 	if event.IPAddress == "" {
-		event.IPAddress = extractIPAddress(r)
+		event.IPAddress = clientIPFromRequest(ctx, r)
 	}
 
-	// Extract User-Agent if not provided
 	if event.UserAgent == "" {
-		event.UserAgent = r.UserAgent()
-		// Truncate if too long
-		if len(event.UserAgent) > 500 {
-			event.UserAgent = event.UserAgent[:500]
-		}
+		// Cut on a character boundary: PostgreSQL rejects invalid UTF-8, and a
+		// rejected audit insert is lost.
+		event.UserAgent = truncateUTF8(r.UserAgent(), maxUserAgentLen)
 	}
 
 	return s.Log(ctx, event)
 }
 
-// extractIPAddress gets the client IP from the request, considering proxies
-func extractIPAddress(r *http.Request) string {
-	// Check X-Forwarded-For first (may be set by reverse proxy)
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// X-Forwarded-For can contain multiple IPs, take the first one
-		for i := 0; i < len(xff); i++ {
-			if xff[i] == ',' {
-				return xff[:i]
-			}
-		}
-		return xff
+// clientIPFromRequest returns the client IP that middleware.ClientIP resolved and
+// stored under contextkeys.IPAddressKey (trusted-proxy aware). Without it — the
+// middleware is not installed, e.g. in a unit test — it falls back to the bare
+// peer address and never to a forwarding header, so an untrusted peer cannot
+// choose the address that is audited.
+func clientIPFromRequest(ctx context.Context, r *http.Request) string {
+	if ip := contextString(ctx, contextkeys.IPAddressKey); ip != "" {
+		return ip
 	}
-
-	// Check X-Real-IP (nginx)
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
+	if ip := contextString(r.Context(), contextkeys.IPAddressKey); ip != "" {
+		return ip
 	}
-
-	// Fall back to RemoteAddr
-	// RemoteAddr is in the form "IP:port", so strip the port
-	addr := r.RemoteAddr
-	for i := len(addr) - 1; i >= 0; i-- {
-		if addr[i] == ':' {
-			return addr[:i]
-		}
-		if addr[i] == ']' {
-			// IPv6 address with brackets
-			return addr
-		}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
 	}
-	return addr
+	return host
 }
 
 func (s *securityAuditService) GetByUser(ctx context.Context, userID uint, page, pageSize int) ([]model.SecurityAuditLog, int64, error) {

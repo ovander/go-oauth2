@@ -21,6 +21,7 @@ func main() {
 		"commit":     version.Commit,
 		"branch":     version.Branch,
 		"build_time": version.BuildTime,
+		"go_version": version.GoVersion(),
 	}).Info("🔖 Socrate starting")
 
 	// Load configuration

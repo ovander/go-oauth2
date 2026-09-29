@@ -72,6 +72,7 @@ func (h *HealthHandler) Version(w http.ResponseWriter, r *http.Request) {
 		"commit":     version.Commit,
 		"branch":     version.Branch,
 		"build_time": version.BuildTime,
+		"go_version": version.GoVersion(),
 	})
 }
 

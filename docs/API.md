@@ -676,7 +676,22 @@ The server sets `X-Content-Type-Options`, `X-Frame-Options`,
 
 ### Health & version
 `GET /health`, `/health/liveness`, `/health/readiness`, `/version` are available
-on both routers as JSON.
+on both routers as JSON. `/version` (also served as `/api/version`) is public and returns the
+build of the running binary:
+
+```json
+{
+  "version": "v1.4.0",
+  "commit": "85218d0",
+  "branch": "main",
+  "build_time": "2026-09-29T09:12:44Z",
+  "go_version": "go1.27.1"
+}
+```
+
+`version`, `commit`, `branch` and `build_time` are stamped at build time (`dev`, `none` and
+`unknown` when built without the Makefile); `go_version` is the Go toolchain that compiled the
+binary, read from the binary itself.
 
 ---
 

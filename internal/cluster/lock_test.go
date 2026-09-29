@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,6 +29,11 @@ func testDB(t *testing.T) *gorm.DB {
 	})
 	if err != nil {
 		t.Fatalf("connect: %v", err)
+	}
+	// Close the pool when the test ends: each test opens its own, and leaked
+	// pools exhaust max_connections under -count=N.
+	if sqlDB, err := db.DB(); err == nil {
+		t.Cleanup(func() { _ = sqlDB.Close() })
 	}
 	return db
 }
@@ -180,8 +186,8 @@ func TestTryWithLock_OnlyOneOfManyRuns(t *testing.T) {
 	key := testKeyFor(t)
 
 	const n = 12
-	var mu sync.Mutex
-	runs := 0
+	var runs, declined atomic.Int32
+	othersTried := make(chan struct{})
 	start := make(chan struct{})
 
 	var wg sync.WaitGroup
@@ -190,24 +196,33 @@ func TestTryWithLock_OnlyOneOfManyRuns(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			_, err := TryWithLock(context.Background(), db, key, func(context.Context) error {
-				mu.Lock()
-				runs++
-				mu.Unlock()
-				// Hold briefly so the others genuinely overlap.
-				time.Sleep(50 * time.Millisecond)
+			ran, err := TryWithLock(context.Background(), db, key, func(context.Context) error {
+				runs.Add(1)
+				// Hold the lock until every other caller has tried and been turned
+				// away, so they all contend with this holder. (A fixed sleep was
+				// flaky: under -race a caller could arrive after the release and
+				// legitimately win — TryWithLock promises exclusion, not "once".)
+				select {
+				case <-othersTried:
+				case <-time.After(10 * time.Second):
+					t.Error("the other callers did not all try the lock within 10s")
+				}
 				return nil
 			})
 			if err != nil {
 				t.Errorf("caller: %v", err)
+				return
+			}
+			if !ran && declined.Add(1) == n-1 {
+				close(othersTried)
 			}
 		}()
 	}
 	close(start)
 	wg.Wait()
 
-	if runs != 1 {
-		t.Fatalf("%d of %d concurrent callers ran the job, want exactly 1", runs, n)
+	if got := runs.Load(); got != 1 {
+		t.Fatalf("%d of %d concurrent callers ran the job, want exactly 1", got, n)
 	}
 }
 

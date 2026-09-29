@@ -10,6 +10,12 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-09-29
+
+Patch release on the **v1.x** line. The admin API's OAuth client lifecycle events now audit the
+client IP resolved from `TRUSTED_PROXIES`, not a forwarding header any peer can send. No
+migration, no new environment variable, no change to the token contract.
+
 ### Fixed
 
 - **Client-lifecycle audit events use the trusted client IP.** `LogFromRequest` (the admin API's
@@ -1501,3 +1507,6 @@ deployment kit.
   lets a future KMS/HSM-backed signer be substituted without changing any
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
+
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/ovander/go-oauth2/compare/v1.5.0...v1.5.1

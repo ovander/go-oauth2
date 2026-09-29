@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/repository"
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/internal/repository"
+	"github.com/ovander/go-oauth2/pkg/logger"
 )
 
 // UsedTokenCleaner periodically prunes expired rows from the used_tokens table

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/dto"
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/service"
+	"github.com/ovander/go-oauth2/internal/dto"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/service"
 )
 
 // P3-5: the hosted login form (POST /oauth/authorize, password path) must feed

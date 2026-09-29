@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/model"
 )
 
 // buildChainedRows returns n rows correctly hash-chained with the given secret,

@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/service"
+	"github.com/ovander/go-oauth2/internal/contextkeys"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/service"
 )
 
 // P3-7: the mail-triggering admin actions (resend-verification, force

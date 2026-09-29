@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/hooks"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/hooks"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
 
 // A6: a BeforeTokenIssue hook can veto every grant; the service surfaces

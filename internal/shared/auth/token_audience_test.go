@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/model"
 )
 
 func audienceTokenService(t *testing.T, mode string) *TokenService {

@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/config"
-	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovander/go-oauth2/config"
+	"github.com/ovander/go-oauth2/internal/dto"
 	"gorm.io/gorm"
 )
 

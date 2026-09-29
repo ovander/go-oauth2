@@ -9,15 +9,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
-	"github.com/ovandermoten/go-oauth2/internal/dto"
-	"github.com/ovandermoten/go-oauth2/internal/hooks"
-	"github.com/ovandermoten/go-oauth2/internal/metrics"
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/repository"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth/tokenexchange"
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/internal/contextkeys"
+	"github.com/ovander/go-oauth2/internal/dto"
+	"github.com/ovander/go-oauth2/internal/hooks"
+	"github.com/ovander/go-oauth2/internal/metrics"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/repository"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/shared/auth/tokenexchange"
+	"github.com/ovander/go-oauth2/pkg/logger"
 )
 
 // dpopJKTFromContext returns the verified DPoP JWK thumbprint placed on the

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth/dpop"
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/internal/contextkeys"
+	"github.com/ovander/go-oauth2/internal/shared/auth/dpop"
+	"github.com/ovander/go-oauth2/pkg/logger"
 )
 
 // DPoPRejectFunc is called when a present DPoP proof fails verification, so the

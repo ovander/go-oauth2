@@ -1,7 +1,7 @@
 # Socrate suite — e2e / security / performance harness
 
-The scripts and captured results behind
-[`docs/E2E-SECURITY-PERF-REPORT-v1.3.0.md`](../../docs/E2E-SECURITY-PERF-REPORT-v1.3.0.md).
+The scripts behind the suite's end-to-end, security and performance test report (the v1.3.0
+report and its captured results are kept with the maintainers).
 
 They assemble a production-shaped local stack (Postgres, the server, both
 console BFFs, a backendkit-only sample app in `demoapp/`, and Caddy on
@@ -12,10 +12,10 @@ console BFFs, a backendkit-only sample app in `demoapp/`, and Caddy on
 - `*.cjs` — Playwright/Chromium browser flows (`harness.cjs` is shared).
 - `sweep.js` — k6 capacity sweep; the B6 scenarios in `../perf` cover the rest.
 - `smtp_sink.py` — a throwaway SMTP catcher for email flows.
-- `results/` — captured output from the run recorded in the report. Tokens and
-  secrets have been redacted; treat the values as fixtures, not credentials.
+- `results/` — where a run writes its output (git-ignored; captured results stay out of the
+  public repository).
 
 These are assessment scaffolding, not a CI suite: they expect the local stack
-described in the report's §2 and hard-code sandbox ports. `demoapp/go.mod` had
+described above and hard-code sandbox ports. `demoapp/go.mod` had
 its local `replace` directive stripped for committing; restore it (or `go mod
 edit -replace`) to build against a working tree.

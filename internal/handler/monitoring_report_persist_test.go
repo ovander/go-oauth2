@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovander/go-oauth2/internal/dto"
 )
 
 // TestReportDataMapRoundTrip verifies the report payload survives the

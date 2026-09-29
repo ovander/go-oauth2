@@ -28,11 +28,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/ovandermoten/go-oauth2/internal/handler"
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/repository"
-	"github.com/ovandermoten/go-oauth2/internal/service"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/handler"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/repository"
+	"github.com/ovander/go-oauth2/internal/service"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
 
 // p31UserRepo serves one fixed user for every FindByID; the embedded

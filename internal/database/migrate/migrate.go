@@ -19,9 +19,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ovandermoten/go-oauth2/internal/cluster"
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/internal/cluster"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/pkg/logger"
 	"gorm.io/gorm"
 )
 

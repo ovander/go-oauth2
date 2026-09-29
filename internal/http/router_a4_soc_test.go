@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/handler"
-	"github.com/ovandermoten/go-oauth2/internal/middleware"
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/policy"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/handler"
+	"github.com/ovander/go-oauth2/internal/middleware"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/policy"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
 
 // socRouter builds the admin router with scope gates enforced, as a deployment

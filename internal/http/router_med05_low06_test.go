@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/middleware"
+	"github.com/ovander/go-oauth2/internal/middleware"
 )
 
 // nopTokenHandler is a trivial upstream that always returns 200 OK.

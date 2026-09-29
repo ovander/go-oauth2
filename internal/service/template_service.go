@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
-	"github.com/ovandermoten/go-oauth2/web"
+	"github.com/ovander/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/web"
 )
 
 // TemplateService handles rendering of HTML templates

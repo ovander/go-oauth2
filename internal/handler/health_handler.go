@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/version"
+	"github.com/ovander/go-oauth2/internal/version"
 	"gorm.io/gorm"
 )
 

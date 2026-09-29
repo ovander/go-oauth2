@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/contextkeys"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
 
 // RequireFreshAuth gates the most destructive admin operations on a recent

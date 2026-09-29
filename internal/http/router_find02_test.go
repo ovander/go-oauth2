@@ -26,7 +26,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/middleware"
+	"github.com/ovander/go-oauth2/internal/middleware"
 )
 
 // nopRefreshHandler is a trivial handler standing in for the real Refresh

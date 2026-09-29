@@ -16,13 +16,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
-	"github.com/ovandermoten/go-oauth2/internal/dto"
-	"github.com/ovandermoten/go-oauth2/internal/middleware"
-	"github.com/ovandermoten/go-oauth2/internal/service"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth/tokenexchange"
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/internal/contextkeys"
+	"github.com/ovander/go-oauth2/internal/dto"
+	"github.com/ovander/go-oauth2/internal/middleware"
+	"github.com/ovander/go-oauth2/internal/service"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
+	"github.com/ovander/go-oauth2/internal/shared/auth/tokenexchange"
+	"github.com/ovander/go-oauth2/pkg/logger"
 )
 
 type OAuthHandler struct {

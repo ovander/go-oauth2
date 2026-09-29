@@ -1,4 +1,4 @@
-// Package handler — Phase 1 integration tests (docs/program/TEST-STRATEGY.md).
+// Package handler — Phase 1 integration tests (docs/TEST-STRATEGY.md).
 //
 // These drive the OAuth/OIDC endpoints through a real chi router with the real
 // middleware stack (JSONContentType / NoCacheHeaders / DPoP), exercising the
@@ -18,9 +18,9 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/ovandermoten/go-oauth2/internal/dto"
-	"github.com/ovandermoten/go-oauth2/internal/middleware"
-	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/dto"
+	"github.com/ovander/go-oauth2/internal/middleware"
+	"github.com/ovander/go-oauth2/internal/model"
 )
 
 // okAppSvc satisfies service.AppService (via the embedded mock) but accepts any

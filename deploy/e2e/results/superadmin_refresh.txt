@@ -1,2 +1,0 @@
-root login to demo app (not a member): 200
-root refresh on demo app -> 500 {'error': 'server_error', 'error_description': 'an internal error occurred'}

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/middleware"
+	"github.com/ovander/go-oauth2/internal/middleware"
 )
 
 // P4-3 / P4-4 route-level checks against the real OAuth router. Handlers are

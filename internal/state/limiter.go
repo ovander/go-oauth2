@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/pkg/logger"
+	"github.com/ovander/go-oauth2/pkg/logger"
 )
 
 // StoreLimiter adapts a RateLimitStore to the method set the rate-limit

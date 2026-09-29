@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/dto"
+	"github.com/ovander/go-oauth2/internal/dto"
 )
 
 func TestCreate_RequireDPoP_PersistedFromRequest(t *testing.T) {

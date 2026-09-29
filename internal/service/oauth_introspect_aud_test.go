@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/model"
 )
 
 // Introspection surfaces the token's aud (RFC 7662 §2.2) so a resource server

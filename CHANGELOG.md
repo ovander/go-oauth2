@@ -5,10 +5,55 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Releases follow the platform program defined in `docs/program/RELEASE-ROADMAP.md`
-(current line: **v1.x — Foundations & Additive Capabilities**, non-breaking).
+Releases follow the platform programme (current line: **v1.x — Foundations & Additive
+Capabilities**, non-breaking).
 
 ## [Unreleased]
+
+Everything merged since the v1.3.0 changelog cut. Planned as v1.4.0: a new licence and module
+path, three fixes found by the v1.3.0 end-to-end test pass, and migration tooling.
+
+### Changed
+
+- **Licence: Apache-2.0** (`LICENSE`). The README had declared MIT with no licence file, and
+  `pkg/logger` still carried a proprietary header from another product; both are gone.
+- **Module path `github.com/ovander/go-oauth2`** (was `github.com/ovandermoten/go-oauth2`, which
+  did not match the repository, so `go get` failed). Imports, the Makefile's `-ldflags` package
+  path and the docs follow. No behaviour change.
+- `make deploy` now requires `VPS=user@host` (it defaulted to one maintainer's host) and stages
+  files in the remote user's home directory.
+
+### Fixed
+
+- **Refresh grant honours the global-admin bypass** (#255). A superadmin signed in to a client
+  without a membership row lost the session at the first refresh (500 at the BFF). A dead grant
+  (`ErrRoleNotFound` / `ErrUserNotFound`) now answers `invalid_grant` (400) instead of
+  `server_error` (500), and the `token_revoked` audit row on the client-authenticated
+  `/oauth/revoke` path no longer fails its foreign key and gets dropped.
+- **Live event stream starts at the tip** (#263, F3). `GET /api/admin/events/stream` without
+  `last_event_id` seeded from 0 and replayed the oldest audit rows until its write timeout;
+  it now seeds from `MAX(id)`. An explicit `last_event_id` still resumes.
+- **Audit-integrity status says `not_scanning`** (#263, F8) when the background scanner is
+  disabled, instead of claiming `verified` for rows that are only stamped.
+- CI: golangci-lint is built with `go.mod`'s toolchain, so the lint job runs again (#254).
+
+### Added
+
+- `SECURITY.md` (private vulnerability reporting, scope, supported versions), `CONTRIBUTING.md`,
+  `CLAUDE.md`, `CODEOWNERS`, issue forms, a pull-request template, and a **`Release` workflow**
+  that publishes a tag's CHANGELOG section as the GitHub release.
+- `deploy/PRE-DEPLOY-CHECKLIST.md`, the on-host configuration the repository cannot verify;
+  `socrate.service` marked as the canonical unit (#264).
+- `deploy/migration/`: the application compatibility prompt, the confirmed v1.3.0 OP contract,
+  and `carry-over.sh`, the ID-preserving data migration (#265, #266).
+- `deploy/e2e/`: the end-to-end, security and performance harness used for v1.3.0 (#256).
+
+### Removed
+
+- Internal planning and audit documents left the public tree (`docs/program/`, the `docs/CR-*`
+  change requests and audit passes, the v1.3.0 test report and its captured results). Product
+  docs stay; three were renamed: `docs/AUTH-FLOWS.md`, `docs/GEO-ANALYTICS-API.md`,
+  `docs/TEST-STRATEGY.md`.
 
 ## [1.3.0] - 2026-09-27
 
@@ -683,7 +728,7 @@ deployment kit.
 
 ### Added
 - **CI / Test gates (Phase 8):** The **Tier A (security-critical) coverage check
-  is now blocking** (docs/program/TEST-STRATEGY.md) — a **ratchet**
+  is now blocking** (docs/TEST-STRATEGY.md) — a **ratchet**
   (`scripts/coverage-gate.sh`, `make coverage-gate`) that fails the build if
   coverage drops below `TIER_A_MIN` (floor **55%**, raised toward the ≥90% target
   as the suites grow, so coverage can only go up). The adversarial (Phase 2) and
@@ -693,7 +738,7 @@ deployment kit.
 
 ### Added
 - **Tests / Crypto lifecycle (Phase 4):** Added key-lifecycle tests that connect
-  the signing-key ring to **token verification** (docs/program/TEST-STRATEGY.md):
+  the signing-key ring to **token verification** (docs/TEST-STRATEGY.md):
   after a rotation, JWKS exposes both the current and retired `kid` (so a resource
   server can verify either token); and once a retired key is **pruned**, the token
   it signed **no longer verifies** — proving retention must outlive the token TTL
@@ -703,7 +748,7 @@ deployment kit.
 
 ### Added
 - **Tests / Fuzzing (Phase 3):** Added **Go native fuzz targets** for the
-  untrusted-input parsers (docs/program/TEST-STRATEGY.md): PKCE verification
+  untrusted-input parsers (docs/TEST-STRATEGY.md): PKCE verification
   (`FuzzVerifyPKCE` — never accepts a mismatched S256 challenge or the downgrade
   `plain` method), redirect-URI validation (`FuzzValidateRedirectURI` — the
   **open-redirect invariant**: any accepted URI must use a safe scheme, carry no
@@ -714,7 +759,7 @@ deployment kit.
 
 ### Added
 - **Tests / Adversarial (Phase 2):** Added a **JWT/OAuth adversarial suite**
-  (docs/program/TEST-STRATEGY.md) mapping the OAuth 2.0 Security BCP (RFC 9700) /
+  (docs/TEST-STRATEGY.md) mapping the OAuth 2.0 Security BCP (RFC 9700) /
   OWASP ASVS attack classes to failing-by-design tests against access-token
   verification: **`alg=none`**, **RS256→HS256 algorithm confusion** (public key
   as HMAC secret), **foreign-key signature**, **tampered signature**, **expired**,
@@ -725,7 +770,7 @@ deployment kit.
 
 ### Added
 - **Tests / Integration (Phase 1):** Added a **router-level integration harness**
-  (docs/program/TEST-STRATEGY.md) that drives the OAuth/OIDC endpoints through a
+  (docs/TEST-STRATEGY.md) that drives the OAuth/OIDC endpoints through a
   real `chi` router with the real middleware stack (JSONContentType /
   NoCacheHeaders / DPoP). Covers discovery, JWKS, the token endpoint, and
   introspection end-to-end — asserting routing, status codes, `no-store` headers
@@ -734,7 +779,7 @@ deployment kit.
   _Traceability: C6 → EPIC-6 → RFC-014 → #148._
 
 ### Added
-- **CI / Test strategy:** Added `docs/program/TEST-STRATEGY.md` — the
+- **CI / Test strategy:** Added `docs/TEST-STRATEGY.md` — the
   identity-server test-assurance plan (risk-tiered coverage, adversarial / fuzz /
   mutation / conformance layers, phased roadmap, and the eventual blocking CI
   gates). **Phase 0:** a **report-only** `coverage` CI job now publishes overall

@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/dto"
-	"github.com/ovandermoten/go-oauth2/internal/repository"
+	"github.com/ovander/go-oauth2/internal/dto"
+	"github.com/ovander/go-oauth2/internal/repository"
 	"gorm.io/gorm"
 )
 

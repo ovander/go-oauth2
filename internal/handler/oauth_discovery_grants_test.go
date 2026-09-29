@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth/tokenexchange"
+	"github.com/ovander/go-oauth2/internal/shared/auth/tokenexchange"
 )
 
 func TestOpenIDConfiguration_AdvertisesExtraGrantTypes(t *testing.T) {

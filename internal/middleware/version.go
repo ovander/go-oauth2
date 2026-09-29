@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/ovandermoten/go-oauth2/internal/version"
+	"github.com/ovander/go-oauth2/internal/version"
 )
 
 // AppVersion injects the build version into every response as X-App-Version.

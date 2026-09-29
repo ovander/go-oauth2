@@ -4,8 +4,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
-	"github.com/ovandermoten/go-oauth2/internal/shared/auth/tokenexchange"
+	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/shared/auth/tokenexchange"
 )
 
 // Token-exchange authorization errors (RFC 8693 / EPIC-16). They encode the

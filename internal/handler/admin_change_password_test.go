@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
-	"github.com/ovandermoten/go-oauth2/internal/service"
+	"github.com/ovander/go-oauth2/internal/contextkeys"
+	"github.com/ovander/go-oauth2/internal/service"
 )
 
 // cpAuthService embeds the full med03 fake and makes ChangePassword's result

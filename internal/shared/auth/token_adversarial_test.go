@@ -1,4 +1,4 @@
-// Package auth — Phase 2 adversarial suite (docs/program/TEST-STRATEGY.md).
+// Package auth — Phase 2 adversarial suite (docs/TEST-STRATEGY.md).
 //
 // Classic JWT / OAuth attacks against access-token verification, mapped to the
 // OAuth 2.0 Security BCP (RFC 9700) and OWASP ASVS. Each test asserts the
@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/model"
 )
 
 func advTokenService(t *testing.T, issuer string, accessTTL time.Duration) *TokenService {

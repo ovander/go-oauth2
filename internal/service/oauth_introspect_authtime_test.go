@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/model"
 )
 
 // Introspection surfaces auth_time (RFC 7662 / RFC 9068 §2.2.1) so a resource

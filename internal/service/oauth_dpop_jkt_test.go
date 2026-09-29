@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/contextkeys"
+	"github.com/ovander/go-oauth2/internal/contextkeys"
 )
 
 func TestDPoPJKTFromContext(t *testing.T) {

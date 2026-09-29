@@ -2,8 +2,8 @@
 
 Run through this on the VPS before and after each deploy of the Socrate suite
 (server + admin console + monitoring console). It covers the configuration that
-lives only on the box, which the repo cannot verify. Pair it with the readiness
-verdict in [`docs/E2E-SECURITY-PERF-REPORT-v1.3.0.md`](../docs/E2E-SECURITY-PERF-REPORT-v1.3.0.md).
+lives only on the box, which the repo cannot verify. Pair it with the harness in
+[`deploy/e2e/`](e2e/) to re-verify a deployment end to end.
 
 Commands assume the canonical paths from [`deploy/README.md`](README.md) and the
 multi-app runbook [`docs/DEPLOYMENT-VPS-MULTI-APP.md`](../docs/DEPLOYMENT-VPS-MULTI-APP.md).

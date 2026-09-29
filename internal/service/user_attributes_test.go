@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/model"
 )
 
 // A2: user attributes are bounded at write time, because a client's claim

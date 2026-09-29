@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovandermoten/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/model"
 )
 
 // The access token issued by GenerateTokenSet carries the same auth_time as the

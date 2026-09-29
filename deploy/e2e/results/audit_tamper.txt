@@ -1,7 +1,0 @@
-before tamper: (200, {'status': 'verified', 'violations': 0})
-tampered row 330 (flipped success, rewrote email)
-after tamper: (200, {'status': 'verified', 'violations': 0})
-raw: {"period": "24h", "configured": true, "status": "verified", "total_events": 336, "stamped_events": 336, "chained_events": 335, "coverage_percent": 100, "violations": 0, "recent_violations": []}
-with scanner on, after 30s: {"period": "24h", "configured": true, "status": "violations_detected", "total_events": 342, "stamped_events": 342, "chained_events": 341, "coverage_percent": 100, "violations": 5, "last_violation_at": "2026-09-28T18:26:31.578376Z", "recent_violations": [{"event_id": 351, "kind": "hmac", "details": {"tampered_row_id": 117}, "detected_at": "2026-09-28T18:26:31.578376Z"}, {"event_id": 350, "kind": "hmac", "details": {"tampered_row_id": 119}, "detected_at": "2026-09-28T18:26:31.576071Z"}, {"event_id": 349, "kind": "hmac", "details": {"tampered_row_id": 121}, "detected_at": "2026-09-28T18:26:31.573
-new rows: 363:client_created:127.0.0.1:18 | 364:client_secret_rotated:127.0.0.1:18
-rows flagged by the scanner: 364 363

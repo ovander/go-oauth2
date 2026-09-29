@@ -10,6 +10,14 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-29
+
+Minor release on the **v1.x** line. It fixes three defects found after v1.4.0 went live — audit
+rows without a client IP, cluster jobs running once per instance, and fake build info on the
+dashboard health endpoint — and completes the build info with the Go toolchain. **One migration
+(0025, additive)**; no new environment variable; no change to the token contract (`/version`
+only gains a field).
+
 ### Added
 
 - **`/version` reports the Go toolchain.** The response (also `/api/version`) gains
@@ -22,9 +30,6 @@ Capabilities**, non-breaking).
 - **Dashboard health reports the real build.** `GET /api/admin/dashboard/health`, shown in the
   monitoring console's System Health card, returned a hard-coded `version: "1.0.0"` and
   `details.go_version: "1.21+"`; it now returns the binary's version and Go toolchain.
-
-### Fixed
-
 - **Scheduled jobs run once per interval across a cluster, as documented.** With the shared
   (`STATE_BACKEND=postgres`) scheduler, the advisory lock only stopped two instances running a job
   at the same moment. Instances tick on their own schedules, so each ran it once per interval:

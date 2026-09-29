@@ -13,9 +13,8 @@ This document is the suite-level runbook. The per-repo deploy kits it builds on:
 | `oauth2-monitoring/deploy/` | the `socrate` service user, **Socrate itself** (`socrate.service`, `socrate.env`), the monitoring BFF, the **main `/etc/caddy/Caddyfile`**, backups | `deploy/README.md` |
 | `oauth2-admin/deploy/` | the admin BFF, its env file, and the admin **Caddy site file** under `/etc/caddy/sites/` | `deploy/README.md` |
 
-Security posture and the closed audit ledger are in
-`docs/CR-socrate-suite-remediation-plan.md` (rev. 6). Nothing in this document
-relaxes a control from that plan.
+The security posture and how to report a vulnerability are in [`SECURITY.md`](../SECURITY.md).
+Nothing in this document relaxes a control it describes.
 
 ---
 
@@ -780,7 +779,7 @@ it is CPU you are adding, which is exactly what that path is short of.
 
 ## 10. Known open items
 
-From `CR-socrate-suite-remediation-plan.md` §2.4 — none blocks deployment:
+From the remediation ledger of the security audits — none blocks deployment:
 
 - **Per-client scope policy (P3-8)** — any client may request any scope; the
   role gate is the boundary. Decide before opening client registration to

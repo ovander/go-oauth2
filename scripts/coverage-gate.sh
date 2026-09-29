@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tier A (security-critical) coverage ratchet — docs/program/TEST-STRATEGY.md.
+# Tier A (security-critical) coverage ratchet — docs/TEST-STRATEGY.md.
 #
 # Fails if Tier A coverage drops below TIER_A_MIN. This is a ratchet: the floor
 # starts at the current baseline and is raised toward the ≥90% target as the

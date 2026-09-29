@@ -1,4 +1,4 @@
-// Package handler — Phase 1 integration tests (docs/program/TEST-STRATEGY.md).
+// Package handler — Phase 1 integration tests (docs/TEST-STRATEGY.md).
 //
 // These drive the OAuth/OIDC endpoints through a real chi router with the real
 // middleware stack (JSONContentType / NoCacheHeaders / DPoP), exercising the

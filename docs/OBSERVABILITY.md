@@ -1,7 +1,7 @@
 # Observability — metrics, logs, SLOs
 
-Plan items **B1** (Prometheus), **B3** (log schema) and **B7** (SLOs & alerts) of
-`docs/program/PLAN-EXTENSIBILITY-OBSERVABILITY.md`. Traces (B2) are a later slice.
+Plan items **B1** (Prometheus), **B3** (log schema) and **B7** (SLOs & alerts) of the extensibility
+and observability programme. Traces (B2) are a later slice.
 
 ## 1. Metrics
 

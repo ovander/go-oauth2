@@ -392,5 +392,5 @@ Use geographic data to:
 ## Related APIs
 
 - [Alert Rules API](./ALERT-RULES.md) - Configure geographic-based alerts
-- [Security Events API](./CR-oauth2-security-monitoring-app.md) - Raw security event data
-- [Token Stats API](./CR-oauth2-security-monitoring-app.md#token-analytics) - Token analytics
+- Security events and token analytics — the other `/api/admin/security/*` and monitoring endpoints,
+  used by the monitoring console ([`ovander/oauth2-monitoring`](https://github.com/ovander/oauth2-monitoring))

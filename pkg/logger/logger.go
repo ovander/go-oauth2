@@ -1,14 +1,3 @@
-/*
- * // Copyright (c) 2023–2025 Olivier Vandermoten
- * //
- * // This file is part of the DTMA (Digital Transformation Maturity Assessment) software.
- * //
- * // DTMA is proprietary software: you may not use, copy, modify, or distribute this
- * // file except in compliance with the license agreement provided separately.
- * //
- * // For licensing inquiries, contact: olivier.vandermoten@gmail.com
- */
-
 package logger
 
 import (

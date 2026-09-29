@@ -1,7 +1,0 @@
-30d toggle → [ 'GET /api/admin/dashboard/login-trends?days=30' ]
-Refresh Health → [ 'GET /api/admin/dashboard/health' ]
-Sessions filter user_id=1 → [ 'GET /api/admin/sessions?user_id=1&page=1&page_size=25' ]
-…after Enter → [
-  'GET /api/admin/sessions?user_id=1&page=1&page_size=25',
-  'GET /api/admin/sessions?user_id=1&page=1&page_size=25'
-]

@@ -444,7 +444,7 @@ detect this code and route the admin through the change-password flow.
 `GET /api/admin/profile` returns the current admin.
 
 **Deprecated** in favour of the admin console's Authorization Code + PKCE flow
-(see `docs/ADMIN-SPA-MIGRATION.md`). Always returns a `Deprecation: true` header
+(see [`ovander/oauth2-admin`](https://github.com/ovander/oauth2-admin)). Always returns a `Deprecation: true` header
 (RFC 8594). When `ADMIN_PASSWORD_LOGIN_ENABLED=false` it is refused with
 `403 { "error": "password_login_disabled" }`. The first-party admin console is a
 public PKCE client auto-registered from `ADMIN_CONSOLE_CLIENT_ID` +

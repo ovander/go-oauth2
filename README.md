@@ -9,15 +9,14 @@
 Enterprise-grade identity for secure multi-tenant SaaS.
 
 [![CI](https://github.com/ovander/go-oauth2/actions/workflows/ci.yml/badge.svg)](https://github.com/ovander/go-oauth2/actions/workflows/ci.yml)
-[![Go](https://img.shields.io/badge/Go-1.25%2B%20(toolchain%201.26)-00ADD8?logo=go&logoColor=white)](go.mod)
-[![Release](https://img.shields.io/badge/release-v1.2.0-blue)](CHANGELOG.md)
-[![Coverage](https://img.shields.io/badge/Tier_A_coverage-ratchet-success)](docs/program/TEST-STRATEGY.md)
-[![Go Report](https://img.shields.io/badge/go_report-A-brightgreen)](https://goreportcard.com/report/github.com/ovander/go-oauth2)
-[![OpenSSF Scorecard](https://img.shields.io/badge/OpenSSF-scorecard-informational)](https://securityscorecards.dev)
-[![Security audited](https://img.shields.io/badge/security%20audit-pass%204%20%C2%B7%2091%2F100-success)](docs/CR-socrate-suite-security-pass4.md)
+[![Go](https://img.shields.io/badge/Go-1.25%2B%20(toolchain%201.27)-00ADD8?logo=go&logoColor=white)](go.mod)
+[![Release](https://img.shields.io/github/v/release/ovander/go-oauth2?sort=semver)](https://github.com/ovander/go-oauth2/releases)
+[![Coverage](https://img.shields.io/badge/Tier_A_coverage-ratchet-success)](docs/TEST-STRATEGY.md)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ovander/go-oauth2)](https://goreportcard.com/report/github.com/ovander/go-oauth2)
+[![Security audited](https://img.shields.io/badge/security%20audit-pass%204%20%C2%B7%2091%2F100-success)](SECURITY.md#past-reviews)
 [![SemVer](https://img.shields.io/badge/SemVer-2.0-orange)](https://semver.org)
 [![Docs](https://img.shields.io/badge/docs-/docs-blue)](docs/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green)](#license)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 </div>
 
@@ -38,7 +37,7 @@ Enterprise-grade identity for secure multi-tenant SaaS.
 
 ### Project status
 
-`✅ Production ready` · `✅ API stable` · `✅ Four security audit passes (all findings closed)` · `✅ Actively maintained` · `✅ Used in production` · `✅ MIT licensed`
+`✅ Production ready` · `✅ API stable` · `✅ Four security audit passes (all findings closed)` · `✅ Actively maintained` · `✅ Used in production` · `✅ Apache-2.0 licensed`
 
 > On a clear path toward a full Zero-Trust identity platform.
 
@@ -189,10 +188,9 @@ hash-chained audit · rate limiting, lockout, IP auto-blocking, CSRF, security h
 caps · client-IP attribution that trusts only `TRUSTED_PROXIES` · a token-less BFF model for every
 first-party browser app.
 
-**Audited, four passes, every accepted finding closed:**
-[pass 1](docs/CR-socrate-suite-security-pass1.md) · [pass 2](docs/CR-socrate-suite-security-pass2.md) ·
-[pass 3](docs/CR-socrate-suite-security-pass3.md) · [pass 4 (scored 85 → 91/100)](docs/CR-socrate-suite-security-pass4.md) ·
-[remediation ledger](docs/CR-socrate-suite-remediation-plan.md) · [Zero-Trust verification](docs/CR-platform-zero-trust-verification.md).
+**Audited, four internal passes, every accepted finding closed** (pass 4 scored 85 → 91/100). The
+fixes are recorded in [`CHANGELOG.md`](CHANGELOG.md) with their finding IDs; how to report a
+vulnerability and which versions are supported are in [`SECURITY.md`](SECURITY.md).
 
 > **Roadmap controls** (not yet in this repo): KMS/HSM key custody, mTLS/SPIFFE, database RLS +
 > envelope encryption, passkeys/WebAuthn. Today, signing keys are RSA-3072 PEM files on disk
@@ -328,21 +326,17 @@ sequenceDiagram
 
 ## Documentation
 
-**Getting started** — [API & integration guide](docs/API.md) · [`CHANGELOG.md`](CHANGELOG.md) · feature-flag modes in [`.env.example`](.env.example)
+**Getting started** — [API & integration guide](docs/API.md) · [Authentication flows](docs/AUTH-FLOWS.md) · [`CHANGELOG.md`](CHANGELOG.md) · feature-flag modes in [`.env.example`](.env.example)
 
-**Deploy & operate** — [Performance baseline & sizing](docs/PERFORMANCE-BASELINE.md) · [Linux VPS + Postgres + Caddy, multi-app runbook](docs/DEPLOYMENT-VPS-MULTI-APP.md) · [Revocation & freshness SLA](docs/REVOCATION-FRESHNESS-SLA.md) · [Alert rules](docs/ALERT-RULES.md) · [Geo analytics](docs/CR-geo-analytics-api.md)
+**Deploy & operate** — [Performance baseline & sizing](docs/PERFORMANCE-BASELINE.md) · [Linux VPS + Postgres + Caddy, multi-app runbook](docs/DEPLOYMENT-VPS-MULTI-APP.md) · [Pre-deploy checklist](deploy/PRE-DEPLOY-CHECKLIST.md) · [Migrating applications](deploy/migration/README.md) · [Revocation & freshness SLA](docs/REVOCATION-FRESHNESS-SLA.md) · [Alert rules](docs/ALERT-RULES.md) · [Geo analytics API](docs/GEO-ANALYTICS-API.md)
 
-**Architecture** — [Reference architecture](docs/PLATFORM-REFERENCE-ARCHITECTURE.md) · [Auth flows](docs/CR-oauth2-auth-flows.md)
+**Architecture** — [Reference architecture](docs/PLATFORM-REFERENCE-ARCHITECTURE.md) · [OP contract (v1.3)](deploy/migration/SOCRATE-V1.3.0-OP-CONTRACT.md)
 
 **Extend & observe** — [Hooks, scope policy, custom claims](docs/EXTENSIBILITY.md) · [Metrics & log schema](docs/OBSERVABILITY.md)
 
-**Security** — [Audit pass 4 (scored)](docs/CR-socrate-suite-security-pass4.md) · [passes 1–3](docs/) · [Remediation ledger](docs/CR-socrate-suite-remediation-plan.md) · [Zero-Trust verification](docs/CR-platform-zero-trust-verification.md)
+**Security** — [Security policy and reporting](SECURITY.md)
 
-**Roadmap** — [Program · Epics · RFCs · Releases · Risk register](docs/program/)
-
-**Development** — [Test strategy & coverage gates](docs/program/TEST-STRATEGY.md) · [Test configuration](docs/TEST-CONFIGURATION.md)
-
-*Still to add at the repo root:* `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`.
+**Development** — [Contributing](CONTRIBUTING.md) · [Test strategy & coverage gates](docs/TEST-STRATEGY.md) · [Test configuration](docs/TEST-CONFIGURATION.md) · [End-to-end harness](deploy/e2e/README.md)
 
 ## Roadmap
 
@@ -353,13 +347,14 @@ flowchart LR
     A["<b>Today</b><br/>Identity Server"] --> B["<b>v2</b><br/>Identity Platform"] --> C["<b>v3</b><br/>Enterprise Zero-Trust Platform"]
 ```
 
-Detail lives in [`docs/program/`](docs/program/) — this README stays a summary.
+Planned work is tracked in [GitHub issues](https://github.com/ovander/go-oauth2/issues) — this README
+stays a summary.
 
 ## Contributing
 
 Small, traceable, reversible slices: **Issue → Branch → Conventional Commit → PR → Review → Merge**.
 
-1. **Branch** `feature/<issue>-<slug>` off `main`; keep changes minimal and backward-compatible.
+1. **Branch** off `main` (`feat/…`, `fix/…`, `docs/…`, `ci/…`); keep changes minimal and backward-compatible.
 2. **Commit** with [Conventional Commits](https://www.conventionalcommits.org).
 3. **Green CI required:** `gofmt`, `go vet`, `go test -race`, `golangci-lint`, `govulncheck`, and the
    Tier-A coverage ratchet (`make coverage-gate`).
@@ -367,21 +362,17 @@ Small, traceable, reversible slices: **Issue → Branch → Conventional Commit 
 
 **Releases** follow [SemVer](https://semver.org) with one planned breaking boundary (**v2.0**);
 v1.x is additive. Legacy paths are deprecated and removed only after telemetry shows zero use.
+The full workflow is in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Security policy
 
-Report vulnerabilities **privately** via GitHub Security Advisories (*Report a vulnerability*) or
-**olivier.vandermoten@gmail.com** — not public issues. The latest **v1.x** minor receives security
-fixes. *(A `SECURITY.md` is recommended so GitHub surfaces this in the Security tab.)*
+Report vulnerabilities **privately** through the repository's **Security** tab → **Report a
+vulnerability** — not in public issues. The latest **v1.x** minor receives security fixes. Scope
+and details are in [SECURITY.md](SECURITY.md).
 
 ## License
 
-**MIT.**
-
-> ⚠️ **Before open-sourcing:** there is still no `LICENSE` file at the repo root, and
-> two source files (`pkg/logger/logger.go`, `pkg/logger/middleware.go`) still carry a stale proprietary "DTMA" header that
-> contradicts the MIT intent. Add a top-level `LICENSE` (and a `SECURITY.md`) and normalize those
-> headers so the license is unambiguous.
+Socrate is licensed under the [Apache License 2.0](LICENSE).
 
 ---
 

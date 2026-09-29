@@ -1,4 +1,4 @@
-.PHONY: build run dev test test-coverage coverage-report coverage-gate clean deps fmt lint deploy
+.PHONY: build run dev test test-coverage coverage-report coverage-gate clean deps fmt lint deploy deploy-check
 
 # Go parameters
 GOCMD=go
@@ -48,7 +48,7 @@ test-coverage:
 	$(GOCMD) tool cover -html=coverage.out -o coverage.html
 
 # Coverage report: overall total + Tier A (security-critical) coverage.
-# Mirrors the CI coverage job (docs/program/TEST-STRATEGY.md). Report-only.
+# Mirrors the CI coverage job (docs/TEST-STRATEGY.md). Report-only.
 coverage-report:
 	@$(GOTEST) ./... -coverprofile=coverage.out -covermode=atomic > /dev/null
 	@echo "Overall:"; $(GOCMD) tool cover -func=coverage.out | tail -1
@@ -100,18 +100,23 @@ migrate-down:
 migrate-status:
 	@echo "Migration state lives in the schema itself; see internal/database/migrate."
 
-# Deploy to VPS
-# Usage: make deploy VPS=olivier@golfperformance.fr REMOTE_DIR=/home/olivier/socrate
-VPS        ?= olivier@golfperformance.fr
+# Deploy the server to a host with the legacy /opt/socrate layout (standalone/dev use; the
+# production deploy kit is described in deploy/README.md).
+# Usage: make deploy VPS=user@host [REMOTE_DIR=/opt/socrate]
+# Files are staged in the remote user's home directory, then moved into place with sudo.
+VPS        ?=
 REMOTE_DIR ?= /opt/socrate
 
-deploy: build-linux
+deploy-check:
+	@test -n "$(VPS)" || { echo "usage: make deploy VPS=user@host [REMOTE_DIR=/opt/socrate]"; exit 2; }
+
+deploy: deploy-check build-linux
 	@echo "→ Uploading binary…"
-	scp bin/socrate             $(VPS):/home/olivier/socrate-new
-	ssh $(VPS) "sudo mv /home/olivier/socrate-new $(REMOTE_DIR)/bin/oauth-server && sudo chown socrate:socrate $(REMOTE_DIR)/bin/oauth-server"
+	scp bin/socrate             $(VPS):socrate-new
+	ssh $(VPS) "sudo mv socrate-new $(REMOTE_DIR)/bin/oauth-server && sudo chown socrate:socrate $(REMOTE_DIR)/bin/oauth-server"
 	@echo "→ Uploading GeoIP databases (skipped if unchanged)…"
-	rsync -az --progress data/  $(VPS):/home/olivier/socrate-data/
-	ssh $(VPS) "sudo rsync -az /home/olivier/socrate-data/ $(REMOTE_DIR)/data/ && sudo chown -R socrate:socrate $(REMOTE_DIR)/data/"
+	rsync -az --progress data/  $(VPS):socrate-data/
+	ssh $(VPS) "sudo rsync -az socrate-data/ $(REMOTE_DIR)/data/ && sudo chown -R socrate:socrate $(REMOTE_DIR)/data/"
 	@echo "→ Restarting service…"
 	ssh $(VPS) "sudo systemctl restart socrate"
 	@echo "→ Tailing logs (Ctrl-C to stop)…"

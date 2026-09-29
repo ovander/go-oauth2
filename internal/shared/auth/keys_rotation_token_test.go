@@ -1,4 +1,4 @@
-// Package auth — Phase 4 crypto / key-lifecycle tests (docs/program/TEST-STRATEGY.md).
+// Package auth — Phase 4 crypto / key-lifecycle tests (docs/TEST-STRATEGY.md).
 //
 // The retired-key ring exists so that a token signed before a key rotation
 // still verifies afterwards (zero-downtime rotation, RFC-002 / EPIC-3). These

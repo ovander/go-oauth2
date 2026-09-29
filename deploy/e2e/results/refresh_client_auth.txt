@@ -1,4 +1,0 @@
-LIVE refresh token + WRONG client secret -> 401 ('invalid_client', 'invalid client credentials') 
-LIVE refresh token + NO client auth -> 400 ('invalid_grant', 'invalid or expired refresh token') 
-LIVE refresh token + client_id only -> 401 ('invalid_client', 'invalid client credentials') 
-LIVE refresh token via /api/auth/refresh (no client auth) -> 401 ('invalid or expired token', None) 

@@ -1,2 +1,0 @@
-rule: {'id': 2, 'name': 'e2e brute force', 'event_type': 'login_failed', 'condition': {'threshold': 5, 'window_minutes': 5}, 'severity': 'warning', 'enabled': True, 'actions': ['email']}
-history: 200 {"alerts": [], "total": 0, "unacknowledged": 0, "page": 1, "page_size": 20}

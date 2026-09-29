@@ -133,7 +133,7 @@ jobs:
       - name: Run govulncheck
         run: govulncheck ./...
 
-  # Coverage gate — Phase 8 of docs/program/TEST-STRATEGY.md.
+  # Coverage gate — Phase 8 of docs/TEST-STRATEGY.md.
   # The Tier A (security-critical) coverage check is now BLOCKING: a ratchet that
   # fails if coverage drops below TIER_A_MIN. The floor starts at the baseline and
   # is raised toward the >=90% target as the suites grow (so coverage can only go

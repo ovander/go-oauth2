@@ -1,4 +1,4 @@
-// Package auth — Phase 2 adversarial suite (docs/program/TEST-STRATEGY.md).
+// Package auth — Phase 2 adversarial suite (docs/TEST-STRATEGY.md).
 //
 // Classic JWT / OAuth attacks against access-token verification, mapped to the
 // OAuth 2.0 Security BCP (RFC 9700) and OWASP ASVS. Each test asserts the

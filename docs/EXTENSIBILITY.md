@@ -1,6 +1,6 @@
 # Extensibility — hooks, scope policy, custom claims (and what comes next)
 
-Plan A of `docs/program/PLAN-EXTENSIBILITY-OBSERVABILITY.md`. Delivered so far:
+Plan A of the extensibility and observability programme. Delivered so far:
 **A1** per-client scope policy, **A6** in-process hooks, **A2** custom claims,
 **A3** outbound webhooks, and **A4** — the policy decision point, on the admin API,
 for applications and in both consoles.

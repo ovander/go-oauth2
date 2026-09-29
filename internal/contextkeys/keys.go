@@ -15,4 +15,7 @@ const (
 	// accompanied the request, so the token endpoint can sender-constrain the
 	// issued access token (RFC 9449). Empty/absent when no valid proof was sent.
 	DPoPJKTKey contextKey = "dpop_jkt"
+	// UserAgentKey carries the request's User-Agent header, set with IPAddressKey
+	// by middleware.ClientIP, so audit rows written from services are attributed.
+	UserAgentKey contextKey = "user_agent"
 )

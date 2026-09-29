@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"time"
+	"unicode/utf8"
 
 	"github.com/ovander/go-oauth2/internal/contextkeys"
 	"github.com/ovander/go-oauth2/internal/model"
@@ -102,12 +103,47 @@ func correlationIDFromContext(ctx context.Context) string {
 	return ""
 }
 
+// contextString returns the string stored in ctx under key, or "".
+func contextString(ctx context.Context, key interface{}) string {
+	if ctx == nil {
+		return ""
+	}
+	s, _ := ctx.Value(key).(string)
+	return s
+}
+
+// maxUserAgentLen matches the user_agent column (varchar(500)).
+const maxUserAgentLen = 500
+
+// truncateUTF8 cuts s to at most max bytes without splitting a character:
+// PostgreSQL rejects invalid UTF-8, and a rejected audit insert is lost silently.
+func truncateUTF8(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	for max > 0 && !utf8.RuneStart(s[max]) {
+		max--
+	}
+	return s[:max]
+}
+
 // newSecurityAuditLog builds a SecurityAuditLog with the severity derived for
 // the event and the correlation ID stamped from ctx (RFC-007/RFC-008). It is
 // the shared construction path for the direct (hot-path) audit writers
 // (authService/oauthService.logSecurityEvent) so correlation coverage is
 // consistent across all request-scoped audit rows.
+//
+// An empty ipAddress or userAgent is taken from ctx, where middleware.ClientIP
+// put the trusted-proxy-aware client IP and the User-Agent: those writers only
+// receive the context, and wrote rows without either before.
 func newSecurityAuditLog(ctx context.Context, eventType model.SecurityEventType, userID, appID *uint, ipAddress, userAgent string, success bool, details map[string]interface{}) *model.SecurityAuditLog {
+	if ipAddress == "" {
+		ipAddress = contextString(ctx, contextkeys.IPAddressKey)
+	}
+	if userAgent == "" {
+		userAgent = contextString(ctx, contextkeys.UserAgentKey)
+	}
+	userAgent = truncateUTF8(userAgent, maxUserAgentLen)
 	return &model.SecurityAuditLog{
 		UserID:        userID,
 		AppID:         appID,

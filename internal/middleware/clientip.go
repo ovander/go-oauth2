@@ -10,7 +10,10 @@ import (
 
 // ClientIP resolves the caller's IP address once per request, in a
 // spoofing-resistant way, and stores it in the request context under
-// contextkeys.IPAddressKey for GetClientIP to read.
+// contextkeys.IPAddressKey for GetClientIP to read. It also stores the
+// User-Agent header under contextkeys.UserAgentKey: services that write audit
+// rows (login, lockout, token events) receive only the context, and read both
+// from it for attribution.
 //
 // It replaces chi's middleware.RealIP (P3-2 / GO-2026-5775, GO-2026-5777),
 // which rewrote r.RemoteAddr from True-Client-IP / X-Real-IP / X-Forwarded-For
@@ -24,6 +27,7 @@ func ClientIP(trustedCIDRs []*net.IPNet) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := GetClientIPSafe(r, trustedCIDRs)
 			ctx := context.WithValue(r.Context(), contextkeys.IPAddressKey, ip)
+			ctx = context.WithValue(ctx, contextkeys.UserAgentKey, r.UserAgent())
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

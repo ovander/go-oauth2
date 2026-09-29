@@ -764,7 +764,9 @@ func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 			writeOAuthError(w, "invalid_grant", "invalid authorization code", http.StatusBadRequest)
 		case errors.Is(err, service.ErrCodeExpired):
 			writeOAuthError(w, "invalid_grant", "authorization code expired", http.StatusBadRequest)
-		case errors.Is(err, service.ErrInvalidCredentials):
+		case errors.Is(err, service.ErrInvalidCredentials), errors.Is(err, service.ErrAppNotFound):
+			// An unknown client_id gets the same answer as a wrong secret, so
+			// the endpoint does not reveal which clients exist (RFC 6749 §5.2).
 			writeOAuthError(w, "invalid_client", "invalid client credentials", http.StatusUnauthorized)
 		case errors.Is(err, service.ErrPKCEVerificationFail):
 			writeOAuthError(w, "invalid_grant", "PKCE verification failed", http.StatusBadRequest)

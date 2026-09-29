@@ -10,6 +10,12 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-09-29
+
+Patch release on the **v1.x** line. An unknown `client_id` at the token endpoint is answered
+`401 invalid_client`, like a wrong secret, instead of `500`, and is now audited. No migration, no
+new environment variable, no change to the token contract.
+
 ### Fixed
 
 - **Unknown `client_id` at the token endpoint answers `401 invalid_client`, not `500`.** The three
@@ -1519,5 +1525,6 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.5.2...HEAD
+[1.5.2]: https://github.com/ovander/go-oauth2/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/ovander/go-oauth2/compare/v1.5.0...v1.5.1

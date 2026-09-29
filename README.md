@@ -207,7 +207,7 @@ vulnerability and which versions are supported are in [`SECURITY.md`](SECURITY.m
 
 ## Maturity
 
-Socrate is **v1.5.1** on the v1.x line —
+Socrate is **v1.5.2** on the v1.x line —
 a single-instance, production-capable identity server with two operator consoles.
 
 | ✅ Production ready (today) | ◻️ Roadmap |

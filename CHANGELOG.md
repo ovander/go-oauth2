@@ -10,6 +10,19 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Added
+
+- **`/version` reports the Go toolchain.** The response (also `/api/version`) gains
+  `go_version`, the toolchain that compiled the binary (`runtime.Version()`, e.g. `go1.27.1`),
+  so the build info is complete; the startup log line carries it too. Additive: the existing
+  `version`, `commit`, `branch` and `build_time` keys are unchanged.
+
+### Fixed
+
+- **Dashboard health reports the real build.** `GET /api/admin/dashboard/health`, shown in the
+  monitoring console's System Health card, returned a hard-coded `version: "1.0.0"` and
+  `details.go_version: "1.21+"`; it now returns the binary's version and Go toolchain.
+
 ### Fixed
 
 - **Scheduled jobs run once per interval across a cluster, as documented.** With the shared

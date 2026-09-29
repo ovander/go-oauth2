@@ -7,6 +7,7 @@ import (
 
 	"github.com/ovander/go-oauth2/internal/dto"
 	"github.com/ovander/go-oauth2/internal/repository"
+	"github.com/ovander/go-oauth2/internal/version"
 	"gorm.io/gorm"
 )
 
@@ -180,9 +181,9 @@ func (h *DashboardHandler) GetHealth(w http.ResponseWriter, r *http.Request) {
 		Status:   overallStatus,
 		Database: dbStatus,
 		Uptime:   uptimeStr,
-		Version:  "1.0.0",
+		Version:  version.Version,
 		Details: map[string]interface{}{
-			"go_version": "1.21+",
+			"go_version": version.GoVersion(),
 			"started_at": h.startTime.Format(time.RFC3339),
 		},
 	})

@@ -10,11 +10,17 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
-Everything merged since the v1.3.0 changelog cut. Planned as v1.4.0: a new licence and module
-path, three fixes found by the v1.3.0 end-to-end test pass, and migration tooling.
+## [1.4.0] - 2026-09-29
+
+Minor release on the **v1.x** line, and the first under the Apache-2.0 licence and the
+`github.com/ovander/go-oauth2` module path. It ships three fixes found by the v1.3.0 end-to-end
+test pass (F2, F3, F8), the migration tooling for moving applications to a new Socrate instance,
+and the public-repository kit. No migration, no new environment variable, no change to the
+token contract.
 
 ### Changed
 
+- README states v1.4.0; the pre-deploy checklist's example deploy tag is `v1.4.0`.
 - **Licence: Apache-2.0** (`LICENSE`). The README had declared MIT with no licence file, and
   `pkg/logger` still carried a proprietary header from another product; both are gone.
 - **Module path `github.com/ovander/go-oauth2`** (was `github.com/ovandermoten/go-oauth2`, which

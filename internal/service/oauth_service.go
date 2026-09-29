@@ -18,6 +18,7 @@ import (
 	"github.com/ovander/go-oauth2/internal/shared/auth"
 	"github.com/ovander/go-oauth2/internal/shared/auth/tokenexchange"
 	"github.com/ovander/go-oauth2/pkg/logger"
+	"gorm.io/gorm"
 )
 
 // dpopJKTFromContext returns the verified DPoP JWK thumbprint placed on the
@@ -506,9 +507,9 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 	//
 	// The app lookup below is needed for both PKCE enforcement and the
 	// CRIT-02 client-secret check, so we do it once here and reuse it.
-	app, err := s.appRepo.FindByClientID(ctx, clientID)
+	app, err := s.lookupTokenClient(ctx, clientID)
 	if err != nil {
-		return nil, fmt.Errorf("%w: client_id=%s", ErrAppNotFound, clientID)
+		return nil, err
 	}
 	// P3-3: a client deactivated between authorization and redemption must not
 	// be able to turn its code into tokens.
@@ -713,9 +714,9 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 	// lookup) ensures that an unauthenticated confidential-client request
 	// is rejected with ErrInvalidCredentials rather than leaking whether
 	// the user exists (ErrUserNotFound).
-	app, err := s.appRepo.FindByClientID(ctx, clientID)
+	app, err := s.lookupTokenClient(ctx, clientID)
 	if err != nil {
-		return nil, fmt.Errorf("%w: client_id=%s", ErrAppNotFound, clientID)
+		return nil, err
 	}
 
 	if app.ClientSecretHash != "" {
@@ -920,9 +921,9 @@ func (s *oauthService) handleClientCredentialsGrant(ctx context.Context, req dto
 		return nil, fmt.Errorf("%w: client_secret required for client_credentials grant", ErrInvalidCredentials)
 	}
 
-	app, err := s.appRepo.FindByClientID(ctx, clientID)
+	app, err := s.lookupTokenClient(ctx, clientID)
 	if err != nil {
-		return nil, fmt.Errorf("%w: client_id=%s", ErrAppNotFound, clientID)
+		return nil, err
 	}
 
 	if !auth.CheckClientSecret(clientSecret, app.ClientSecretHash) {
@@ -1600,6 +1601,25 @@ func (s *oauthService) withAudienceCoverage(details map[string]interface{}, app 
 // logClientAuthFailed audits a confidential-client authentication failure at the
 // token endpoint (RFC-007). appID may be nil when the client could not be
 // resolved. reason is "missing_secret" or "invalid_secret".
+// lookupTokenClient resolves the client_id presented at the token endpoint.
+// A client_id with no app row is a client-authentication failure: it is
+// audited as client_auth_failed (reason unknown_client) and returned as
+// ErrAppNotFound, which the handler answers exactly like a wrong secret
+// (invalid_client, RFC 6749 §5.2), so the response does not reveal whether a
+// client exists. Any other repository error stays an internal error, so the
+// endpoint keeps failing closed with a 500 when the database is unavailable.
+func (s *oauthService) lookupTokenClient(ctx context.Context, clientID string) (*model.App, error) {
+	app, err := s.appRepo.FindByClientID(ctx, clientID)
+	if err == nil {
+		return app, nil
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		s.logClientAuthFailed(ctx, clientID, "unknown_client", nil)
+		return nil, fmt.Errorf("%w: client_id=%s", ErrAppNotFound, clientID)
+	}
+	return nil, fmt.Errorf("token endpoint: look up client: %w", err)
+}
+
 func (s *oauthService) logClientAuthFailed(ctx context.Context, clientID, reason string, appID *uint) {
 	s.logSecurityEvent(ctx, model.SecurityEventClientAuthFailed, nil, appID, false, map[string]interface{}{
 		"client_id": clientID,

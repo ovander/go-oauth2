@@ -10,6 +10,17 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Unknown `client_id` at the token endpoint answers `401 invalid_client`, not `500`.** The three
+  grants turned a missing app into `ErrAppNotFound`, which the token handler did not map, so an
+  unknown client got `500 server_error` (immediately on `client_credentials`; on the code and
+  refresh grants when the code or token was valid). It is now answered exactly like a wrong
+  secret (`invalid_client`, same description; RFC 6749 §5.2), so the response does not reveal
+  which clients exist, and audited as `client_auth_failed` with reason `unknown_client`, which it
+  was not before. Only a real not-found is treated this way: any other app-lookup error, such as
+  the database being unavailable, stays a `500`.
+
 ## [1.5.1] - 2026-09-29
 
 Patch release on the **v1.x** line. The admin API's OAuth client lifecycle events now audit the

@@ -30,8 +30,26 @@ This is a READ-ONLY audit. Do NOT modify application code. Produce a written rep
 ## What Socrate v1.3.0 requires and supports (the compatibility contract)
 
 Treat the OP's live discovery document as the source of truth for endpoint URLs and
-supported values; fetch it if this environment has network access, otherwise reason
-from the app's configured endpoints. The contract is:
+supported values; fetch it if this environment has network access. **If you cannot
+reach the OP (blocked egress), use the confirmed v1.3.0 values below instead of
+marking those checks UNKNOWN** — they are derived from the server source.
+
+CONFIRMED v1.3.0 DISCOVERY VALUES (`{iss}` = issuer, e.g. `https://socrate.vandermoten.eu`, no trailing slash):
+- `authorization_endpoint` = `{iss}/oauth/authorize`, `token_endpoint` = `{iss}/oauth/token`,
+  `userinfo_endpoint` = `{iss}/oauth/userinfo`, `revocation_endpoint` = `{iss}/oauth/revoke`,
+  `introspection_endpoint` = `{iss}/oauth/introspect`, `jwks_uri` = `{iss}/.well-known/jwks.json`.
+- `grant_types_supported` = authorization_code, refresh_token, client_credentials.
+- `response_types_supported` = code only. `code_challenge_methods_supported` = S256 only.
+- `token_endpoint_auth_methods_supported` = client_secret_basic, client_secret_post.
+- `scopes_supported` = openid, email, profile, offline_access, api.
+- `id_token_signing_alg_values_supported` = RS256. JWKS keys carry `use:"sig"`, `kty:"RSA"`, `alg:"RS256"`, UUID `kid`.
+- **No `end_session_endpoint`** (no RP-initiated logout; revoke the refresh token instead).
+- `sub` = the user's numeric id as a decimal string (`app:<id>` for client_credentials).
+- `aud[0]` = the client's `client_id`. Refresh tokens are issued without needing `offline_access`.
+
+Full reference: `deploy/migration/SOCRATE-V1.3.0-OP-CONTRACT.md` in the `ovander/go-oauth2` repo.
+
+The contract is:
 
 HARD REQUIREMENTS (a violation is a BLOCKER):
 1. **OAuth 2.1 + OIDC.** Only the **Authorization Code** grant (interactive) and

@@ -65,3 +65,6 @@ token required for explicit hostnames).
 
 - [`APP-COMPAT-PROMPT.md`](./APP-COMPAT-PROMPT.md) — the per-application compatibility
   evaluation prompt, plus the canonical v1.3.0 client contract it checks against.
+- [`SOCRATE-V1.3.0-OP-CONTRACT.md`](./SOCRATE-V1.3.0-OP-CONTRACT.md) — the confirmed
+  v1.3.0 OpenID Provider metadata and token/key facts, derived from the server source.
+  Use it as the source of truth when the live discovery document is unreachable.

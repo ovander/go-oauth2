@@ -61,7 +61,7 @@ done
 
 # In-memory lists (never written to disk). NEW ids include deleted rows: they still hold the id.
 OLD_U="$(q "$OLD_DB" "SELECT id, lower(email) FROM users WHERE $USER_F ORDER BY id")"
-NEW_ALL="$(q "$NEW_DB" "SELECT id, lower(email), CASE WHEN $(live "$NEW_DB") THEN 'live' ELSE 'retired' END FROM users ORDER BY id")"
+NEW_ALL="$(q "$NEW_DB" "SELECT id, lower(email), CASE WHEN $(live "$NEW_DB") THEN 'live' ELSE 'retired' END, role FROM users ORDER BY id")"
 OLD_A="$(q "$OLD_DB" "SELECT a.id, a.client_id, a.name, (SELECT count(*) FROM user_app_roles r WHERE r.app_id=a.id) FROM apps a WHERE $APP_F ORDER BY a.id")"
 NEW_A="$(q "$NEW_DB" "SELECT a.id, a.client_id, a.name, (SELECT count(*) FROM user_app_roles r WHERE r.app_id=a.id) FROM apps a ORDER BY a.id")"
 
@@ -97,11 +97,28 @@ if [[ -n "$EXCLUDE_USERS" ]]; then
   [ -n "$o" ] && info "owned by an excluded user, will be carried with no owner: $o"
 fi
 
+hdr "global roles (a legacy user keeps a global role only if it is superadmin)"
+if has_col "$OLD_DB" users role; then
+  GR="$(q "$OLD_DB" "SELECT id, lower(email), role FROM users WHERE $USER_F AND role IS DISTINCT FROM 'user' ORDER BY id")"
+  if [ -z "$GR" ]; then ok "every selected legacy user is a plain global user"
+  else
+    while IFS='|' read -r id em role; do
+      [ -n "$id" ] || continue
+      live="$(awk -F'|' -v e="$em" '$2==e && $3=="live"{print $1}' <<<"$NEW_ALL")"
+      if [ -n "$live" ]; then
+        info "user $id ($(mask <<<"$em")): legacy global '$role', already on $NEW_DB as user $live — skipped, keeps its $NEW_DB role '$(awk -F'|' -v i="$live" '$1==i{print $4}' <<<"$NEW_ALL")'"
+      elif [ "$role" = superadmin ]; then
+        warn "user $id ($(mask <<<"$em")): legacy SUPERADMIN — would be imported with platform access; exclude it (EXCLUDE_USERS) unless intended"
+      else info "user $id ($(mask <<<"$em")): legacy global '$role' — imported as 'user' (its app roles are kept)"; fi
+    done <<<"$GR"
+  fi
+fi
+
 hdr "app roles of Socrate admins/superadmins (never copied: they hold no app role)"
 UAR_F="app_id IN (SELECT id FROM apps WHERE $APP_F)"
 [[ -n "$EXCLUDE_USERS" ]] && UAR_F="$UAR_F AND user_id NOT IN ($EXCLUDE_USERS)"
 SA_NEW="$(q "$NEW_DB" "SELECT string_agg(id::text, ',') FROM users WHERE role IN ('admin', 'superadmin')")"
-SA_OLD="$(q "$OLD_DB" "SELECT string_agg(id::text, ',') FROM users WHERE role IN ('admin', 'superadmin') AND $USER_F")"
+SA_OLD="$(q "$OLD_DB" "SELECT string_agg(id::text, ',') FROM users WHERE role = 'superadmin' AND $USER_F")"  # legacy admins arrive as 'user'
 SA="$(printf '%s,%s' "$SA_NEW" "$SA_OLD" | tr ',' '\n' | grep -E '^[0-9]+$' | sort -un | paste -sd, - || true)"
 if [ -n "$SA" ]; then
   n="$(q "$OLD_DB" "SELECT count(*) FROM user_app_roles WHERE $UAR_F AND user_id IN ($SA)")"

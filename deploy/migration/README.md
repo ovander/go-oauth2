@@ -87,6 +87,65 @@ Two settings to know about after a carry-over:
 
 Take a `pg_dump` of both databases before the real run.
 
+### When the new server is not empty
+
+`carry-over.sh` was written for a freshly installed target. Once the new server has its
+own rows, the copy's `ON CONFLICT DO NOTHING` **silently skips** any legacy row whose id
+or unique key is already taken. Typical sources of such rows are the first superadmin,
+the console clients, and apps registered by hand. A skipped row causes one of three
+failures:
+
+- **A legacy user whose id is taken:** the user isn't carried, and its `sub` now points
+  at someone else.
+- **A legacy user whose email is taken under another id:** the user isn't carried, and
+  its `sub` changes.
+- **A legacy app whose id is taken:** the app isn't carried, and its role rows attach to
+  the app that holds the id.
+
+Four scripts, run in this order, make it safe. All of them run as root on the Socrate VPS
+and take `OLD_DB` (default `db_socrate`) and `NEW_DB`. They are idempotent, and the
+ones that change data dry-run unless given `--apply`.
+
+1. **[`carry-over-preflight.sh`](./carry-over-preflight.sh)** (read-only). Run it with the
+   `APPS` and `EXCLUDE_USERS` you will give the copy. It names every collision, checks
+   that new ids are reserved clear of the legacy ranges, and reports MFA users (legacy
+   TOTP secrets are encrypted with the legacy `SECRET_KEY_BASE`, so those users must
+   re-enrol). Emails are printed masked.
+2. **[`reserve-legacy-ids.sh`](./reserve-legacy-ids.sh).** Moves the `users`, `apps` and
+   `user_app_roles` id sequences of the new database past the legacy maximum plus
+   `HEADROOM` (default 1000). The legacy server keeps creating rows until its last app
+   has moved, so anything the new server creates meanwhile must not take an id a later
+   carry-over needs. Run it before creating anything else on the new server. It never
+   lowers a sequence, and `carry-over.sh` no longer does either.
+3. **[`move-user-to-legacy-id.sh`](./move-user-to-legacy-id.sh)
+   `--email <e> --to <legacy id>`.** Use it when a person was created on the new server
+   (typically the first superadmin) under an id other than their legacy one. In one
+   transaction it:
+   - retires the current row: soft-deleted, `token_version` bumped;
+   - inserts the same person under the legacy id, with the same password hash, role,
+     MFA secret and profile;
+   - moves their MFA recovery codes, app roles and owned apps.
+
+   The audit rows are **not** rewritten: they are HMAC-chained over `user_id`, so they
+   keep the old id, and the integrity chain stays valid. It refuses unless the legacy
+   row with that id has the same email and the id is free in the new database.
+4. **`carry-over.sh`** with `APPS=<client_id>[,…]`, plus `EXCLUDE_USERS=<legacy id>[,…]`
+   for obsolete accounts (not carried, nor their roles; an app they own is carried with
+   no owner). Rehearse it on a `*_test` copy of the new database
+   (`createdb -T socrate socrate_test`, or a `pg_dump` restore), then run it with
+   `FORCE=1`.
+
+Re-run the preflight before step 4: it must end with `No collision`. The whole sequence
+was rehearsed on databases with this deployment's layout: legacy users 1–11, with the
+operator at 9 and an obsolete account at 1; legacy apps 2, 4 and 6–10; a new server
+holding the operator at 1, two console clients and one hand-registered app. The result:
+- user ids and `sub`s preserved;
+- the operator's new-server credentials kept;
+- the obsolete account and its roles excluded;
+- sequences only moved forward;
+- the audit chain byte-identical;
+- every script a no-op on re-run.
+
 ## Per-application migration workflow
 
 1. **Evaluate compatibility.** Run [`APP-COMPAT-PROMPT.md`](./APP-COMPAT-PROMPT.md)
@@ -111,3 +170,6 @@ Take a `pg_dump` of both databases before the real run.
   Use it as the source of truth when the live discovery document is unreachable.
 - [`carry-over.sh`](./carry-over.sh) — the ID-preserving data migration (users, apps,
   role assignments) from the old database into the new one.
+- [`carry-over-preflight.sh`](./carry-over-preflight.sh), [`reserve-legacy-ids.sh`](./reserve-legacy-ids.sh),
+  [`move-user-to-legacy-id.sh`](./move-user-to-legacy-id.sh) — making the carry-over safe
+  when the new server is not empty (see *When the new server is not empty*).

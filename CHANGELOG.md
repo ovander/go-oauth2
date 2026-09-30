@@ -10,6 +10,25 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Carry-over into a non-empty new server no longer loses or misassigns identities.**
+  `deploy/migration/carry-over.sh` assumed an empty target. Its `ON CONFLICT DO NOTHING`
+  silently skipped any legacy user or app whose id or email was already taken on the new
+  server, typically by the first superadmin, the console clients or a hand-registered app. A
+  skipped user's `sub` then pointed at someone else or changed, and a skipped app's roles
+  attached to another app. Its sequence reset could also move the id sequences backwards.
+  - New `carry-over-preflight.sh` (read-only) names every such collision, checks the id
+    reservation and reports MFA users.
+  - New `reserve-legacy-ids.sh` moves the new server's id sequences past the legacy ranges.
+  - New `move-user-to-legacy-id.sh` gives an account created on the new server its legacy id
+    without rewriting the HMAC-chained audit rows: the old row is retired, a copy is inserted
+    under the legacy id, and recovery codes, roles and owned apps move with it.
+  - `carry-over.sh` gains `EXCLUDE_USERS` for obsolete accounts, and only ever moves sequences
+    forward.
+
+  The procedure is in `deploy/migration/README.md`. No server code change.
+
 ### Added
 
 - **Apps on a separate VPS (docs and deploy scripts).** `docs/DEPLOYMENT-VPS-MULTI-APP.md` §6.7

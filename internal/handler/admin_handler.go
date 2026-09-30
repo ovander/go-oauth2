@@ -103,6 +103,11 @@ func appChangeSet(before, after *model.App) (changed []string, detail map[string
 	if !stringSliceEqual(before.Audiences, after.Audiences) {
 		markVal("audiences", []string(before.Audiences), []string(after.Audiences))
 	}
+	// The magic-link page receives single-use login tokens, so a change is as
+	// sensitive as a redirect URI change.
+	if !stringPtrEqual(before.MagicLinkURL, after.MagicLinkURL) {
+		markVal("magic_link_url", derefString(before.MagicLinkURL), derefString(after.MagicLinkURL))
+	}
 	return changed, detail
 }
 
@@ -1157,7 +1162,15 @@ func appToResponse(app model.App) dto.AppResponse {
 		ClaimMappings:      app.ClaimMappings,
 		URL:                app.URL,
 		RedirectURIs:       app.RedirectURIs,
+		MagicLinkURL:       app.MagicLinkURL,
 		OwnerID:            app.OwnerID,
 		CreatedAt:          app.CreatedAt,
 	}
+}
+
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

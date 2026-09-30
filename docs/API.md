@@ -305,12 +305,12 @@ Set-Cookie: refresh_token=<jwt>; Path=/oauth/token; Max-Age=<REFRESH_TOKEN_TTL>;
 
 Two halves, by design:
 
-1. **Request** (backend / service account only) — `POST /api/apps/{app_id}/service/magic-link` on the **Admin router**, authenticated with a `client_credentials` token (§6). Body: `{ "email": "ada@example.com" }`. Always returns `202` with a generic message (no enumeration). The user receives an email containing a single-use token.
-2. **Verify** (public) — `POST /api/auth/magic-link/verify` on the OAuth router:
+1. **Request** (backend / service account only) — `POST /api/apps/{app_id}/service/magic-link` on the **Admin router**, authenticated with a `client_credentials` token (§6). Body: `{ "email": "ada@example.com" }`. Returns `202` with a generic message whether or not the address is registered (no enumeration), `429` when rate-limited, and `409` when the app has no `magic_link_url` (§8.2): that answer depends on the app alone. The email links to the app's `magic_link_url` with `token` and `client_id` added to its query, e.g. `https://app.example.com/auth/magic?token=…&client_id=…`.
+2. **Verify** (public) — the app's landing page (or its backend) posts the two values to `POST /api/auth/magic-link/verify` on the OAuth router:
    ```json
    { "token": "RAW_MAGIC_TOKEN", "client_id": "YOUR_CLIENT_ID" }
    ```
-   Success returns a full login token set (same shape as §5.3). `422` if the link was already used, `401` if invalid/expired, `403` if locked. **POST-only** so email scanners don't consume the token.
+   Success returns a full login token set (same shape as §5.3). `422` if the link was already used, `401` if invalid/expired, `403` if locked. **POST-only** so email scanners don't consume the token: the landing page should ask for a click (or post on a user action) rather than on load, remove the token from the address bar (`history.replaceState`) and send `Referrer-Policy: no-referrer`.
 
 ### 5.8 Invitations
 - `GET /api/auth/invite?token=...` → `{ "valid": true, "email": "...", "app_name": "...", "expires_at": "..." }`
@@ -512,6 +512,14 @@ admin's tokens are revoked (token-version bump) and they must log in again
   `docs/EXTENSIBILITY.md` for the size caps and the full semantics. On update,
   omitting `audiences` / `allowed_scopes` / `claim_mappings` leaves them
   unchanged; a non-null value (including `[]` / `{}`) replaces the set.
+  `magic_link_url` (optional) is the app's page that magic-link emails open
+  (§5.7): an absolute `https` URL (`http` only for `localhost`), without
+  credentials, fragment, or `token` / `client_id` parameter, on the same origin
+  as one of `redirect_uris`; otherwise `400 invalid magic_link_url`. Without it
+  the app cannot send magic links. On update, omitting it leaves it unchanged
+  and `""` clears it; a `redirect_uris` change that would leave it on a
+  foreign origin is refused unless it moves in the same request. A change is
+  audited in `client_updated` like a redirect URI change.
 - `GET /{id}` · `PUT /{id}` · `DELETE /{id}`
 - `POST /{id}/rotate-secret` — issue a new secret (returned once).
 
@@ -521,6 +529,7 @@ admin's tokens are revoked (token-version bump) and they must log in again
   "is_public": false, "require_pkce": true, "url": "https://app.example.com",
   "redirect_uris": ["https://app.example.com/callback"], "owner_id": 5,
   "audiences": [], "allowed_scopes": [], "claim_mappings": {},
+  "magic_link_url": "https://app.example.com/auth/magic",
   "created_at": "2026-01-01T00:00:00Z" }
 ```
 

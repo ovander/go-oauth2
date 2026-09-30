@@ -302,6 +302,23 @@ func TestAppChangeSet(t *testing.T) {
 	}
 }
 
+// A magic-link page change is audited like a redirect URI change, old→new.
+func TestAppChangeSet_MagicLinkURL(t *testing.T) {
+	before := &model.App{MagicLinkURL: ptr("https://a/magic")}
+	after := &model.App{MagicLinkURL: ptr("https://b/magic")}
+	changed, detail := appChangeSet(before, after)
+	ml, ok := detail["magic_link_url"].(map[string]interface{})
+	if !contains(changed, "magic_link_url") || !ok || ml["old"] != "https://a/magic" || ml["new"] != "https://b/magic" {
+		t.Errorf("changed = %v, detail = %v", changed, detail["magic_link_url"])
+	}
+	if changed, _ := appChangeSet(after, &model.App{}); !contains(changed, "magic_link_url") {
+		t.Errorf("clearing magic_link_url not reported: %v", changed)
+	}
+	if changed, _ := appChangeSet(after, after); len(changed) != 0 {
+		t.Errorf("unchanged app reported %v", changed)
+	}
+}
+
 // Severity: destructive client-lifecycle actions are warning-level, routine
 // create/update stay info-level.
 func TestClientLifecycleSeverity(t *testing.T) {

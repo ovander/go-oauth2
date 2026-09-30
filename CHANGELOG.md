@@ -19,6 +19,19 @@ Capabilities**, non-breaking).
   is a `404`, a Socrate admin included). It sits under `ServiceAccountMiddleware` like the other
   `/service` routes (the token's `sub` must be `app:{app_id}`).
 
+### Fixed
+
+- **Magic links open the app's own page.** The email linked to `GET /api/auth/magic-link/verify`,
+  an endpoint that only accepts POST (so that mail scanners cannot consume the token), so every
+  magic link answered 405. An app now registers the page its magic-link emails open,
+  `magic_link_url` (new, optional, on `POST`/`PUT /api/admin/apps`, and in `AppResponse`). The
+  email links to that page with `token` and `client_id` in the query; the page posts them to the
+  verify endpoint, as the backendkit integration guide already describes. The URL must be `https`
+  (`http` only for localhost) and share an origin with one of the app's `redirect_uris`. A change
+  to it is audited like a redirect URI change. An app without it gets `409` from
+  `POST /api/apps/{app_id}/service/magic-link` instead of a `202` and an email with a dead link.
+  Migration `0026` adds the nullable `apps.magic_link_url` column.
+
 ## [1.5.3] - 2026-09-30
 
 Patch release on the **v1.x** line. A Socrate admin or superadmin is never an app member, even if a

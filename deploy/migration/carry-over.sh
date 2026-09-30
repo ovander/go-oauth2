@@ -16,6 +16,12 @@
 #     their users/roles; APPS=ALL migrates everything.
 #   * Safe by default. Refuses a NEW_DB that does not look like a test copy unless
 #     FORCE=1 — always dry-run against a restored copy first.
+#   * A target that is not empty (the new server already has its own users and apps) needs
+#     care: a legacy row whose id or email is taken there is skipped silently. Run
+#     carry-over-preflight.sh first; it names every such collision. The companions are
+#     reserve-legacy-ids.sh (keep new ids clear of the legacy ranges) and
+#     move-user-to-legacy-id.sh (give a person created on the new server their legacy id).
+#   * Id sequences are only ever moved forward (never below a reservation).
 #
 # Usage:
 #   # 1) test on a copy first (recommended):
@@ -28,6 +34,8 @@
 #   NEW_DB              target database (required)
 #   APPS               ALL, or comma-separated client_ids (default: ALL)
 #   SET_REQUIRE_PKCE   1 to set require_pkce=true on migrated apps (default: 1)
+#   EXCLUDE_USERS      comma-separated legacy user ids NOT to carry (obsolete accounts): they,
+#                      and their role rows, are skipped; an app they own is carried with no owner
 #   FORCE              1 to allow a NEW_DB whose name does not end in _test
 #   PSQL_SUPER         how to run psql as a superuser (default: sudo -u postgres psql)
 set -euo pipefail
@@ -37,6 +45,11 @@ NEW_DB="${NEW_DB:?set NEW_DB to the target database (test on a *_test copy first
 APPS="${APPS:-ALL}"
 SET_REQUIRE_PKCE="${SET_REQUIRE_PKCE:-1}"
 FORCE="${FORCE:-0}"
+EXCLUDE_USERS="${EXCLUDE_USERS:-}"
+if [[ -n "$EXCLUDE_USERS" && ! "$EXCLUDE_USERS" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
+	echo "EXCLUDE_USERS must be comma-separated numeric ids" >&2
+	exit 2
+fi
 PSQL_SUPER="${PSQL_SUPER:-sudo -u postgres psql}"
 
 if [[ "$NEW_DB" != *_test && "$FORCE" != "1" ]]; then
@@ -61,6 +74,17 @@ else
 	echo "==> Migrating apps [$APPS] and their users from $OLD_DB -> $NEW_DB"
 fi
 
+# Obsolete legacy accounts: not carried, nor their roles; apps they own lose the owner.
+APP_STAGE_FIX=""
+if [[ -n "$EXCLUDE_USERS" ]]; then
+	if [[ -z "$USER_WHERE" ]]; then USER_WHERE="WHERE id NOT IN ($EXCLUDE_USERS)"
+	else USER_WHERE="WHERE id NOT IN ($EXCLUDE_USERS) AND (${USER_WHERE#WHERE })"; fi
+	if [[ -z "$UAR_WHERE" ]]; then UAR_WHERE="WHERE user_id NOT IN ($EXCLUDE_USERS)"
+	else UAR_WHERE="$UAR_WHERE AND user_id NOT IN ($EXCLUDE_USERS)"; fi
+	APP_STAGE_FIX="UPDATE _stage SET owner_id = NULL WHERE owner_id IN ($EXCLUDE_USERS)"
+	echo "==> Excluding legacy users [$EXCLUDE_USERS] and their roles"
+fi
+
 # Columns present in BOTH databases for a table, comma-joined. Sorted with LC_ALL=C
 # on both sides so comm sees the same order regardless of database collation.
 cols_of() {
@@ -75,7 +99,7 @@ shared_cols() {
 # NEW side stages into a session temp table, then inserts with ON CONFLICT DO
 # NOTHING so existing ids are skipped.
 copy_table() {
-	local tbl="$1" where="$2" cols n res
+	local tbl="$1" where="$2" fix="${3:-SELECT 1}" cols n res
 	cols="$(shared_cols "$tbl")"
 	if [[ -z "$cols" ]]; then echo "  !! $tbl: no shared columns" >&2; return 1; fi
 	n="$(sup "$OLD_DB" -tAc "SELECT count(*) FROM $tbl $where")"
@@ -84,6 +108,7 @@ copy_table() {
 		| $PSQL_SUPER -X -v ON_ERROR_STOP=1 "$NEW_DB" \
 			-c "CREATE TEMP TABLE _stage AS SELECT $cols FROM $tbl WHERE false" \
 			-c "\copy _stage ($cols) FROM pstdin WITH (FORMAT csv)" \
+			-c "$fix" \
 			-c "INSERT INTO $tbl ($cols) SELECT $cols FROM _stage ON CONFLICT DO NOTHING")"
 	echo "    ${res##*$'\n'} (rows already present were skipped)"
 }
@@ -91,16 +116,17 @@ copy_table() {
 # FK order: users (apps.owner_id -> users), then apps, then the join table.
 echo "-- copying --"
 copy_table users           "$USER_WHERE"
-copy_table apps            "$APP_WHERE"
+copy_table apps            "$APP_WHERE" "${APP_STAGE_FIX:-SELECT 1}"
 copy_table user_app_roles  "$UAR_WHERE"
 
-# Reset id sequences so new sign-ups on the new OP do not collide with carried ids.
-echo "-- resetting sequences --"
+# Move id sequences past the carried ids so new sign-ups on the new OP do not collide with
+# them. Never move one backwards: reserve-legacy-ids.sh may have put it past the legacy ranges.
+echo "-- advancing sequences --"
 for tbl in apps users user_app_roles; do
 	seq="$(sup "$NEW_DB" -tAc "SELECT pg_get_serial_sequence('$tbl','id')")"
 	if [[ -n "$seq" ]]; then
-		sup "$NEW_DB" -tAc "SELECT setval('$seq', COALESCE((SELECT MAX(id) FROM $tbl),1), true)" >/dev/null
-		echo "  $tbl: sequence set to MAX(id)"
+		sup "$NEW_DB" -tAc "SELECT setval('$seq', GREATEST(COALESCE((SELECT MAX(id) FROM $tbl),1), (SELECT CASE WHEN is_called THEN last_value ELSE last_value - 1 END FROM $seq), 1), true)" >/dev/null
+		echo "  $tbl: sequence at least MAX(id)"
 	fi
 done
 

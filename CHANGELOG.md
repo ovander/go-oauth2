@@ -10,6 +10,16 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-30
+
+Minor release on the **v1.x** line. Magic links work: the email opens the app's own page, which
+posts the token to the verify endpoint. An app's backend can look up one of its members with its
+service-account token. **Migration `0026`** adds the nullable `apps.magic_link_url` column (it runs
+at start-up, without `AUTO_MIGRATE`). No new environment variable. One behaviour change: an app
+without a `magic_link_url` gets `409` from `POST /api/apps/{app_id}/service/magic-link` instead of
+a `202` and an email whose link answered 405. Set the field with `PUT /api/admin/apps/{id}` for each
+app that sends magic links.
+
 ### Added
 
 - **`GET /api/apps/{app_id}/service/users/{user_id}`: an app's backend looks up one of its members
@@ -1628,7 +1638,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.5.3...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/ovander/go-oauth2/compare/v1.5.3...v1.6.0
 [1.5.3]: https://github.com/ovander/go-oauth2/compare/v1.5.2...v1.5.3
 [1.5.2]: https://github.com/ovander/go-oauth2/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/ovander/go-oauth2/compare/v1.5.0...v1.5.1

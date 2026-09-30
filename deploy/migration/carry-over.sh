@@ -22,6 +22,10 @@
 #     reserve-legacy-ids.sh (keep new ids clear of the legacy ranges) and
 #     move-user-to-legacy-id.sh (give a person created on the new server their legacy id).
 #   * Id sequences are only ever moved forward (never below a reservation).
+#   * No app role for a Socrate admin. A Socrate admin/superadmin (one platform profile, global
+#     access) is never an app member, whatever the app role: as a member, that app's admins could
+#     act on the platform account (e.g. force a password reset). The legacy server did not enforce
+#     this, so role rows whose user is an admin or superadmin on the NEW server are dropped.
 #
 # Usage:
 #   # 1) test on a copy first (recommended):
@@ -117,7 +121,9 @@ copy_table() {
 echo "-- copying --"
 copy_table users           "$USER_WHERE"
 copy_table apps            "$APP_WHERE" "${APP_STAGE_FIX:-SELECT 1}"
-copy_table user_app_roles  "$UAR_WHERE"
+# Drop role rows of users who are Socrate admins or superadmins on the NEW server (see the header).
+GLOBAL_ADMIN_ROLES_FIX="DELETE FROM _stage WHERE user_id IN (SELECT id FROM users WHERE role IN ('admin', 'superadmin'))"
+copy_table user_app_roles  "$UAR_WHERE" "$GLOBAL_ADMIN_ROLES_FIX"
 
 # Move id sequences past the carried ids so new sign-ups on the new OP do not collide with
 # them. Never move one backwards: reserve-legacy-ids.sh may have put it past the legacy ranges.

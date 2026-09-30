@@ -135,6 +135,13 @@ ones that change data dry-run unless given `--apply`.
    (`createdb -T socrate socrate_test`, or a `pg_dump` restore), then run it with
    `FORCE=1`.
 
+**Socrate admins get no app role.** A Socrate admin or superadmin (one platform profile,
+with global access to every app) is never an app member, whatever the app role, and an app
+member is never a Socrate admin. As an app member, a platform account would be exposed to that
+app's admins: they could, for example, force a password reset on it. The legacy server did
+not enforce this, so `carry-over.sh` drops every role row whose user is an admin or
+superadmin on the new server, and the preflight lists those rows.
+
 Re-run the preflight before step 4: it must end with `No collision`. The whole sequence
 was rehearsed on databases with this deployment's layout: legacy users 1–11, with the
 operator at 9 and an obsolete account at 1; legacy apps 2, 4 and 6–10; a new server

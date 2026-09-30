@@ -5,6 +5,8 @@ server (`go-oauth2`), the admin console and the monitoring console (each a
 static SPA plus a Go BFF) — **and any number of relying-party applications**
 that authenticate against Socrate: their own SPAs, BFFs or back-ends, on their
 own subdomains, sharing the same Caddy edge and the same Postgres cluster.
+Applications may instead run on a **separate VPS**; §6.7 covers that layout
+(how they reach the admin API and how client IPs cross the two hosts).
 
 This document is the suite-level runbook. The per-repo deploy kits it builds on:
 
@@ -61,7 +63,8 @@ Nothing in this document relaxes a control it describes.
 1. Caddy is the only process bound to a public interface. Every service binds
    `127.0.0.1`.
 2. The Socrate admin API (`:8081`) has **no public hostname**. Its only clients
-   are the two console BFFs, over loopback.
+   are the two console BFFs, over loopback, and — for apps on a separate VPS —
+   the restricted SSH tunnel of §6.7, which also ends on loopback.
 3. Browsers never hold OAuth tokens for the consoles: each console's BFF is a
    confidential client that keeps tokens in a server-side session and injects
    the bearer. Relying-party apps are encouraged to use the same pattern
@@ -72,7 +75,8 @@ Nothing in this document relaxes a control it describes.
    in each app's equivalent — never in a repo, an SPA bundle or a Caddyfile.
 6. Every reverse proxy relies on Caddy replacing client-supplied
    `X-Forwarded-For`. **Do not set Caddy `trusted_proxies`** unless another
-   proxy sits in front of Caddy (see §4.4).
+   proxy sits in front of Caddy, or for the **single address** of an apps VPS
+   (§6.7) — never a range (see §4.4).
 
 ### Port and host plan
 
@@ -254,13 +258,28 @@ serves for Prometheus (see `docs/OBSERVABILITY.md` and
 ### 4.4 Client-IP attribution across the chain
 
 Rate limits, lockouts, IP blocking and the audit trail key on the client IP.
-The chain is: client → Caddy (replaces any incoming `X-Forwarded-For` with the
-real peer, because its default `trusted_proxies` is empty) → BFF (honours the
-header only from a loopback peer, strips `X-Real-IP`/`True-Client-IP`/
-`Forwarded`, appends itself) → Socrate (walks `X-Forwarded-For` from the right,
-skipping `TRUSTED_PROXIES`, and lands on the client). Every link assumes the
-one before it; the one configuration that breaks all of them is a Caddy
-`trusted_proxies` directive that trusts a public range.
+The chain is:
+
+1. **Caddy** replaces any incoming `X-Forwarded-For` with the real peer,
+   because its default `trusted_proxies` is empty.
+2. **A BFF** honours `X-Forwarded-For` only from a loopback peer (Caddy) and
+   uses the peer address otherwise. It never forwards what the browser sent: the
+   gateway strips `X-Real-IP`, `True-Client-IP` and `Forwarded`, and the inbound
+   `X-Forwarded-For` is replaced by the one address the BFF resolved. The
+   console BFFs do this since admin v1.1.0 / monitoring v1.0.1, through
+   backendkit v1.15.0 client attribution, for both proxied requests and the
+   token, refresh, revoke and step-up calls they make themselves.
+3. **Socrate** honours `X-Forwarded-For` only when the connection comes from
+   `TRUSTED_PROXIES` (default loopback), and then takes the **leftmost** entry
+   (`GetClientIPSafe`, `internal/middleware/ratelimit.go`).
+
+Because Socrate reads the leftmost entry, every hop must **replace** a
+client-supplied header, never append to it: an appended chain would leave the
+browser's claim leftmost. Every link assumes the one before it. The one
+configuration that breaks all of them is a Caddy `trusted_proxies` directive
+that trusts a public range; the only exception this document allows is the
+single `/32` (`/128`) of an apps VPS in §6.7, whose applications are bound by
+the same replace-never-append rule.
 
 ---
 
@@ -502,6 +521,8 @@ requirement; unknown scopes are `invalid_scope`.
 
 ### 6.6 App checklist
 
+(For an app on a separate VPS, also §6.7.)
+
 - [ ] Client registered; exact `https` redirect URI(s); secret stored only in
       the app's env file (`0640 root:app-n`).
 - [ ] Own Postgres database + role; migrations applied deliberately.
@@ -514,6 +535,120 @@ requirement; unknown scopes are `invalid_scope`.
 - [ ] `ALLOWED_ORIGINS` touched only for a public-client SPA.
 - [ ] Users assigned app roles (or invited); an app admin nominated.
 - [ ] Smoke test (§8.4) added for the app.
+
+### 6.7 Apps on a separate VPS
+
+Relying-party apps can run on their own VPS, apart from Socrate and the
+consoles. Two things then need care: the **admin API** is loopback-only on the
+Socrate VPS, and **client IPs** have to cross a second host.
+
+```
+   Apps VPS (<apps-ip>)                                Socrate VPS
+ ┌───────────────────────────────┐                 ┌──────────────────────────────────┐
+ │ Caddy → app BFF / API         │  HTTPS (public) │ Caddy (trusted_proxies <apps-ip>) │
+ │   OAuth: token, refresh,      │ ───────────────▶│   → 127.0.0.1:8080 Socrate OAuth  │
+ │   revoke, userinfo, JWKS      │ X-Forwarded-For │                                   │
+ │                               │ = resolved IP   │                                   │
+ │   Admin API calls             │                 │                                   │
+ │   → 127.0.0.1:18082 ──────────┼── SSH tunnel ──▶│ sshd → 127.0.0.1:<ADMIN_PORT>     │
+ │ socrate-admin-tunnel.service  │  (port 22, key  │   Socrate admin API (loopback)    │
+ │                               │   restricted)   │                                   │
+ └───────────────────────────────┘                 └──────────────────────────────────┘
+```
+
+**OAuth calls stay public.** Token, refresh, revoke, userinfo, introspect and
+JWKS go to `https://auth.example.com` from the apps VPS. The loopback
+back-channel of §6.2 (`http://127.0.0.1:8080`) exists only on the Socrate VPS.
+Sign-in never depends on the tunnel.
+
+**The admin API goes through an SSH tunnel.** App-user management, invitations,
+magic links and policy decisions use the admin API, which is loopback-only on
+the Socrate VPS and must stay so (§1, invariant 2). A systemd unit on the apps
+VPS keeps an SSH local forward open, `127.0.0.1:18082` → Socrate VPS
+`127.0.0.1:<ADMIN_PORT>`, and apps set `SOCRATE_ADMIN_URL` (backendkit
+`AdminBaseURL`) to `http://127.0.0.1:18082`. The design:
+
+- **One key, one forward.** A no-shell system user (`apps-tunnel`) on the
+  Socrate VPS holds a single key:
+  `restrict,port-forwarding,from="<apps-ip>",permitopen="127.0.0.1:<ADMIN_PORT>",command="/usr/sbin/nologin"`.
+  The key opens that one forward, only from the apps VPS; no shell, no other
+  port. `sshd_config` is not changed.
+- **Pinned host key.** The apps side pins the Socrate VPS's ed25519 host key,
+  checked against the fingerprint the Socrate side prints. A reinstalled Socrate
+  VPS therefore refuses the tunnel until the new fingerprint is installed, by
+  design.
+- **Fail closed.** If the tunnel is down, admin calls fail. Apps have no
+  fallback and never a public admin URL. systemd restarts the tunnel within
+  about 5 seconds.
+- **One tunnel per apps VPS.** It is shared by every app on that host; each app
+  still authenticates to the admin API with its own credentials (service
+  account or forwarded user token).
+
+**Client IPs: one trusted address.** Caddy on the Socrate VPS trusts
+`X-Forwarded-For` from the apps VPS's single address, so the browser IP an app
+sends reaches Socrate's audit trail, rate limits and IP blocks:
+
+```caddyfile
+{
+	servers {
+		trusted_proxies static <apps-ip>/32
+	}
+}
+```
+
+This needs Caddy v2.6.3 or later. Add the `/128` too if the apps VPS reaches
+Socrate over IPv6, which happens only if the Socrate host name has an AAAA
+record. The consequence binds **every app on the apps VPS**: Socrate now
+believes what that host sends. An app must either send no `X-Forwarded-For` to
+Socrate, or send exactly one address it resolved itself (trusting
+`X-Forwarded-For` only from its own loopback Caddy). backendkit client
+attribution does this: `bff.WithClientAttribution`,
+`socrate.ApplyClientAttribution`. An app that forwards a browser's own header
+would let that browser choose its audited, rate-limited address. Socrate's
+`TRUSTED_PROXIES` stays at its loopback default.
+
+**Setting it up.** Two scripts in `deploy/scripts/`. Both are idempotent, and
+both dry-run unless given `--apply`.
+
+1. On the **apps VPS**: `sudo bash apps-socrate-tunnel.sh key`. This creates
+   the tunnel key (once) and prints the public key.
+2. On the **Socrate VPS**:
+   `sudo bash socrate-apps-access.sh --apps-ip <apps-ip> --key '<public key>' [--apply]`.
+   - It adds the Caddy `trusted_proxies` line, creating the global options
+     block if the Caddyfile has none, then validates and reloads.
+   - It creates `apps-tunnel` with its restricted key.
+   - It checks, read-only, that sshd allows key login and local forwarding for
+     that user from that address.
+   - It prints the host-key fingerprint for step 3.
+   - The Caddyfile is backed up and restored on a failed validation or reload.
+3. On the **apps VPS**:
+   `sudo bash apps-socrate-tunnel.sh install SHA256:<fingerprint> [--apply]`.
+   It pins the host key (and stops on a mismatch), installs and starts
+   `socrate-admin-tunnel.service`, then verifies it.
+
+**Verifying it.**
+
+| Check | Where | Expect |
+|---|---|---|
+| `sudo bash apps-socrate-tunnel.sh verify` | apps VPS | tunnel active; `/version` answers through it; admin endpoints need credentials; the key cannot run a command; a forward to any other port is refused |
+| `curl -m 5 http://auth.example.com:<ADMIN_PORT>/version` and `curl -m 5 http://<apps-ip>:18082/version` | anywhere else | both fail to connect (`000`): neither end is public |
+| `pkill -u socrate-tunnel -x ssh`, wait 8 s, `curl http://127.0.0.1:18082/version` | apps VPS | the unit is `active` again and answers |
+| `curl -H 'X-Forwarded-For: 203.0.113.77' -u 'xff-test-apps:x' -d grant_type=client_credentials https://auth.example.com/oauth/token` from the apps VPS, and the same with `203.0.113.88` / `xff-test-other` from anywhere else | both | both `401`. The `client_auth_failed` audit rows show `203.0.113.77` for the apps VPS, and the caller's **real** IP for the other: the forged header is ignored |
+
+**Undoing it.**
+- **Socrate VPS:** restore the Caddyfile from the backup the script names, then
+  reload Caddy and run `userdel -r apps-tunnel`.
+- **Apps VPS:** `systemctl disable --now socrate-admin-tunnel` and remove the
+  unit file.
+
+**This deployment.**
+
+| Item | Value |
+|---|---|
+| Apps VPS | `135.125.107.71` |
+| Socrate VPS | `socrate.vandermoten.eu`, SSH port 22 |
+| Admin API | `ADMIN_PORT=8082`: `8081` is taken there by the legacy server, as in `deploy/migration/README.md` |
+| Tunnel end | `127.0.0.1:18082` on the apps VPS |
 
 ---
 
@@ -540,7 +675,8 @@ Conventions that keep the invariants of §1:
   them is an allowlist again, so a typo in Caddy cannot open a path the BFF
   does not serve.
 - `header_up X-Forwarded-Proto {scheme}` on every proxy so BFFs set `Secure`
-  cookies; **no `trusted_proxies`** (§4.4).
+  cookies; **no `trusted_proxies`** (§4.4), except the single address of an
+  apps VPS in the global options (§6.7).
 - `flush_interval -1` on the monitoring proxy (SSE event stream).
 - One `Content-Security-Policy` per host, `connect-src 'self'` — with a BFF
   every call is same-origin. A public-client SPA (§6.3) needs `connect-src
@@ -757,8 +893,13 @@ it is CPU you are adding, which is exactly what that path is short of.
 ## 9. Security checklist (suite-wide)
 
 - [ ] `ufw`: 22/80/443 only; every service bound to `127.0.0.1`.
-- [ ] Caddy: no `trusted_proxies`; no public host routes to `:8081`;
-      `caddy validate` clean; HSTS + CSP per host.
+- [ ] Caddy: no `trusted_proxies`, or only an apps VPS's single `/32`
+      (§6.7); no public host routes to `:8081`; `caddy validate` clean;
+      HSTS + CSP per host.
+- [ ] Apps VPS (if any, §6.7): the tunnel key is restricted (`from=`,
+      `permitopen=`, no shell); the host key is pinned;
+      `apps-socrate-tunnel.sh verify` is green; no app forwards a
+      browser-supplied `X-Forwarded-For` to Socrate.
 - [ ] Socrate: `ENV=production`, https issuer, 32+ char `SECRET_KEY_BASE`,
       absolute `KEYS_PATH` (`0700 socrate`), `TRUSTED_PROXIES` at default,
       `RATE_LIMIT_TOKEN` > 0, `ADMIN_PASSWORD_LOGIN_ENABLED=false`,

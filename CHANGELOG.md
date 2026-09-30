@@ -10,6 +10,24 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Added
+
+- **Apps on a separate VPS (docs and deploy scripts).** `docs/DEPLOYMENT-VPS-MULTI-APP.md` §6.7
+  documents running relying-party apps on their own VPS. OAuth calls stay on the public issuer.
+  The loopback-only admin API is reached through a restricted SSH tunnel: one key, one forward,
+  only from the apps address, no shell, pinned host key. Caddy trusts `X-Forwarded-For` from
+  that single address only. The section also gives the verification checks and the undo steps.
+  `deploy/scripts/socrate-apps-access.sh` (Socrate VPS) and `deploy/scripts/apps-socrate-tunnel.sh`
+  (apps VPS) implement it; both are idempotent and dry-run by default.
+
+### Changed
+
+- Docs: `docs/DEPLOYMENT-VPS-MULTI-APP.md` §4.4 now describes the client-IP chain as the code
+  implements it. Socrate takes the **leftmost** `X-Forwarded-For` entry from a trusted peer
+  (the section said it walked from the right). The BFFs replace the header with the address they
+  resolved instead of appending to it. The invariants, the Caddy conventions and the security
+  checklist now allow the one `trusted_proxies` exception of §6.7. No code change.
+
 ## [1.5.2] - 2026-09-29
 
 Patch release on the **v1.x** line. An unknown `client_id` at the token endpoint is answered

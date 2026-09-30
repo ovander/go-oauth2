@@ -297,7 +297,7 @@ func seedTestUser(
 func TestRequestMagicLink_HappyPath(t *testing.T) {
 	svc, mlRepo, userRepo, appRepo, roleRepo, emailSvc := buildMagicLinkService(t)
 
-	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App"}
+	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding}
 	user := &model.User{ID: 10, Email: "alice@example.com", Name: "Alice", IsVerified: true}
 	appRepo.add(app) // needed by VerifyMagicLink; not used in request path
 	seedTestUser(userRepo, roleRepo, user, app)
@@ -326,7 +326,7 @@ func TestRequestMagicLink_HappyPath(t *testing.T) {
 func TestRequestMagicLink_UnknownEmail_SilentSuccess(t *testing.T) {
 	// An unknown email must not return an error (enumeration resistance).
 	svc, mlRepo, _, _, _, _ := buildMagicLinkService(t)
-	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App"}
+	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding}
 
 	rawToken, err := svc.RequestMagicLink(context.Background(), "ghost@example.com", app)
 
@@ -346,7 +346,7 @@ func TestRequestMagicLink_UserNoRoleInApp_SilentSuccess(t *testing.T) {
 	// silently ignored so that enumeration via the M2M channel is prevented.
 	svc, mlRepo, userRepo, _, _, _ := buildMagicLinkService(t)
 
-	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App"}
+	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding}
 	user := &model.User{ID: 10, Email: "alice@example.com", Name: "Alice", IsVerified: true}
 	userRepo.add(user)
 	// Intentionally NOT calling seedTestUser — user has no role in app.
@@ -367,7 +367,7 @@ func TestRequestMagicLink_UserNoRoleInApp_SilentSuccess(t *testing.T) {
 func TestRequestMagicLink_RateLimit(t *testing.T) {
 	svc, _, userRepo, appRepo, roleRepo, _ := buildMagicLinkService(t)
 
-	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App"}
+	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding}
 	user := &model.User{ID: 10, Email: "alice@example.com", Name: "Alice", IsVerified: true}
 	appRepo.add(app)
 	seedTestUser(userRepo, roleRepo, user, app)
@@ -394,7 +394,7 @@ func TestRequestMagicLink_RateLimit(t *testing.T) {
 func TestVerifyMagicLink_HappyPath(t *testing.T) {
 	svc, _, userRepo, appRepo, roleRepo, _ := buildMagicLinkService(t)
 
-	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App"}
+	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding}
 	user := &model.User{ID: 10, Email: "alice@example.com", Name: "Alice", IsVerified: true}
 	appRepo.add(app)
 	seedTestUser(userRepo, roleRepo, user, app)
@@ -430,7 +430,7 @@ func TestVerifyMagicLink_HappyPath(t *testing.T) {
 func TestVerifyMagicLink_AlreadyUsed(t *testing.T) {
 	svc, _, userRepo, appRepo, roleRepo, _ := buildMagicLinkService(t)
 
-	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App"}
+	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding}
 	user := &model.User{ID: 10, Email: "alice@example.com", Name: "Alice", IsVerified: true}
 	appRepo.add(app)
 	seedTestUser(userRepo, roleRepo, user, app)
@@ -455,7 +455,7 @@ func TestVerifyMagicLink_AlreadyUsed(t *testing.T) {
 
 func TestVerifyMagicLink_WrongToken(t *testing.T) {
 	svc, _, _, appRepo, _, _ := buildMagicLinkService(t)
-	appRepo.add(&model.App{ID: 1, ClientID: "app-1", Name: "Test App"})
+	appRepo.add(&model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding})
 
 	_, err := svc.VerifyMagicLink(context.Background(), dto.MagicLinkVerifyRequest{
 		Token:    "notavalidtoken",
@@ -469,7 +469,7 @@ func TestVerifyMagicLink_WrongToken(t *testing.T) {
 func TestVerifyMagicLink_ExpiredToken(t *testing.T) {
 	svc, mlRepo, userRepo, appRepo, roleRepo, _ := buildMagicLinkService(t)
 
-	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App"}
+	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding}
 	user := &model.User{ID: 10, Email: "alice@example.com", Name: "Alice", IsVerified: true}
 	appRepo.add(app)
 	seedTestUser(userRepo, roleRepo, user, app)
@@ -491,7 +491,7 @@ func TestVerifyMagicLink_ExpiredToken(t *testing.T) {
 
 func TestVerifyMagicLink_EmptyToken(t *testing.T) {
 	svc, _, _, appRepo, _, _ := buildMagicLinkService(t)
-	appRepo.add(&model.App{ID: 1, ClientID: "app-1", Name: "Test App"})
+	appRepo.add(&model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding})
 
 	_, err := svc.VerifyMagicLink(context.Background(), dto.MagicLinkVerifyRequest{
 		Token:    "",
@@ -505,8 +505,8 @@ func TestVerifyMagicLink_EmptyToken(t *testing.T) {
 func TestVerifyMagicLink_AppMismatch(t *testing.T) {
 	svc, _, userRepo, appRepo, roleRepo, _ := buildMagicLinkService(t)
 
-	app1 := &model.App{ID: 1, ClientID: "app-1", Name: "App One"}
-	app2 := &model.App{ID: 2, ClientID: "app-2", Name: "App Two"}
+	app1 := &model.App{ID: 1, ClientID: "app-1", Name: "App One", MagicLinkURL: &testMagicLanding}
+	app2 := &model.App{ID: 2, ClientID: "app-2", Name: "App Two", MagicLinkURL: &testMagicLanding}
 	user := &model.User{ID: 10, Email: "alice@example.com", Name: "Alice", IsVerified: true}
 	appRepo.add(app1)
 	appRepo.add(app2)

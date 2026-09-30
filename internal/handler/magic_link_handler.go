@@ -62,6 +62,12 @@ func (h *MagicLinkHandler) Request(w http.ResponseWriter, r *http.Request) {
 			writeError(w, "too many requests, please try again later", http.StatusTooManyRequests)
 			return
 		}
+		// App-level configuration error, independent of the address: say so
+		// rather than accept a request whose email would open no page.
+		if errors.Is(err, service.ErrMagicLinkNotConfigured) {
+			writeError(w, err.Error(), http.StatusConflict)
+			return
+		}
 		// Any other internal error: return opaque success to avoid leaking info.
 		// The error is logged inside the service layer.
 		w.WriteHeader(http.StatusAccepted)

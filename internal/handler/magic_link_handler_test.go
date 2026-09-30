@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/ovander/go-oauth2/internal/contextkeys"
@@ -163,6 +164,26 @@ func TestMagicLinkHandler_Request_RateLimited(t *testing.T) {
 
 	if rr.Code != http.StatusTooManyRequests {
 		t.Errorf("expected 429, got %d", rr.Code)
+	}
+}
+
+func TestMagicLinkHandler_Request_NotConfigured_Conflict(t *testing.T) {
+	// An app without a magic_link_url gets a clear 409, not the opaque 202:
+	// the answer depends on the app alone, so it reveals nothing about the address.
+	svc := &mockMagicLinkService{
+		requestFn: func(_ context.Context, _ string, _ *model.App) (string, error) {
+			return "", service.ErrMagicLinkNotConfigured
+		},
+	}
+	h := newMagicLinkHandler(svc)
+
+	rr := doMagicRequest(h.Request, map[string]string{"email": "alice@example.com"})
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), "magic_link_url") {
+		t.Errorf("body %q does not name magic_link_url", rr.Body.String())
 	}
 }
 

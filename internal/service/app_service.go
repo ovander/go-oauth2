@@ -80,6 +80,13 @@ func (s *appService) Create(ctx context.Context, req dto.CreateAppRequest, owner
 	if err := model.ValidateClaimMappings(req.ClaimMappings); err != nil {
 		return nil, "", fmt.Errorf("%w: %s", ErrInvalidClaimMapping, err)
 	}
+	var magicLinkURL *string
+	if req.MagicLinkURL != nil {
+		var err error
+		if magicLinkURL, err = normalizeMagicLinkURL(*req.MagicLinkURL, req.RedirectURIs); err != nil {
+			return nil, "", err
+		}
+	}
 
 	// Generate client ID
 	clientID, err := generateSecureToken(16)
@@ -130,6 +137,7 @@ func (s *appService) Create(ctx context.Context, req dto.CreateAppRequest, owner
 		Active:             true,
 		URL:                req.URL,
 		RedirectURIs:       model.StringArray(req.RedirectURIs),
+		MagicLinkURL:       magicLinkURL,
 		OwnerID:            &ownerID,
 		CreatedAt:          time.Now(),
 		UpdatedAt:          time.Now(),
@@ -183,6 +191,19 @@ func (s *appService) Update(ctx context.Context, id uint, req dto.UpdateAppReque
 			return nil, fmt.Errorf("%w: %s", ErrInvalidClaimMapping, err)
 		}
 		app.ClaimMappings = *req.ClaimMappings
+	}
+	// The magic-link page must stay on an origin of the redirect URIs, so it
+	// is checked whenever either changes.
+	if req.MagicLinkURL != nil {
+		magicLinkURL, err := normalizeMagicLinkURL(*req.MagicLinkURL, app.RedirectURIs)
+		if err != nil {
+			return nil, err
+		}
+		app.MagicLinkURL = magicLinkURL
+	} else if req.RedirectURIs != nil && app.MagicLinkURL != nil {
+		if err := validateMagicLinkURL(*app.MagicLinkURL, app.RedirectURIs); err != nil {
+			return nil, fmt.Errorf("%w (change magic_link_url or clear it in the same update)", err)
+		}
 	}
 
 	app.UpdatedAt = time.Now()

@@ -70,6 +70,14 @@ type App struct {
 	// so a mapping can never shadow a registered claim. Empty (the default)
 	// means the client's tokens carry exactly the standard claim set.
 	ClaimMappings ClaimMappings `gorm:"type:jsonb;column:claim_mappings" json:"claim_mappings"`
+
+	// MagicLinkURL is the app's own page that a magic-link email opens (with
+	// token and client_id added to its query); that page posts the token to
+	// POST /api/auth/magic-link/verify, which is POST-only so that mail
+	// scanners following links cannot consume it. It must share an origin with
+	// one of RedirectURIs. Nil means magic links are not configured for this
+	// app, and a request for one is refused instead of emailing a dead link.
+	MagicLinkURL *string `gorm:"column:magic_link_url" json:"magic_link_url,omitempty"`
 }
 
 // ScopeAllowed reports whether the client may request scope under its

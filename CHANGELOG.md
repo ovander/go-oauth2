@@ -10,6 +10,15 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Added
+
+- **`GET /api/apps/{app_id}/service/users/{user_id}`: an app's backend looks up one of its members
+  with its service-account token.** The existing `GET /api/apps/{app_id}/users/{user_id}` needs a
+  user token from an app admin, so a service token got `401`, and backendkit's `GetUserAsService`
+  could not work. The new route returns the same body, only for a member of that app (anyone else
+  is a `404`, a Socrate admin included). It sits under `ServiceAccountMiddleware` like the other
+  `/service` routes (the token's `sub` must be `app:{app_id}`).
+
 ### Fixed
 
 - **Magic links open the app's own page.** The email linked to `GET /api/auth/magic-link/verify`,

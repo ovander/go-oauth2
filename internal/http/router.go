@@ -739,6 +739,10 @@ func newAdminRouter(
 	r.Route("/api/apps/{app_id}/service", func(r chi.Router) {
 		r.Use(middleware.ServiceAccountMiddleware(appRepo, tokenService))
 		r.Post("/users", appUsersHandler.CreateUser)
+		// The app backend looks up one of its own members by numeric id (the
+		// token's sub). Same answer as GET /api/apps/{app_id}/users/{user_id};
+		// a non-member, including a Socrate admin, is a 404.
+		r.Get("/users/{user_id}", appUsersHandler.GetUser)
 
 		// Magic-link request — only the authenticated app backend may trigger
 		// magic-link emails.  The app identity is already proven by

@@ -10,6 +10,14 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-09-30
+
+Patch release on the **v1.x** line. A Socrate admin or superadmin is never an app member, even if a
+role row reaches the database directly; the legacy-data carry-over is safe on a non-empty new
+server; apps on a separate VPS are documented. No migration, no new environment variable. One
+behaviour change: a global `admin` holding explicit app roles no longer carries them in
+`app_roles`, like a superadmin (it keeps `admin` on every app through its global role).
+
 ### Security
 
 - **A Socrate admin or superadmin is never an app member, and an app member is never a Socrate
@@ -1598,6 +1606,7 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.5.2...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.5.3...HEAD
+[1.5.3]: https://github.com/ovander/go-oauth2/compare/v1.5.2...v1.5.3
 [1.5.2]: https://github.com/ovander/go-oauth2/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/ovander/go-oauth2/compare/v1.5.0...v1.5.1

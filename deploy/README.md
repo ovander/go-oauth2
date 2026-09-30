@@ -43,6 +43,8 @@ Internet ─► Caddy ─ socrate.vandermoten.eu → 127.0.0.1:8080  Socrate OAu
 | `Caddyfile.example` | `socrate.vandermoten.eu` → `127.0.0.1:8080` (admin API stays loopback) |
 | `env/socrate.env.example` | Production env template (`/etc/socrate/socrate.env`) |
 | `scripts/bootstrap.sh` | One-time VPS prep (user, `/etc/socrate` + `/var/lib/socrate`, unit, Caddy site, env) |
+| `scripts/socrate-apps-access.sh` | Socrate VPS side of apps on a separate VPS: Caddy `trusted_proxies` for one address, and the restricted `apps-tunnel` SSH user ([multi-app §6.7](../docs/DEPLOYMENT-VPS-MULTI-APP.md#67-apps-on-a-separate-vps)) |
+| `scripts/apps-socrate-tunnel.sh` | Apps VPS side: the tunnel key, the pinned host key and `socrate-admin-tunnel.service` (admin API at `127.0.0.1:18082`), plus its `verify` checks (§6.7) |
 
 ## First-time setup (on the VPS)
 

@@ -12,13 +12,13 @@ Capabilities**, non-breaking).
 
 ### Security
 
-- **The carry-over no longer gives a superadmin an app role.** Socrate refuses to assign a
-  superadmin to a specific app, because as an app member the platform account would be exposed
-  to that app's admins (e.g. a forced password reset). `deploy/migration/carry-over.sh` wrote role
-  rows straight into the database, so a legacy superadmin kept its legacy app roles. It now drops
-  role rows whose user is a superadmin on the new server, and `carry-over-preflight.sh` lists
-  them. Rows already carried are removed with
-  `DELETE FROM user_app_roles r USING users u WHERE u.id = r.user_id AND u.role = 'superadmin'`.
+- **The carry-over no longer gives a Socrate admin an app role.** A Socrate admin or
+  superadmin (one platform profile, global access) is never an app member, because as an app
+  member the platform account would be exposed to that app's admins (e.g. a forced password
+  reset). `deploy/migration/carry-over.sh` wrote role rows straight into the database, so a legacy
+  admin kept its legacy app roles. It now drops role rows whose user is an admin or superadmin on
+  the new server, and `carry-over-preflight.sh` lists them. Rows already carried are removed with
+  `DELETE FROM user_app_roles r USING users u WHERE u.id = r.user_id AND u.role IN ('admin','superadmin')`.
 
 ### Fixed
 

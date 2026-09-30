@@ -35,6 +35,11 @@ type CreateAppRequest struct {
 	// ("user.attributes.tier") or an object ({"source":…,"target":"both"}).
 	// Empty = the standard claim set only.
 	ClaimMappings model.ClaimMappings `json:"claim_mappings,omitempty"`
+	// MagicLinkURL is the app's page that magic-link emails open (token and
+	// client_id are added to its query). Absolute https URL (http only for
+	// localhost), no fragment, same origin as one of redirect_uris. Optional;
+	// without it the app cannot send magic links.
+	MagicLinkURL *string `json:"magic_link_url,omitempty"`
 }
 
 type UpdateAppRequest struct {
@@ -59,6 +64,9 @@ type UpdateAppRequest struct {
 	// ClaimMappings replaces the client's custom-claim policy (A2). Omitted
 	// (nil) = unchanged; an empty object clears every mapping.
 	ClaimMappings *model.ClaimMappings `json:"claim_mappings,omitempty"`
+	// MagicLinkURL replaces the page magic-link emails open. Omitted (nil) =
+	// unchanged; an empty string clears it (magic links are then refused).
+	MagicLinkURL *string `json:"magic_link_url,omitempty"`
 }
 
 type AddAppUserRequest struct {
@@ -89,8 +97,10 @@ type AppResponse struct {
 	ClaimMappings model.ClaimMappings `json:"claim_mappings"`
 	URL           *string             `json:"url,omitempty"`
 	RedirectURIs  []string            `json:"redirect_uris"`
-	OwnerID       *uint               `json:"owner_id,omitempty"`
-	CreatedAt     time.Time           `json:"created_at"`
+	// MagicLinkURL is the page magic-link emails open; absent when not configured.
+	MagicLinkURL *string   `json:"magic_link_url,omitempty"`
+	OwnerID      *uint     `json:"owner_id,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type AppWithSecretResponse struct {

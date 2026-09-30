@@ -49,7 +49,8 @@ type MagicLinkService interface {
 	// needs to pass a client_id — the app identity is already proven.
 	//
 	// Always returns the same opaque result regardless of whether the user email
-	// is registered, to prevent enumeration.  rawToken is non-empty only in
+	// is registered, to prevent enumeration. The one exception depends on the
+	// app alone: ErrMagicLinkNotConfigured when the app has no magic_link_url.  rawToken is non-empty only in
 	// development mode or when emailService is nil, so callers can exercise the
 	// full verify flow without a real mail server.
 	RequestMagicLink(ctx context.Context, email string, app *model.App) (rawToken string, err error)
@@ -104,6 +105,12 @@ func NewMagicLinkService(
 // a magic link.  We still silently swallow unknown-user / no-role cases to avoid
 // leaking that information back to the backend via a different code path.
 func (s *magicLinkService) RequestMagicLink(ctx context.Context, email string, app *model.App) (string, error) {
+	// Checked before the user look-up: the answer depends on the app only, so
+	// it tells the calling backend nothing about the address.
+	if _, err := magicLinkEmailURL(app, ""); err != nil {
+		return "", err
+	}
+
 	user, err := s.userRepo.FindByEmail(ctx, email)
 	if err != nil {
 		logger.Logger.WithFields(logger.Fields{
@@ -165,11 +172,12 @@ func (s *magicLinkService) RequestMagicLink(ctx context.Context, email string, a
 		return "", fmt.Errorf("failed to persist magic link token: %w", err)
 	}
 
-	// Build the magic URL.  This points at the OAuth/OIDC port (8080), not
-	// the admin port, since it is a user-facing authentication action.
-	// The verify endpoint needs client_id so the user's browser can identify
-	// the app without a service account token.
-	magicURL := s.issuer + "/api/auth/magic-link/verify?token=" + rawToken + "&client_id=" + app.ClientID
+	// The email opens the app's own landing page (checked above), which
+	// posts the token and client_id to POST /api/auth/magic-link/verify.
+	magicURL, err := magicLinkEmailURL(app, rawToken)
+	if err != nil {
+		return "", err
+	}
 
 	// In dev mode or when emailService is absent, return the raw token to the
 	// caller (handler exposes it in the response body only in dev mode).

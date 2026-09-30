@@ -588,6 +588,22 @@ var migrations = []Migration{
 			)`).Error
 		},
 	},
+	{
+		// The page a magic-link email opens, per app. Nullable: NULL means magic
+		// links are not configured for the app, so every existing app keeps its
+		// current (unconfigured) state until an admin sets it.
+		ID:   "0026",
+		Name: "add_apps.magic_link_url",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("apps") {
+				return nil
+			}
+			if db.Migrator().HasColumn(&model.App{}, "magic_link_url") {
+				return nil
+			}
+			return db.Exec("ALTER TABLE apps ADD COLUMN magic_link_url TEXT").Error
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

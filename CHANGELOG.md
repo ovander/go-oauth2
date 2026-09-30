@@ -10,6 +10,20 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Security
+
+- **A superadmin never has an app role, even if one is written to the database.** The admin
+  API already refused to assign a superadmin to an app, and app member lists never showed one.
+  But a row written directly (e.g. by a data migration from a server that did not enforce the
+  rule) was still honoured. That put the platform account within reach of that app's admins,
+  whose member actions (force password reset, resend verification, role change) are gated on
+  membership, and it added the role to the superadmin's tokens. The `user_app_roles` repository
+  now ignores such rows on every read (`FindByUserAndApp`, `FindByUser`, `FindAllByUser`,
+  `GetUserRolesMap`), so the membership gate refuses a superadmin target. `Create` and `Update`
+  refuse to write one (`ErrSuperadminAppRole`); `Delete` still removes a stray row. A superadmin
+  keeps its global access to every app. Global `admin` accounts are not covered: extending the
+  rule to them would be a new control.
+
 ### Fixed
 
 - **Carry-over into a non-empty new server no longer loses or misassigns identities.**

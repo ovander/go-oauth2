@@ -97,6 +97,21 @@ if [[ -n "$EXCLUDE_USERS" ]]; then
   [ -n "$o" ] && info "owned by an excluded user, will be carried with no owner: $o"
 fi
 
+hdr "app roles of Socrate admins/superadmins (never copied: they hold no app role)"
+UAR_F="app_id IN (SELECT id FROM apps WHERE $APP_F)"
+[[ -n "$EXCLUDE_USERS" ]] && UAR_F="$UAR_F AND user_id NOT IN ($EXCLUDE_USERS)"
+SA_NEW="$(q "$NEW_DB" "SELECT string_agg(id::text, ',') FROM users WHERE role IN ('admin', 'superadmin')")"
+SA_OLD="$(q "$OLD_DB" "SELECT string_agg(id::text, ',') FROM users WHERE role IN ('admin', 'superadmin') AND $USER_F")"
+SA="$(printf '%s,%s' "$SA_NEW" "$SA_OLD" | tr ',' '\n' | grep -E '^[0-9]+$' | sort -un | paste -sd, - || true)"
+if [ -n "$SA" ]; then
+  n="$(q "$OLD_DB" "SELECT count(*) FROM user_app_roles WHERE $UAR_F AND user_id IN ($SA)")"
+  if [ "$n" -gt 0 ]; then
+    info "$n role row(s) belong to Socrate admin(s)/superadmin(s) ($SA) and will be skipped:"
+    q "$OLD_DB" "SELECT r.user_id, a.name, r.role FROM user_app_roles r JOIN apps a ON a.id = r.app_id WHERE r.$UAR_F AND r.user_id IN ($SA) ORDER BY 1, 2" \
+      | while IFS='|' read -r uid app role; do info "  user $uid: '$app' $role"; done
+  else ok "none among the selected roles"; fi
+else ok "no Socrate admin concerned"; fi
+
 hdr "id reservation (new ids must stay clear of the legacy ranges)"
 for tbl in users apps user_app_roles; do
   seq="$(q "$NEW_DB" "SELECT pg_get_serial_sequence('$tbl','id')")"; [ -n "$seq" ] || continue

@@ -8,18 +8,23 @@ import (
 	"gorm.io/gorm"
 )
 
-// ErrSuperadminAppRole is returned when an app role would be written for a
-// superadmin.
-var ErrSuperadminAppRole = errors.New("superadmins cannot hold an app role")
+// ErrGlobalAdminAppRole is returned when an app role would be written for a
+// Socrate admin or superadmin.
+var ErrGlobalAdminAppRole = errors.New("socrate admins and superadmins cannot hold an app role")
 
-// notSuperadmin keeps a user_app_roles read clear of superadmins. A superadmin
-// has global access and is never an app member: the admin API refuses to assign
-// one, and FindByApp never lists one. A row that exists anyway — written
-// directly, e.g. by a data migration from a server that did not enforce the
-// rule — is ignored everywhere. It cannot then put the platform account within
-// reach of that app's admins (who may act on their app's members, e.g. force a
-// password reset), nor add an app role to its tokens.
-const notSuperadmin = "NOT EXISTS (SELECT 1 FROM users su WHERE su.id = user_app_roles.user_id AND su.role = 'superadmin')"
+// globalAdminRoles are the platform roles that never hold an app role: an app
+// member cannot be a Socrate admin/superadmin, and the reverse.
+var globalAdminRoles = []model.UserRole{model.UserRoleAdmin, model.UserRoleSuperadmin}
+
+// notGlobalAdmin keeps a user_app_roles read clear of Socrate admins and
+// superadmins. They have global access and are never app members: the admin
+// API refuses to assign one, and FindByApp never lists one. A row that exists
+// anyway — written directly, e.g. by a data migration from a server that did
+// not enforce the rule, or left over when a member was made a Socrate admin —
+// is ignored everywhere. It cannot then put a platform account within reach of
+// that app's admins (who may act on their app's members, e.g. force a password
+// reset), nor add an app role to its tokens.
+const notGlobalAdmin = "NOT EXISTS (SELECT 1 FROM users ga WHERE ga.id = user_app_roles.user_id AND ga.role IN ('admin', 'superadmin'))"
 
 type UserAppRoleRepository interface {
 	FindByUserAndApp(ctx context.Context, userID, appID uint) (*model.UserAppRole, error)
@@ -44,7 +49,7 @@ func (r *userAppRoleRepository) FindByUserAndApp(ctx context.Context, userID, ap
 	var role model.UserAppRole
 	if err := r.db.WithContext(ctx).
 		Where("user_id = ? AND app_id = ?", userID, appID).
-		Where(notSuperadmin).
+		Where(notGlobalAdmin).
 		First(&role).Error; err != nil {
 		return nil, err
 	}
@@ -56,7 +61,7 @@ func (r *userAppRoleRepository) FindByUser(ctx context.Context, userID uint) ([]
 	if err := r.db.WithContext(ctx).
 		Preload("App").
 		Where("user_id = ?", userID).
-		Where(notSuperadmin).
+		Where(notGlobalAdmin).
 		Find(&roles).Error; err != nil {
 		return nil, err
 	}
@@ -71,7 +76,7 @@ func (r *userAppRoleRepository) FindByApp(ctx context.Context, appID uint, page,
 		Joins("JOIN users ON users.id = user_app_roles.user_id").
 		Where("user_app_roles.app_id = ?", appID).
 		Where("users.deleted_at IS NULL").
-		Where("users.role != ?", model.UserRoleSuperadmin) // superadmins have global access; never list them per-app
+		Where("users.role NOT IN ?", globalAdminRoles) // Socrate admins have global access; never list them per-app
 
 	if search != "" {
 		searchPattern := "%" + search + "%"
@@ -88,7 +93,7 @@ func (r *userAppRoleRepository) FindByApp(ctx context.Context, appID uint, page,
 		Joins("JOIN users ON users.id = user_app_roles.user_id").
 		Where("user_app_roles.app_id = ?", appID).
 		Where("users.deleted_at IS NULL").
-		Where("users.role != ?", model.UserRoleSuperadmin).
+		Where("users.role NOT IN ?", globalAdminRoles).
 		Offset(offset).
 		Limit(pageSize).
 		Order("user_app_roles.id DESC").
@@ -104,7 +109,7 @@ func (r *userAppRoleRepository) FindAllByUser(ctx context.Context, userID uint) 
 	if err := r.db.WithContext(ctx).
 		Preload("App").
 		Where("user_id = ?", userID).
-		Where(notSuperadmin).
+		Where(notGlobalAdmin).
 		Find(&roles).Error; err != nil {
 		return nil, err
 	}
@@ -112,30 +117,31 @@ func (r *userAppRoleRepository) FindAllByUser(ctx context.Context, userID uint) 
 }
 
 func (r *userAppRoleRepository) Create(ctx context.Context, role *model.UserAppRole) error {
-	if err := r.refuseSuperadmin(ctx, role.UserID); err != nil {
+	if err := r.refuseGlobalAdmin(ctx, role.UserID); err != nil {
 		return err
 	}
 	return r.db.WithContext(ctx).Create(role).Error
 }
 
 func (r *userAppRoleRepository) Update(ctx context.Context, role *model.UserAppRole) error {
-	if err := r.refuseSuperadmin(ctx, role.UserID); err != nil {
+	if err := r.refuseGlobalAdmin(ctx, role.UserID); err != nil {
 		return err
 	}
 	return r.db.WithContext(ctx).Save(role).Error
 }
 
-// refuseSuperadmin fails closed: an app role is never written for a superadmin.
+// refuseGlobalAdmin fails closed: an app role is never written for a Socrate
+// admin or superadmin.
 // Delete is not guarded, so a stray row can always be removed.
-func (r *userAppRoleRepository) refuseSuperadmin(ctx context.Context, userID uint) error {
+func (r *userAppRoleRepository) refuseGlobalAdmin(ctx context.Context, userID uint) error {
 	var n int64
 	if err := r.db.WithContext(ctx).Model(&model.User{}).
-		Where("id = ? AND role = ?", userID, model.UserRoleSuperadmin).
+		Where("id = ? AND role IN ?", userID, globalAdminRoles).
 		Count(&n).Error; err != nil {
 		return err
 	}
 	if n > 0 {
-		return ErrSuperadminAppRole
+		return ErrGlobalAdminAppRole
 	}
 	return nil
 }
@@ -151,7 +157,7 @@ func (r *userAppRoleRepository) GetUserRolesMap(ctx context.Context, userID uint
 	if err := r.db.WithContext(ctx).
 		Preload("App").
 		Where("user_id = ?", userID).
-		Where(notSuperadmin).
+		Where(notGlobalAdmin).
 		Find(&roles).Error; err != nil {
 		return nil, err
 	}

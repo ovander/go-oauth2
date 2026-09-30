@@ -135,6 +135,13 @@ ones that change data dry-run unless given `--apply`.
    (`createdb -T socrate socrate_test`, or a `pg_dump` restore), then run it with
    `FORCE=1`.
 
+**No global role from legacy except superadmin.** A carried user arrives as a plain global
+`user` unless its legacy role is `superadmin`. A legacy global `admin` (or any other value)
+must not become a platform admin on the new server; its app roles are kept, so an app admin
+stays an app admin. The preflight lists every demotion, and warns about each legacy
+superadmin that would be imported: platform accounts should be created on the new server,
+or moved with `move-user-to-legacy-id.sh`, not imported silently.
+
 **Socrate admins get no app role.** A Socrate admin or superadmin (one platform profile,
 with global access to every app) is never an app member, whatever the app role, and an app
 member is never a Socrate admin. As an app member, a platform account would be exposed to that

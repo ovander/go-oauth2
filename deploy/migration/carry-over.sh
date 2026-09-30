@@ -22,6 +22,10 @@
 #     reserve-legacy-ids.sh (keep new ids clear of the legacy ranges) and
 #     move-user-to-legacy-id.sh (give a person created on the new server their legacy id).
 #   * Id sequences are only ever moved forward (never below a reservation).
+#   * No global role from legacy except superadmin. A carried user arrives as a plain global
+#     `user` unless its legacy role is `superadmin`: a legacy global `admin` (or any other value)
+#     must not become a platform admin on the new server. Its app roles are kept. The preflight
+#     lists every such demotion, and warns about each legacy superadmin that would be imported.
 #   * No app role for a Socrate admin. A Socrate admin/superadmin (one platform profile, global
 #     access) is never an app member, whatever the app role: as a member, that app's admins could
 #     act on the platform account (e.g. force a password reset). The legacy server did not enforce
@@ -119,7 +123,12 @@ copy_table() {
 
 # FK order: users (apps.owner_id -> users), then apps, then the join table.
 echo "-- copying --"
-copy_table users           "$USER_WHERE"
+# Only `superadmin` survives as a global role (see the header); everything else becomes `user`.
+USERS_ROLE_FIX="SELECT 1"
+if [[ " $(shared_cols users | tr ',' ' ') " == *" role "* ]]; then
+	USERS_ROLE_FIX="UPDATE _stage SET role = 'user' WHERE role IS DISTINCT FROM 'superadmin'"
+fi
+copy_table users           "$USER_WHERE" "$USERS_ROLE_FIX"
 copy_table apps            "$APP_WHERE" "${APP_STAGE_FIX:-SELECT 1}"
 # Drop role rows of users who are Socrate admins or superadmins on the NEW server (see the header).
 GLOBAL_ADMIN_ROLES_FIX="DELETE FROM _stage WHERE user_id IN (SELECT id FROM users WHERE role IN ('admin', 'superadmin'))"

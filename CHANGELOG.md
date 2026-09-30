@@ -40,6 +40,12 @@ Capabilities**, non-breaking).
   the new server, and `carry-over-preflight.sh` lists them. Rows already carried are removed with
   `DELETE FROM user_app_roles r USING users u WHERE u.id = r.user_id AND u.role IN ('admin','superadmin')`.
 
+- **The carry-over imports no legacy global role except superadmin.** It copied each legacy
+  user's global `role` as-is, so a legacy global `admin` would have arrived as a platform admin
+  on the new server, with access to the admin console. A carried user now arrives as a plain
+  `user` unless its legacy role is `superadmin`; its app roles are kept. `carry-over-preflight.sh`
+  lists every demotion, and warns about each legacy superadmin that would be imported.
+
 ### Fixed
 
 - **Carry-over into a non-empty new server no longer loses or misassigns identities.**

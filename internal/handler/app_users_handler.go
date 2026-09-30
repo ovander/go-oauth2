@@ -175,10 +175,11 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	// Check if user exists
 	user, err := h.userService.GetByEmail(r.Context(), req.Email)
 	isNewUser := err != nil
-	if !isNewUser && user.Role == model.UserRoleSuperadmin {
-		// Superadmins have global access to all apps by definition — they must
-		// never appear in per-app user lists or be granted explicit app roles.
-		writeError(w, "superadmins cannot be assigned to a specific app", http.StatusForbidden)
+	if !isNewUser && user.IsGlobalAdmin() {
+		// Socrate admins and superadmins have global access to all apps by
+		// definition — they must never appear in per-app user lists or be
+		// granted explicit app roles (an app member cannot be a Socrate admin).
+		writeError(w, "socrate admins and superadmins cannot be assigned to a specific app", http.StatusForbidden)
 		return
 	}
 	if isNewUser {

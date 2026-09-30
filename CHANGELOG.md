@@ -12,6 +12,26 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **A Socrate admin or superadmin is never an app member, and an app member is never a Socrate
+  admin.** The two global roles are one platform profile (`IsGlobalAdmin`) with access to every
+  app. Before this change, the admin API refused only a *superadmin* as an app member, so a
+  global `admin` could be added with any app role. A `user_app_roles` row written directly
+  (e.g. by a data migration from a server that did not enforce the rule, or left over when a
+  member was made a Socrate admin) was honoured for both roles. That put a platform account
+  within reach of that app's admins, whose member actions (force password reset, resend
+  verification, role change) are gated on membership, and added the role to its tokens.
+  - The `user_app_roles` repository now ignores the rows of both global roles on every read
+    (`FindByUserAndApp`, `FindByUser`, `FindAllByUser`, `GetUserRolesMap`, and `FindByApp` as
+    before). The membership gate therefore refuses such a target.
+  - `Create` and `Update` refuse to write one (`ErrGlobalAdminAppRole`); `Delete` still removes
+    a stray row.
+  - The admin API refuses to add a Socrate admin to an app with any app role (403).
+
+  Both roles keep their global access to every app. **Behaviour change:** a global `admin` that
+  held explicit app roles no longer carries them in `app_roles`, as for a superadmin; it still
+  gets `admin` on every app through its global role. Remove such rows with
+  `DELETE FROM user_app_roles r USING users u WHERE u.id = r.user_id AND u.role IN ('admin','superadmin')`.
+
 - **The carry-over no longer gives a Socrate admin an app role.** A Socrate admin or
   superadmin (one platform profile, global access) is never an app member, because as an app
   member the platform account would be exposed to that app's admins (e.g. a forced password

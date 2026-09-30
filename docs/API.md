@@ -346,6 +346,10 @@ The resulting token has `sub = "app:{id}"`. It is used to call **Service Account
 routes** on the Admin router, which are scoped to that exact app:
 
 - `POST /api/apps/{app_id}/service/users` — create a user inside the app.
+- `GET /api/apps/{app_id}/service/users/{user_id}` — look up one of the app's
+  members by numeric id (a token's `sub`): `{ "id", "email", "name", "role",
+  "is_verified", "invite_sent", "last_login", "created_at" }`. `404` when the
+  user is not a member of this app (a Socrate admin never is) or does not exist.
 - `POST /api/apps/{app_id}/service/magic-link` — trigger a magic-link email.
 - `POST /api/apps/{app_id}/service/policy/decide` — ask the policy decision
   point about one of the app's users (A4):
@@ -733,6 +737,7 @@ binary, read from the binary itself.
 | * | `/api/apps/{app_id}/users/**` | app admin | App-scoped users |
 | GET | `/api/apps/{app_id}/logs` | app admin | App activity logs |
 | POST | `/api/apps/{app_id}/service/users` | service account | M2M create user |
+| GET | `/api/apps/{app_id}/service/users/{user_id}` | service account | M2M member look-up |
 | POST | `/api/apps/{app_id}/service/magic-link` | service account | M2M magic link |
 | POST | `/api/apps/{app_id}/service/policy/decide` | service account | A4 policy decision for the app's user |
 </content>

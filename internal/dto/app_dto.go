@@ -115,6 +115,7 @@ type AppUserResponse struct {
 	Role       string     `json:"role"`
 	IsVerified bool       `json:"is_verified"`
 	InviteSent bool       `json:"invite_sent"`
+	AvatarURL  *string    `json:"avatar_url,omitempty"`
 	LastLogin  *time.Time `json:"last_login,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
 }

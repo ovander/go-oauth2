@@ -18,6 +18,13 @@ Capabilities**, non-breaking).
   at `/oauth/userinfo`. Discovery's `claims_supported` now lists `picture`. Socrate stores only
   the URL; the image is hosted by an application. Migration `0027` adds the nullable
   `users.avatar_url` column. Requested by GPWA.
+- **`PATCH /api/apps/{app_id}/service/users/{user_id}`: an app's backend updates a member's
+  profile with its service-account token.** Profile fields only (`name`, `title`, `division`,
+  `company`, `country`, `phone`, `job_title`, `department`, `language`, `timezone`, `avatar_url`);
+  a body naming any other field (email, password, role…) is refused with `400`, and only members
+  of that app can be updated (anyone else, a Socrate admin included, is a `404`). Audited as
+  `update_profile` with the field names. The member look-up and the app's user list now also
+  return `avatar_url`. Requested by GPWA.
 
 ## [1.6.0] - 2026-09-30
 

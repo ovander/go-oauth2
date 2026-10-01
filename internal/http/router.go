@@ -743,6 +743,9 @@ func newAdminRouter(
 		// token's sub). Same answer as GET /api/apps/{app_id}/users/{user_id};
 		// a non-member, including a Socrate admin, is a 404.
 		r.Get("/users/{user_id}", appUsersHandler.GetUser)
+		// The app backend updates profile fields of one of its own members
+		// (never email, password or roles); audited as update_profile.
+		r.Patch("/users/{user_id}", appUsersHandler.UpdateUserProfile)
 
 		// Magic-link request — only the authenticated app backend may trigger
 		// magic-link emails.  The app identity is already proven by

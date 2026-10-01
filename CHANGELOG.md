@@ -10,6 +10,15 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Added
+
+- **A user's avatar URL, returned as the OIDC `picture` claim.** A user can set `avatar_url` with
+  `PUT`/`PATCH /api/profile` (an absolute `https` URL, at most 2048 characters, no credentials;
+  `""` clears it); it is returned by `GET /api/profile` and `GET /api/userinfo`, and as `picture`
+  at `/oauth/userinfo`. Discovery's `claims_supported` now lists `picture`. Socrate stores only
+  the URL; the image is hosted by an application. Migration `0027` adds the nullable
+  `users.avatar_url` column. Requested by GPWA.
+
 ## [1.6.0] - 2026-09-30
 
 Minor release on the **v1.x** line. Magic links work: the email opens the app's own page, which

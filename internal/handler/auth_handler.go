@@ -420,6 +420,7 @@ func (h *AuthHandler) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 		Department: user.Department,
 		Language:   user.Language,
 		Timezone:   user.Timezone,
+		AvatarURL:  user.AvatarURL,
 		LastLogin:  user.LastLogin,
 		CreatedAt:  user.CreatedAt,
 	}

@@ -259,6 +259,13 @@ func (s *userService) UpdateProfile(ctx context.Context, userID uint, req dto.Up
 	if req.Timezone != nil {
 		user.Timezone = req.Timezone
 	}
+	if req.AvatarURL != nil {
+		avatar, err := normalizeAvatarURL(*req.AvatarURL)
+		if err != nil {
+			return nil, err
+		}
+		user.AvatarURL = avatar
+	}
 
 	user.UpdatedAt = time.Now()
 

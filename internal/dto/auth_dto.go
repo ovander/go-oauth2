@@ -103,6 +103,7 @@ type UserInfoResponse struct {
 	EmailVerified     bool              `json:"email_verified"`
 	Name              string            `json:"name"`
 	PreferredUsername string            `json:"preferred_username"`
+	Picture           string            `json:"picture,omitempty"` // OIDC picture: the avatar URL, when set
 	Role              string            `json:"role"`
 	AppRoles          map[string]string `json:"app_roles"`
 }

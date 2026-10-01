@@ -318,7 +318,11 @@ Two halves, by design:
 
 ### 5.9 Profile (self-service) — requires Bearer token
 - `GET /api/profile` → `UserResponse`
-- `PUT` / `PATCH /api/profile` → update mutable fields (`name`, `title`, `division`, `company`, `country`, `phone`, `job_title`, `department`, `language`, `timezone`).
+- `PUT` / `PATCH /api/profile` → update mutable fields (`name`, `title`, `division`, `company`, `country`, `phone`, `job_title`, `department`, `language`, `timezone`, `avatar_url`). Omitted fields are unchanged.
+  `avatar_url` is the user's picture: an absolute `https` URL of at most 2048 characters, without
+  credentials, hosted by an application (Socrate stores only the URL); `""` clears it, anything
+  else is `400 invalid avatar_url: …`. It is returned as `avatar_url` here and as the OIDC
+  `picture` claim at `/oauth/userinfo`.
 - `GET /api/userinfo` → `UserResponse` for the authenticated user.
 
 ---
@@ -394,10 +398,12 @@ Requires `Authorization: Bearer <access_token>`:
 ```json
 {
   "sub": "42", "email": "ada@example.com", "email_verified": true,
-  "name": "Ada", "preferred_username": "ada", "role": "user",
+  "name": "Ada", "preferred_username": "ada",
+  "picture": "https://cdn.example.com/u/42.png", "role": "user",
   "app_roles": {"my-app": "editor"}
 }
 ```
+`picture` is present only when the user has an avatar URL (§5.9).
 
 ### Introspection — `POST /oauth/introspect` (RFC 7662)
 Requires client authentication (Basic or body credentials). Returns

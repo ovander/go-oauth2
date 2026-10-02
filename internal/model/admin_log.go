@@ -19,6 +19,9 @@ const (
 	AdminActionDeleteSuperadmin   AdminAction = "delete_superadmin"
 	AdminActionDeleteUser         AdminAction = "delete_user"
 	AdminActionBlockUser          AdminAction = "block_user"
+	// AdminActionUpdateProfile records an application changing a member's
+	// profile fields through its service account; details name the fields.
+	AdminActionUpdateProfile AdminAction = "update_profile"
 	// AdminActionUpdateUserAttributes records a change to a user's free-form
 	// attributes (A2). Attributes can be projected into tokens via a client's
 	// claim mappings, so every change is audited.

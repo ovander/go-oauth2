@@ -84,6 +84,7 @@ func (h *AppUsersHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 				Role:       string(role.Role),
 				IsVerified: role.User.IsVerified,
 				InviteSent: role.InviteSent,
+				AvatarURL:  role.User.AvatarURL,
 				LastLogin:  role.User.LastLogin,
 				CreatedAt:  role.CreatedAt,
 			}
@@ -131,9 +132,105 @@ func (h *AppUsersHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 		Role:       string(role.Role),
 		IsVerified: user.IsVerified,
 		InviteSent: role.InviteSent,
+		AvatarURL:  user.AvatarURL,
 		LastLogin:  user.LastLogin,
 		CreatedAt:  role.CreatedAt,
 	})
+}
+
+// PATCH /api/apps/:app_id/service/users/:user_id
+//
+// The app's backend (service account) updates profile fields of one of its
+// own members: the dto.UpdateProfileRequest fields, never email, password or
+// roles. Any other field in the body is refused, so a request that tries to
+// change one fails loudly instead of being ignored. A user who is not a member
+// of this app, including a Socrate admin, is a 404. The change is audited as
+// update_profile with the system actor (0) and the field names.
+func (h *AppUsersHandler) UpdateUserProfile(w http.ResponseWriter, r *http.Request) {
+	appID, err := getAppIDFromURL(r)
+	if err != nil {
+		writeError(w, "invalid app ID", http.StatusBadRequest)
+		return
+	}
+	userID, err := getUserIDFromURL(r)
+	if err != nil {
+		writeError(w, "invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	var req dto.UpdateProfileRequest
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		writeError(w, "invalid body: only profile fields can be updated (name, title, division, company, country, phone, job_title, department, language, timezone, avatar_url)", http.StatusBadRequest)
+		return
+	}
+	fields := profileFieldNames(req)
+	if len(fields) == 0 {
+		writeError(w, "no profile field to update", http.StatusBadRequest)
+		return
+	}
+
+	// Membership first: GetUserRoleForApp ignores Socrate admins, so they are
+	// never editable from an app.
+	role, err := h.userAppRoleService.GetUserRoleForApp(r.Context(), userID, appID)
+	if err != nil {
+		writeError(w, "user not in app", http.StatusNotFound)
+		return
+	}
+
+	user, err := h.userService.UpdateProfile(r.Context(), userID, req)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrInvalidAvatarURL):
+			writeError(w, err.Error(), http.StatusBadRequest)
+		case errors.Is(err, service.ErrUserNotFound):
+			writeError(w, "user not in app", http.StatusNotFound)
+		default:
+			logger.Warnf("app users: update profile of user %d for app %d: %v", userID, appID, err)
+			writeError(w, "could not update user", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	if h.adminLogService != nil {
+		_ = h.adminLogService.LogAction(r.Context(), 0, &appID, &user.ID, model.AdminActionUpdateProfile, map[string]interface{}{
+			"fields": fields,
+		})
+	}
+
+	writeJSON(w, dto.AppUserResponse{
+		ID:         user.ID,
+		Email:      user.Email,
+		Name:       user.Name,
+		Role:       string(role.Role),
+		IsVerified: user.IsVerified,
+		InviteSent: role.InviteSent,
+		AvatarURL:  user.AvatarURL,
+		LastLogin:  user.LastLogin,
+		CreatedAt:  role.CreatedAt,
+	})
+}
+
+// profileFieldNames lists the fields req sets, in a stable order, for the
+// audit trail (names only, never values).
+func profileFieldNames(req dto.UpdateProfileRequest) []string {
+	var out []string
+	for _, f := range []struct {
+		name string
+		set  bool
+	}{
+		{"name", req.Name != nil}, {"title", req.Title != nil}, {"division", req.Division != nil},
+		{"company", req.Company != nil}, {"country", req.Country != nil}, {"phone", req.Phone != nil},
+		{"job_title", req.JobTitle != nil}, {"department", req.Department != nil},
+		{"language", req.Language != nil}, {"timezone", req.Timezone != nil},
+		{"avatar_url", req.AvatarURL != nil},
+	} {
+		if f.set {
+			out = append(out, f.name)
+		}
+	}
+	return out
 }
 
 // POST /api/apps/:app_id/users

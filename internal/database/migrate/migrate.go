@@ -604,6 +604,21 @@ var migrations = []Migration{
 			return db.Exec("ALTER TABLE apps ADD COLUMN magic_link_url TEXT").Error
 		},
 	},
+	{
+		// The user's picture, as an https URL hosted by an application; the
+		// OIDC "picture" claim. Nullable: every existing user has none.
+		ID:   "0027",
+		Name: "add_users.avatar_url",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("users") {
+				return nil
+			}
+			if db.Migrator().HasColumn(&model.User{}, "avatar_url") {
+				return nil
+			}
+			return db.Exec("ALTER TABLE users ADD COLUMN avatar_url TEXT").Error
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

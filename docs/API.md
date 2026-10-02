@@ -318,7 +318,11 @@ Two halves, by design:
 
 ### 5.9 Profile (self-service) — requires Bearer token
 - `GET /api/profile` → `UserResponse`
-- `PUT` / `PATCH /api/profile` → update mutable fields (`name`, `title`, `division`, `company`, `country`, `phone`, `job_title`, `department`, `language`, `timezone`).
+- `PUT` / `PATCH /api/profile` → update mutable fields (`name`, `title`, `division`, `company`, `country`, `phone`, `job_title`, `department`, `language`, `timezone`, `avatar_url`). Omitted fields are unchanged.
+  `avatar_url` is the user's picture: an absolute `https` URL of at most 2048 characters, without
+  credentials, hosted by an application (Socrate stores only the URL); `""` clears it, anything
+  else is `400 invalid avatar_url: …`. It is returned as `avatar_url` here and as the OIDC
+  `picture` claim at `/oauth/userinfo`.
 - `GET /api/userinfo` → `UserResponse` for the authenticated user.
 
 ---
@@ -350,6 +354,14 @@ routes** on the Admin router, which are scoped to that exact app:
   members by numeric id (a token's `sub`): `{ "id", "email", "name", "role",
   "is_verified", "invite_sent", "last_login", "created_at" }`. `404` when the
   user is not a member of this app (a Socrate admin never is) or does not exist.
+- `PATCH /api/apps/{app_id}/service/users/{user_id}` — update profile fields of
+  one of the app's members: any of `name`, `title`, `division`, `company`,
+  `country`, `phone`, `job_title`, `department`, `language`, `timezone`,
+  `avatar_url` (§5.9 rules; omitted = unchanged). **Never email, password or
+  roles**: any other field is a `400`, and so is an empty body. Same `404`s as
+  the look-up. Returns the member as the look-up does; audited as
+  `update_profile` (system actor, field names only). A Socrate account is shared
+  by every application on the instance, so a change shows everywhere.
 - `POST /api/apps/{app_id}/service/magic-link` — trigger a magic-link email.
 - `POST /api/apps/{app_id}/service/policy/decide` — ask the policy decision
   point about one of the app's users (A4):
@@ -394,10 +406,12 @@ Requires `Authorization: Bearer <access_token>`:
 ```json
 {
   "sub": "42", "email": "ada@example.com", "email_verified": true,
-  "name": "Ada", "preferred_username": "ada", "role": "user",
+  "name": "Ada", "preferred_username": "ada",
+  "picture": "https://cdn.example.com/u/42.png", "role": "user",
   "app_roles": {"my-app": "editor"}
 }
 ```
+`picture` is present only when the user has an avatar URL (§5.9).
 
 ### Introspection — `POST /oauth/introspect` (RFC 7662)
 Requires client authentication (Basic or body credentials). Returns
@@ -747,6 +761,7 @@ binary, read from the binary itself.
 | GET | `/api/apps/{app_id}/logs` | app admin | App activity logs |
 | POST | `/api/apps/{app_id}/service/users` | service account | M2M create user |
 | GET | `/api/apps/{app_id}/service/users/{user_id}` | service account | M2M member look-up |
+| PATCH | `/api/apps/{app_id}/service/users/{user_id}` | service account | M2M member profile update |
 | POST | `/api/apps/{app_id}/service/magic-link` | service account | M2M magic link |
 | POST | `/api/apps/{app_id}/service/policy/decide` | service account | A4 policy decision for the app's user |
 </content>

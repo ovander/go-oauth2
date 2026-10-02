@@ -50,9 +50,15 @@ type User struct {
 	// (tier, cost centre, employee number, …). It is never put in a token by
 	// itself: a client must opt in by declaring a claim mapping that names
 	// `user.attributes.<key>` (A2). Empty by default.
-	Attributes JSONMap   `gorm:"type:jsonb;column:attributes" json:"attributes,omitempty"`
-	CreatedAt  time.Time `gorm:"column:inserted_at" json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	Attributes JSONMap `gorm:"type:jsonb;column:attributes" json:"attributes,omitempty"`
+
+	// AvatarURL is an https URL of the user's picture, hosted by an
+	// application (Socrate stores only the URL). Returned as the OIDC
+	// "picture" claim at userinfo. Nil when not set.
+	AvatarURL *string `gorm:"column:avatar_url" json:"avatar_url,omitempty"`
+
+	CreatedAt time.Time `gorm:"column:inserted_at" json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (User) TableName() string {

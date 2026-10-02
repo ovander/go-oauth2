@@ -43,6 +43,10 @@ func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 			writeError(w, "user not found", http.StatusNotFound)
 			return
 		}
+		if errors.Is(err, service.ErrInvalidAvatarURL) {
+			writeError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		logger.Warnf("update profile failed for user %d: %v", userID, err)
 		writeError(w, "failed to update profile", http.StatusBadRequest)
 		return
@@ -63,6 +67,7 @@ func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		Department: user.Department,
 		Language:   user.Language,
 		Timezone:   user.Timezone,
+		AvatarURL:  user.AvatarURL,
 		LastLogin:  user.LastLogin,
 		CreatedAt:  user.CreatedAt,
 	})
@@ -97,6 +102,7 @@ func (h *ProfileHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 		Department: user.Department,
 		Language:   user.Language,
 		Timezone:   user.Timezone,
+		AvatarURL:  user.AvatarURL,
 		LastLogin:  user.LastLogin,
 		CreatedAt:  user.CreatedAt,
 	})

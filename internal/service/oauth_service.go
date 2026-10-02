@@ -1236,6 +1236,7 @@ func (s *oauthService) GetUserInfo(ctx context.Context, userID uint, clientID st
 		EmailVerified:     user.IsVerified,
 		Name:              user.Name,
 		PreferredUsername: user.Email,
+		Picture:           derefStr(user.AvatarURL),
 		Role:              role,
 		AppRoles:          appRoles,
 	}, nil
@@ -1269,7 +1270,7 @@ func (s *oauthService) GetOpenIDConfiguration(issuer string) *dto.OpenIDConfigur
 		// claims added by recent capabilities: auth_time (RFC 9068), acr/amr
 		// (RFC 8176), act (RFC 8693 delegation), and cnf (RFC 9449 DPoP). A claim
 		// being listed does not mean it is present on every token.
-		ClaimsSupported:    []string{"sub", "iss", "aud", "exp", "iat", "nbf", "email", "email_verified", "name", "preferred_username", "role", "app_roles", "token_version", "auth_time", "acr", "amr", "act", "cnf"},
+		ClaimsSupported:    []string{"sub", "iss", "aud", "exp", "iat", "nbf", "email", "email_verified", "name", "preferred_username", "picture", "role", "app_roles", "token_version", "auth_time", "acr", "amr", "act", "cnf"},
 		AcrValuesSupported: []string{"pwd", "mfa"},
 		// RFC 9207: the authorization response includes the `iss` parameter.
 		AuthorizationResponseIssParameterSupported: true,

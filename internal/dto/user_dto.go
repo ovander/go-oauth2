@@ -46,6 +46,9 @@ type UpdateProfileRequest struct {
 	Department *string `json:"department,omitempty"`
 	Language   *string `json:"language,omitempty"`
 	Timezone   *string `json:"timezone,omitempty"`
+	// AvatarURL sets the user's picture (an https URL, at most 2048
+	// characters). Omitted = unchanged; "" clears it.
+	AvatarURL *string `json:"avatar_url,omitempty"`
 }
 
 // Response DTOs
@@ -65,6 +68,7 @@ type UserResponse struct {
 	Department *string       `json:"department,omitempty"`
 	Language   *string       `json:"language,omitempty"`
 	Timezone   *string       `json:"timezone,omitempty"`
+	AvatarURL  *string       `json:"avatar_url,omitempty"`
 	Attributes model.JSONMap `json:"attributes,omitempty"`
 	LastLogin  *time.Time    `json:"last_login,omitempty"`
 	CreatedAt  time.Time     `json:"created_at"`

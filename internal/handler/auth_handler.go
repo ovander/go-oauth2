@@ -207,6 +207,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			writeError(w, "mfa_required", http.StatusUnauthorized)
 		case errors.Is(err, service.ErrMFAInvalidCode):
 			writeError(w, "invalid mfa code", http.StatusUnauthorized)
+		case errors.Is(err, service.ErrMFAEnrollmentRequired):
+			// ADMIN_MFA_POLICY=enforce: a Socrate admin without MFA cannot sign in.
+			writeError(w, "mfa_enrollment_required", http.StatusForbidden)
 		case errors.Is(err, service.ErrAppNotFound):
 			writeError(w, "unknown client_id", http.StatusBadRequest)
 		case errors.Is(err, service.ErrRoleNotFound):

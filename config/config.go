@@ -95,7 +95,8 @@ type Config struct {
 	// Security
 	MaxFailedAttempts   int
 	LockoutDurationSecs int
-	// AdminMFAPolicy governs whether admin-portal login requires MFA enrollment:
+	// AdminMFAPolicy governs whether a Socrate admin or superadmin must have MFA
+	// enrolled to sign in, on every login path (the hosted login included):
 	// "off" (default, unchanged behaviour), "observe" (allow but audit admins
 	// without MFA), or "enforce" (deny until the admin enrolls). RFC-011.
 	AdminMFAPolicy string

@@ -21,6 +21,15 @@ Capabilities**, non-breaking).
   password, never verified, confirmed or signed in); for any other account it answers `409`
   ("an account already exists for this email: sign in instead"). The role is still granted when
   the invite is sent, so an existing user simply signs in.
+- **MFA on the hosted login, and `ADMIN_MFA_POLICY` applied there (HIGH-04).** The hosted sign-in
+  page (`/oauth/authorize`), which the consoles and every app use, had no field for the
+  authentication code, so a user with MFA enabled could not sign in there at all, and
+  `ADMIN_MFA_POLICY` was only applied by the deprecated `/api/admin/login`. The page now asks for
+  the code after the password (a TOTP code or a recovery code); a correct password awaiting its
+  code no longer counts as a failed login for IP auto-defense. `ADMIN_MFA_POLICY` now applies to
+  every sign-in of a Socrate admin or superadmin (`observe` audits, `enforce` refuses with
+  `mfa_enrollment_required`). **Deploy note:** with `enforce`, an admin without MFA can no longer
+  sign in to the consoles; enrol every admin first, or keep `observe`.
 
 ### Changed
 

@@ -92,6 +92,9 @@ type LoginPageData struct {
 	// Preserved as a hidden field so POST /oauth/authorize can pass it to the
 	// service's Authorize method for re-authentication enforcement.
 	MaxAge int
+	// ShowMFA shows the authentication-code field: set once the password was
+	// accepted for a user with MFA enabled, so the form asks for the code.
+	ShowMFA bool
 }
 
 // ConsentPageData contains data for the OAuth consent page template.

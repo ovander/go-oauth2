@@ -57,8 +57,18 @@
         <div class="form-group">
             <label for="password">Password</label>
             <input type="password" id="password" name="password" required
+                   {{if .ShowMFA}}autofocus{{end}}
                    placeholder="Enter your password">
         </div>
+
+        {{if .ShowMFA}}
+        <div class="form-group">
+            <label for="mfa_code">Authentication code</label>
+            <input type="text" id="mfa_code" name="mfa_code" required
+                   inputmode="numeric" autocomplete="one-time-code" maxlength="64"
+                   placeholder="6-digit code, or a recovery code">
+        </div>
+        {{end}}
 
         <button type="submit" class="btn btn-primary">Sign In</button>
 

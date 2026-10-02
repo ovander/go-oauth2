@@ -2,8 +2,8 @@
 # socrate-apps-access.sh — let the apps VPS use Socrate from another host. Run as root on the
 # SOCRATE VPS:
 #
-#   sudo bash socrate-apps-access.sh --apps-ip 135.125.107.71 --key 'ssh-ed25519 AAAA… apps-tunnel'
-#   sudo bash socrate-apps-access.sh --apps-ip 135.125.107.71 --key '…' --apply
+#   sudo bash socrate-apps-access.sh --apps-ip <apps-ip> --key 'ssh-ed25519 AAAA… apps-tunnel'
+#   sudo bash socrate-apps-access.sh --apps-ip <apps-ip> --key '…' --apply
 #
 # The first form is a dry run (shows the plan, changes nothing).
 #

@@ -645,7 +645,7 @@ both dry-run unless given `--apply`.
 
 | Item | Value |
 |---|---|
-| Apps VPS | `135.125.107.71` |
+| Apps VPS | `<apps-ip>`, its public IPv4 (kept out of the repository) |
 | Socrate VPS | `socrate.vandermoten.eu`, SSH port 22 |
 | Admin API | `ADMIN_PORT=8082`: `8081` is taken there by the legacy server, as in `deploy/migration/README.md` |
 | Tunnel end | `127.0.0.1:18082` on the apps VPS |

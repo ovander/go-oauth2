@@ -10,6 +10,15 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-02
+
+Minor release on the **v1.x** line, for GPWA. A user has an avatar URL, returned as the OIDC
+`picture` claim; an app's backend can update a member's profile fields with its service-account
+token. **Migration `0027`** adds the nullable `users.avatar_url` column (it runs at start-up, without
+`AUTO_MIGRATE`). No new environment variable, no behaviour change for existing clients: the
+`picture` claim, the `avatar_url` fields, the new route and the `update_profile` audit action are
+all additive.
+
 ### Added
 
 - **A user's avatar URL, returned as the OIDC `picture` claim.** A user can set `avatar_url` with
@@ -1654,7 +1663,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/ovander/go-oauth2/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/ovander/go-oauth2/compare/v1.5.3...v1.6.0
 [1.5.3]: https://github.com/ovander/go-oauth2/compare/v1.5.2...v1.5.3
 [1.5.2]: https://github.com/ovander/go-oauth2/compare/v1.5.1...v1.5.2

@@ -13,7 +13,7 @@ Enterprise-grade identity for secure multi-tenant SaaS.
 [![Release](https://img.shields.io/github/v/release/ovander/go-oauth2?sort=semver)](https://github.com/ovander/go-oauth2/releases)
 [![Coverage](https://img.shields.io/badge/Tier_A_coverage-ratchet-success)](docs/TEST-STRATEGY.md)
 [![Go Report Card](https://goreportcard.com/badge/github.com/ovander/go-oauth2)](https://goreportcard.com/report/github.com/ovander/go-oauth2)
-[![Security audited](https://img.shields.io/badge/security%20audit-pass%204%20%C2%B7%2091%2F100-success)](SECURITY.md#past-reviews)
+[![Security reviews](https://img.shields.io/badge/security%20reviews-4%20internal%20passes%20%2B%20pentest-informational)](SECURITY.md#past-reviews)
 [![SemVer](https://img.shields.io/badge/SemVer-2.0-orange)](https://semver.org)
 [![Docs](https://img.shields.io/badge/docs-/docs-blue)](docs/)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
@@ -37,7 +37,7 @@ Enterprise-grade identity for secure multi-tenant SaaS.
 
 ### Project status
 
-`✅ Production ready` · `✅ API stable` · `✅ Four security audit passes (all findings closed)` · `✅ Actively maintained` · `✅ Used in production` · `✅ Apache-2.0 licensed`
+`✅ Production ready` · `✅ API stable` · `✅ Four internal security audit passes` · `✅ Actively maintained` · `✅ Used in production` · `✅ Apache-2.0 licensed`
 
 > On a clear path toward a full Zero-Trust identity platform.
 
@@ -188,9 +188,11 @@ hash-chained audit · rate limiting, lockout, IP auto-blocking, CSRF, security h
 caps · client-IP attribution that trusts only `TRUSTED_PROXIES` · a token-less BFF model for every
 first-party browser app.
 
-**Audited, four internal passes, every accepted finding closed** (pass 4 scored 85 → 91/100). The
-fixes are recorded in [`CHANGELOG.md`](CHANGELOG.md) with their finding IDs; how to report a
-vulnerability and which versions are supported are in [`SECURITY.md`](SECURITY.md).
+**Reviewed: four internal audit passes and an end-to-end penetration test.** Every past finding
+was re-checked against the code in October 2026; the fixes are recorded in
+[`CHANGELOG.md`](CHANGELOG.md) with their finding IDs, and the remaining ones ship as patch
+releases. How to report a vulnerability and which versions are supported are in
+[`SECURITY.md`](SECURITY.md).
 
 > **Roadmap controls** (not yet in this repo): KMS/HSM key custody, mTLS/SPIFFE, database RLS +
 > envelope encryption, passkeys/WebAuthn. Today, signing keys are RSA-3072 PEM files on disk
@@ -214,7 +216,7 @@ a single-instance, production-capable identity server with two operator consoles
 |---|---|
 | ✅ OAuth 2.1 / OIDC core (issue, verify, rotate) | ◻️ High availability & multi-region |
 | ✅ Single-VPS production deployment ([runbook](docs/DEPLOYMENT-VPS-MULTI-APP.md), Caddy + Postgres, systemd kits) | ◻️ KMS / HSM key custody |
-| ✅ Four security audit passes, all findings closed, scored | ◻️ Service mesh + mTLS / SPIFFE |
+| ✅ Four internal security audit passes + a penetration test | ◻️ Service mesh + mTLS / SPIFFE |
 | ✅ CI gates (`-race`, `govulncheck`, lint, coverage ratchet) | ◻️ Tenant RLS + envelope encryption |
 | ✅ Tested (169 test files incl. adversarial + fuzz suites) | ◻️ Federation, AI gateway, passkeys |
 | ✅ MFA, DPoP, token exchange, audit, admin consoles | ◻️ Enforcement-by-default → **v2.0** |

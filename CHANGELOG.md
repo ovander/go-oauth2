@@ -24,6 +24,7 @@ Capabilities**, non-breaking).
 
 ### Changed
 
+- The README and `SECURITY.md` no longer claim that every audit finding is closed or show an audit score: a re-check of all past findings against the code found some still open, and they ship as patch releases.
 - The apps server's public IP address is replaced by an `<apps-ip>` placeholder in `docs/DEPLOYMENT-VPS-MULTI-APP.md` and the usage lines of `deploy/scripts/socrate-apps-access.sh`: deployment-specific addresses stay out of the repository.
 - `make deploy` uploads the binary with `rsync -P` instead of `scp`, so a stalled upload resumes when re-run; it sets `IPQoS=none` and `ServerAliveInterval=15`, which fixes the transfers that stall from macOS.
 

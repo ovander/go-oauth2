@@ -77,11 +77,12 @@ type authService struct {
 // implementation. Bootstrap calls this after the OAuth service is built.
 func (s *authService) SetRefreshGranter(g RefreshGranter) { s.refreshGranter = g }
 
-// enforceAdminMFAPolicy applies the admin-enrollment MFA policy at admin-portal
-// login. It is a no-op when the policy is off or the admin already has MFA
-// enrolled. Otherwise it audits the gap and, under "enforce", denies login with
+// enforceAdminMFAPolicy applies the admin-enrollment MFA policy when a Socrate
+// admin or superadmin signs in, on any login path (loginType is audited). It is
+// a no-op when the policy is off or the admin already has MFA enrolled.
+// Otherwise it audits the gap and, under "enforce", denies login with
 // ErrMFAEnrollmentRequired (the admin must enroll before they can log in).
-func (s *authService) enforceAdminMFAPolicy(ctx context.Context, user *model.User) error {
+func (s *authService) enforceAdminMFAPolicy(ctx context.Context, user *model.User, loginType string) error {
 	if user.MFAEnabled {
 		return nil
 	}
@@ -89,14 +90,14 @@ func (s *authService) enforceAdminMFAPolicy(ctx context.Context, user *model.Use
 	case MFAPolicyObserve:
 		s.logSecurityEvent(ctx, model.SecurityEventMFAPolicyViolation, &user.ID, nil, true, map[string]interface{}{
 			"email":      user.Email,
-			"login_type": "admin_portal",
+			"login_type": loginType,
 			"policy":     MFAPolicyObserve,
 		})
 		return nil
 	case MFAPolicyEnforce:
 		s.logSecurityEvent(ctx, model.SecurityEventMFAPolicyViolation, &user.ID, nil, false, map[string]interface{}{
 			"email":      user.Email,
-			"login_type": "admin_portal",
+			"login_type": loginType,
 			"policy":     MFAPolicyEnforce,
 		})
 		return ErrMFAEnrollmentRequired
@@ -449,6 +450,15 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 		return nil, fmt.Errorf("%w: please verify your email first", ErrUserNotVerified)
 	}
 
+	// Admin MFA-enrollment policy (RFC-011, HIGH-04): the consoles sign in
+	// through this path (/oauth/authorize), not AdminLogin, so the policy must
+	// apply here to every Socrate admin and superadmin.
+	if user.IsGlobalAdmin() {
+		if err := s.enforceAdminMFAPolicy(ctx, user, "password"); err != nil {
+			return nil, err
+		}
+	}
+
 	// Login step-up (RFC-011): an MFA-enrolled user must present a valid TOTP code.
 	if err := s.stepUpMFA(ctx, user, req.MFACode); err != nil {
 		if errors.Is(err, ErrMFAInvalidCode) {
@@ -585,7 +595,7 @@ func (s *authService) AdminLogin(ctx context.Context, req dto.AdminLoginRequest)
 
 	// Admin MFA-enrollment policy (RFC-011): under "enforce", an admin without
 	// MFA is denied until they enroll; under "observe" the gap is only audited.
-	if err := s.enforceAdminMFAPolicy(ctx, user); err != nil {
+	if err := s.enforceAdminMFAPolicy(ctx, user, "admin_portal"); err != nil {
 		return nil, err
 	}
 

@@ -362,7 +362,11 @@ Since P3-1 the admin API admits only **global admins** (`role=admin` or
 `superadmin`); `/api/admin/superadmins/*` needs `superadmin`. A plain `user`
 with a monitoring or admin OAuth session gets 403 everywhere. Promote console
 operators through the admin console (Users → role), and enrol them in MFA —
-with `ADMIN_MFA_POLICY=enforce` the portal refuses admins without it.
+with `ADMIN_MFA_POLICY=enforce` every sign-in of an admin without MFA is refused,
+the consoles' hosted login included (since v1.7.1). Enrol each admin first
+(`/api/profile/mfa/enroll`, then `/confirm`), and only then switch to `enforce`:
+an admin without MFA cannot sign in to enrol afterwards. Once enrolled, the
+hosted login asks for the authentication code after the password.
 
 ---
 

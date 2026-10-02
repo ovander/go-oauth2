@@ -29,7 +29,7 @@ func TestEnforceAdminMFAPolicy(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s := &authService{adminMFAPolicy: tc.policy}
 			user := &model.User{ID: 1, Email: "admin@example.com", MFAEnabled: tc.enrolled}
-			err := s.enforceAdminMFAPolicy(context.Background(), user)
+			err := s.enforceAdminMFAPolicy(context.Background(), user, "password")
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("policy=%q enrolled=%v: got %v, want %v", tc.policy, tc.enrolled, err, tc.wantErr)
 			}

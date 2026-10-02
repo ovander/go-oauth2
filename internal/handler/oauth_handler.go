@@ -365,6 +365,8 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 	// -----------------------------------------------------------------------
 	email := r.FormValue("email")
 	password := r.FormValue("password")
+	mfaCode := strings.TrimSpace(r.FormValue("mfa_code"))
+	showMFA := false
 
 	// renderLoginError re-renders the login page with a fresh CSRF token.
 	renderLoginError := func(errorMsg string) {
@@ -383,6 +385,7 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 			Error:               errorMsg,
 			CSRFToken:           csrfToken,
 			MaxAge:              req.MaxAge,
+			ShowMFA:             showMFA,
 		})
 	}
 
@@ -401,9 +404,11 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 		Email:       email,
 		Password:    password,
 		AppClientID: req.ClientID,
+		MFACode:     mfaCode,
 	})
 	if err != nil {
-		if h.autoDefense != nil {
+		// A correct password that still needs its code is not a failed guess.
+		if h.autoDefense != nil && !errors.Is(err, service.ErrMFARequired) {
 			h.autoDefense.RecordFailedLogin(r.Context(), clientIP, userAgent)
 		}
 		// errors.Is, not equality: Login returns several *wrapped* errors
@@ -419,8 +424,14 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 			renderLoginError("Your account has been locked. Please try again later")
 		case errors.Is(err, service.ErrRoleNotFound):
 			renderLoginError("You do not have access to this application")
-		case errors.Is(err, service.ErrMFARequired), errors.Is(err, service.ErrMFAInvalidCode):
-			renderLoginError("Multi-factor authentication is required to sign in here")
+		case errors.Is(err, service.ErrMFARequired):
+			showMFA = true
+			renderLoginError("Enter your password again with the code from your authenticator app")
+		case errors.Is(err, service.ErrMFAInvalidCode):
+			showMFA = true
+			renderLoginError("Invalid email, password or authentication code")
+		case errors.Is(err, service.ErrMFAEnrollmentRequired):
+			renderLoginError("Administrator accounts must have multi-factor authentication enabled before signing in. Ask another administrator for help")
 		default:
 			renderLoginError("Login failed. Please try again")
 		}

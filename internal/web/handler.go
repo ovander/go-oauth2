@@ -578,6 +578,8 @@ func safeFormError(err error, fallback string) string {
 		return "This invitation has already been used."
 	case errors.Is(err, service.ErrInvalidToken):
 		return "This invitation is invalid or has expired."
+	case errors.Is(err, service.ErrInviteAccountActive):
+		return "You already have an account: sign in with your password. If you have forgotten it, use \"Forgot password\"."
 	}
 	for _, sentinel := range passwordValidationErrors {
 		if errors.Is(err, sentinel) {

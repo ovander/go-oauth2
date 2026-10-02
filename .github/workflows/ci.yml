@@ -1,8 +1,5 @@
-# CI for go-oauth2 (Socrate) — RFC-014 / EPIC-6.
-#
-# Runs the quality gates that already pass on main: build, vet, race-enabled
-# tests, and a vulnerability scan. gofmt/golangci-lint enforcement is a planned
-# follow-up (the repo has pre-existing files that those tools would flag).
+# CI for go-oauth2 (Socrate): gofmt, build, vet, race-enabled tests against PostgreSQL,
+# golangci-lint, govulncheck, the Tier A coverage ratchet and a k6 perf smoke test.
 name: CI
 
 on:

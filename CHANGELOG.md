@@ -10,6 +10,18 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-10-02
+
+Patch release on the **v1.x** line with two security fixes, found when every past audit finding
+was re-checked against the code before the repository went public. Upgrade promptly.
+- An invite can no longer reset the password of an account already in use.
+- The hosted sign-in page asks for the MFA code, and `ADMIN_MFA_POLICY` applies to admins there.
+
+No migration, no new environment variable. **Before deploying:** if `ADMIN_MFA_POLICY=enforce`,
+every Socrate admin must have MFA enrolled, or they can no longer sign in to the consoles. Use
+`observe` until they have. `POST /api/auth/invite` can now answer `409` for an account that
+already exists; the role was granted when the invite was sent, so that user simply signs in.
+
 ### Security
 
 - **An invite can no longer take over an existing account.** `POST /api/apps/{app_id}/users`
@@ -1699,7 +1711,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.7.1...HEAD
+[1.7.1]: https://github.com/ovander/go-oauth2/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/ovander/go-oauth2/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/ovander/go-oauth2/compare/v1.5.3...v1.6.0
 [1.5.3]: https://github.com/ovander/go-oauth2/compare/v1.5.2...v1.5.3

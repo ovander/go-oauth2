@@ -10,6 +10,10 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Changed
+
+- `make deploy` uploads the binary with `rsync -P` instead of `scp`, so a stalled upload resumes when re-run; it sets `IPQoS=none` and `ServerAliveInterval=15`, which fixes the transfers that stall from macOS.
+
 ## [1.7.0] - 2026-10-02
 
 Minor release on the **v1.x** line, for GPWA. A user has an avatar URL, returned as the OIDC

@@ -9,6 +9,8 @@
 Enterprise-grade identity for secure multi-tenant SaaS.
 
 [![CI](https://github.com/ovander/go-oauth2/actions/workflows/ci.yml/badge.svg)](https://github.com/ovander/go-oauth2/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/ovander/go-oauth2/actions/workflows/codeql.yml/badge.svg)](https://github.com/ovander/go-oauth2/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ovander/go-oauth2/badge)](https://scorecard.dev/viewer/?uri=github.com/ovander/go-oauth2)
 [![Go](https://img.shields.io/badge/Go-1.25%2B%20(toolchain%201.27)-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Release](https://img.shields.io/github/v/release/ovander/go-oauth2?sort=semver)](https://github.com/ovander/go-oauth2/releases)
 [![Coverage](https://img.shields.io/badge/Tier_A_coverage-ratchet-success)](docs/TEST-STRATEGY.md)

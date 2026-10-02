@@ -20,6 +20,10 @@ export const SCOPE = __ENV.SCOPE || 'openid profile email offline_access';
 export const RATE = Number(__ENV.RATE || 50); // requests per second
 export const DURATION = __ENV.DURATION || '30s';
 export const VUS = Number(__ENV.VUS || 50);
+// MAX_VUS is how many VUs an arrival-rate scenario may grow to when the server
+// slows down (constantRate's maxVUs). A scenario that hands each VU its own
+// state must size that state for MAX_VUS, not VUS.
+export const MAX_VUS = VUS * 4;
 
 export const form = { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } };
 export const json = { headers: { 'Content-Type': 'application/json' } };
@@ -49,13 +53,13 @@ export function thresholds(p95Ms, failRate = 0.01) {
 // regardless of how slow the server gets, which is what you want for a latency
 // baseline. A VU-loop would silently reduce load as latency rose and report a
 // flattering number.
-export function constantRate(rate = RATE, duration = DURATION, vus = VUS) {
+export function constantRate(rate = RATE, duration = DURATION, vus = VUS, maxVUs = MAX_VUS) {
 	return {
 		executor: 'constant-arrival-rate',
 		rate,
 		timeUnit: '1s',
 		duration,
 		preAllocatedVUs: vus,
-		maxVUs: vus * 4,
+		maxVUs,
 	};
 }

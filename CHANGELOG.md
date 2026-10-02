@@ -14,6 +14,14 @@ Capabilities**, non-breaking).
 
 - `make deploy` uploads the binary with `rsync -P` instead of `scp`, so a stalled upload resumes when re-run; it sets `IPQoS=none` and `ServerAliveInterval=15`, which fixes the transfers that stall from macOS.
 
+### Fixed
+
+- The `token_refresh` perf scenario minted one refresh-token chain per pre-allocated VU, but k6
+  starts up to four times as many VUs when the server slows down. The extra VUs wrapped onto
+  chains other VUs were rotating, and a VU that failed once went back to its chain's first,
+  long-rotated token and failed on every later iteration: a slowdown became a cascade of `400`s.
+  It now mints a chain for every VU k6 may start, and keeps the current token after a failure.
+
 ## [1.7.0] - 2026-10-02
 
 Minor release on the **v1.x** line, for GPWA. A user has an avatar URL, returned as the OIDC

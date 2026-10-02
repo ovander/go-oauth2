@@ -12,9 +12,15 @@
 //     loop buries the refresh latency under password hashing and reports a
 //     number that is mostly bcrypt. Chains are therefore minted in setup(),
 //     before measurement starts, and handed to VUs by index.
+//
+// There is one chain per VU the scenario may ever start (MAX_VUS), not per
+// pre-allocated VU: when the server slows down, k6 adds VUs to hold the rate,
+// and a VU that shared a chain would present a token another VU had already
+// rotated. That turns a slowdown into a cascade of 400s that measures the
+// script, not the server.
 import http from 'k6/http';
 import { check, fail } from 'k6';
-import { BASE_URL, CLIENT_ID, USER_EMAIL, USER_PASSWORD, form, json, thresholds, constantRate, VUS } from './lib/config.js';
+import { BASE_URL, CLIENT_ID, USER_EMAIL, USER_PASSWORD, form, json, thresholds, constantRate, MAX_VUS } from './lib/config.js';
 
 export const options = {
 	scenarios: { token_refresh: constantRate() },
@@ -23,10 +29,11 @@ export const options = {
 	setupTimeout: '120s',
 };
 
-// setup mints one refresh-token chain per VU, outside the measured window.
+// setup mints one refresh-token chain per possible VU, outside the measured
+// window.
 export function setup() {
 	const chains = [];
-	for (let i = 0; i < VUS; i++) {
+	for (let i = 0; i < MAX_VUS; i++) {
 		const res = http.post(
 			`${BASE_URL}/api/auth/login`,
 			JSON.stringify({ email: USER_EMAIL, password: USER_PASSWORD, app_client_id: CLIENT_ID }),
@@ -45,8 +52,8 @@ let refreshToken = null;
 
 export default function (data) {
 	if (!refreshToken) {
-		// __VU is 1-based; wrap so more VUs than chains still works.
-		refreshToken = data.chains[(__VU - 1) % data.chains.length];
+		// __VU is 1-based, and there is a chain for every VU k6 may start.
+		refreshToken = data.chains[__VU - 1];
 	}
 
 	const res = http.post(
@@ -64,10 +71,8 @@ export default function (data) {
 		// Carry the rotated token forward, or the next iteration presents a
 		// spent one and measures reuse detection instead.
 		refreshToken = res.json('refresh_token');
-	} else {
-		// The chain is broken (revoked, expired, or reused by another VU that
-		// wrapped onto the same chain). Re-seed from the pool rather than
-		// hammering a token that can never succeed.
-		refreshToken = null;
 	}
+	// On a failure, keep the token: after a timeout or a 5xx it may still be
+	// valid. Going back to the chain's first token would present a token
+	// rotated long ago and fail on every later iteration.
 }

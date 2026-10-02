@@ -44,5 +44,8 @@ admin API meant to be reachable on loopback only. The [README](README.md#securit
 ## Past reviews
 
 Socrate has been through four internal security-audit passes and an end-to-end security and
-penetration test of the whole suite before v1.3.0. The fixes are listed in
-[`CHANGELOG.md`](CHANGELOG.md) with the finding IDs they close.
+penetration test of the whole suite before v1.3.0. In October 2026, before the repository was
+made public, every past finding was re-checked against the code on `main`. Most were confirmed
+fixed; the rest are being fixed and released as patch versions. The fixes are listed in
+[`CHANGELOG.md`](CHANGELOG.md) with the finding IDs they close. The review reports themselves
+are internal working documents and are not part of the repository.

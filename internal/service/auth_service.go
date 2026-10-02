@@ -909,7 +909,19 @@ func (s *authService) ValidateInviteToken(ctx context.Context, token string) (*d
 	}, nil
 }
 
-// AcceptInvite accepts an invite and creates/updates a user
+// invitePending reports whether u is an account that is still waiting for an
+// invite to activate it: created by an administrator or an application with a
+// throwaway password (Source "manual" or "invite"), never verified and never
+// signed in. Any other account belongs to someone already, and an invite must
+// not change its password.
+func invitePending(u *model.User) bool {
+	return !u.IsVerified && u.LastLogin == nil && u.ConfirmedAt == nil &&
+		(u.Source == "manual" || u.Source == "invite") && !u.IsGlobalAdmin()
+}
+
+// AcceptInvite accepts an invite: it creates the account, or activates the one
+// the invite created. It never sets the password of an account already in use
+// (ErrInviteAccountActive).
 func (s *authService) AcceptInvite(ctx context.Context, token, name, password string) (*dto.LoginResponse, error) {
 	claims, err := s.tokenService.VerifyInviteToken(token)
 	if err != nil {
@@ -968,7 +980,13 @@ func (s *authService) AcceptInvite(ctx context.Context, token, name, password st
 		}
 		hooks.RunUserProvisioned(ctx, hooks.UserProvisioned{User: user, Source: "invite"})
 	} else {
-		// Update existing user
+		// An invite token is handed to whoever sent the invite (the API returns
+		// it to the app admin or service account), so it must never take over
+		// an account that is already in use: only the account the invite
+		// created, still waiting to be activated, gets its password set here.
+		if !invitePending(user) {
+			return nil, ErrInviteAccountActive
+		}
 		user.HashedPassword = hashedPassword
 		user.IsVerified = true
 		user.ConfirmedAt = &now

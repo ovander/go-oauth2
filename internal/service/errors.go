@@ -39,4 +39,10 @@ var (
 	// Token errors
 	ErrInvalidToken     = errors.New("invalid or expired token")
 	ErrTokenAlreadyUsed = errors.New("token has already been used")
+
+	// ErrInviteAccountActive means an invite was presented for an account that
+	// is already in use. An invite never sets the password of such an account:
+	// the role was granted when the invite was sent, so the user signs in with
+	// their own password (or resets it through their mailbox).
+	ErrInviteAccountActive = errors.New("an account already exists for this email: sign in instead")
 )

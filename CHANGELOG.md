@@ -10,9 +10,22 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Security
+
+- **An invite can no longer take over an existing account.** `POST /api/apps/{app_id}/users`
+  (app admin) and `POST /api/apps/{app_id}/service/users` (service account) accept the email of
+  any existing user and return the `invite_token`; redeeming it on `POST /api/auth/invite` (or the
+  `/auth/invite` page) used to overwrite that account's password and sign the redeemer in. An app
+  admin or a compromised app backend could take over members of other apps. `AcceptInvite` now
+  sets a password only on the account the invite created and that is still pending (throwaway
+  password, never verified, confirmed or signed in); for any other account it answers `409`
+  ("an account already exists for this email: sign in instead"). The role is still granted when
+  the invite is sent, so an existing user simply signs in.
+
 ### Changed
 
 - CI: Dependabot (Go modules, GitHub Actions, Docker base images), CodeQL code scanning (`security-extended`) and an OpenSSF Scorecard workflow, with their README badges. The CI workflow's header comment now lists the gates it actually runs.
+- The README and `SECURITY.md` no longer claim that every audit finding is closed or show an audit score: a re-check of all past findings against the code found some still open, and they ship as patch releases.
 - The apps server's public IP address is replaced by an `<apps-ip>` placeholder in `docs/DEPLOYMENT-VPS-MULTI-APP.md` and the usage lines of `deploy/scripts/socrate-apps-access.sh`: deployment-specific addresses stay out of the repository.
 - `make deploy` uploads the binary with `rsync -P` instead of `scp`, so a stalled upload resumes when re-run; it sets `IPQoS=none` and `ServerAliveInterval=15`, which fixes the transfers that stall from macOS.
 

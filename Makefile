@@ -112,7 +112,7 @@ deploy-check:
 
 deploy: deploy-check build-linux
 	@echo "→ Uploading binary…"
-	scp bin/socrate             $(VPS):socrate-new
+	rsync -P -e "ssh -o IPQoS=none -o ServerAliveInterval=15" bin/socrate $(VPS):socrate-new
 	ssh $(VPS) "sudo mv socrate-new $(REMOTE_DIR)/bin/oauth-server && sudo chown socrate:socrate $(REMOTE_DIR)/bin/oauth-server"
 	@echo "→ Uploading GeoIP databases (skipped if unchanged)…"
 	rsync -az --progress data/  $(VPS):socrate-data/

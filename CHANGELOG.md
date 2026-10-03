@@ -10,6 +10,18 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-03
+
+Minor release on the **v1.x** line: additive only, requested by Lakebridge.
+- The member look-up returns `token_version` and `locked`, a cheap revocation check for resource
+  servers (backendkit v1.19.0 exposes them as `socrate.User.TokenVersion` and `Locked`).
+- `/oauth/authorize` accepts `prompt=login` and `prompt=none`; discovery advertises them.
+- An app can carry a shorter access-token lifetime (`access_token_ttl_seconds`).
+
+**Migration `0028`** adds the nullable `apps.access_token_ttl_seconds` column; it runs at startup
+like every numbered migration (no `AUTO_MIGRATE` needed) and leaves existing apps on the
+server-wide `ACCESS_TOKEN_TTL`. No new environment variable, no change of default.
+
 ### Added
 
 - **A cheap revocation check for resource servers.** The member look-up
@@ -1735,7 +1747,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.7.1...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/ovander/go-oauth2/compare/v1.7.1...v1.8.0
 [1.7.1]: https://github.com/ovander/go-oauth2/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/ovander/go-oauth2/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/ovander/go-oauth2/compare/v1.5.3...v1.6.0

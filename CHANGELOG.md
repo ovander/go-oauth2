@@ -20,6 +20,12 @@ Capabilities**, non-breaking).
   service-account token, where `/oauth/introspect` verifies the client secret (bcrypt) on every
   call and answers only for tokens issued to the calling client. Lists do not carry the two
   fields. Requested by Lakebridge.
+- **`prompt=login` and `prompt=none` on `/oauth/authorize`** (OIDC Core §3.1.2.1). `login`
+  always shows the login page, even for a signed-in browser, so the new tokens carry a fresh
+  `auth_time` (with `max_age`, the step-up before a sensitive action). `none` redirects with
+  `login_required` or `consent_required` instead of showing a page; combined with another value it
+  is `invalid_request`. Discovery advertises `prompt_values_supported: ["none", "login"]`.
+  Requested by Lakebridge.
 
 ## [1.7.1] - 2026-10-02
 

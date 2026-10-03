@@ -130,6 +130,14 @@ type AppUserResponse struct {
 	AvatarURL  *string    `json:"avatar_url,omitempty"`
 	LastLogin  *time.Time `json:"last_login,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
+
+	// TokenVersion and Locked are set by the single-member look-up only
+	// (omitted from lists). A token whose token_version claim is lower than
+	// TokenVersion was revoked (logout, password change, block); a resource
+	// server can compare the two with its service-account token instead of
+	// introspecting every user token.
+	TokenVersion *int  `json:"token_version,omitempty"`
+	Locked       *bool `json:"locked,omitempty"`
 }
 
 type AppUserListResponse struct {

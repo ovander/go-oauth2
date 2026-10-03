@@ -12,6 +12,14 @@ Capabilities**, non-breaking).
 
 ### Added
 
+- **A cheap revocation check for resource servers.** The member look-up
+  `GET /api/apps/{app_id}/service/users/{user_id}` (and its app-admin twin) now returns
+  `token_version` and `locked`. A user token whose `token_version` claim is lower than the
+  returned value was revoked (sign-out through `/api/auth/logout`, password change or reset,
+  block, "revoke all tokens", refresh-token reuse). A gateway checks it with its cached
+  service-account token, where `/oauth/introspect` verifies the client secret (bcrypt) on every
+  call and answers only for tokens issued to the calling client. Lists do not carry the two
+  fields. Requested by Lakebridge.
 - **A per-client access-token lifetime.** An app can carry `access_token_ttl_seconds` (60 to
   86400, admin API create and update; `0` on update clears it). Access tokens issued to that
   client, user tokens and `client_credentials` tokens alike, then expire sooner, and `expires_in`

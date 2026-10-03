@@ -100,6 +100,17 @@ type Config struct {
 	// "off" (default, unchanged behaviour), "observe" (allow but audit admins
 	// without MFA), or "enforce" (deny until the admin enrolls). RFC-011.
 	AdminMFAPolicy string
+	// AdminAppSignInPolicy governs whether a Socrate admin or superadmin may sign
+	// in to an application that is not an operator console: "off" (default,
+	// unchanged — an admin is the implicit admin of any app), "observe" (allow
+	// but audit admin_app_signin), or "enforce" (refuse at /oauth/authorize and
+	// on refresh). ADMIN_APP_SIGNIN_POLICY.
+	AdminAppSignInPolicy string
+	// OperatorConsoleClientIDs lists, comma-separated, the client_ids of the
+	// operator consoles (admin and monitoring BFFs), where an admin keeps
+	// signing in under every AdminAppSignInPolicy mode. AdminConsoleClientID is
+	// always included. OPERATOR_CONSOLE_CLIENT_IDS.
+	OperatorConsoleClientIDs string
 	// DPoPMode controls DPoP (RFC 9449) sender-constraint handling at the token
 	// endpoint: "off" (default), "observe" (verify any DPoP proof, log telemetry,
 	// and bind the issued token when a valid proof is sent, but never reject), or
@@ -342,32 +353,34 @@ func Load() *Config {
 		InviteTokenTTL:  time.Duration(getEnvInt("INVITE_TOKEN_TTL", 86400)) * time.Second,
 
 		// Security
-		MaxFailedAttempts:       getEnvInt("MAX_FAILED_ATTEMPTS", 5),
-		LockoutDurationSecs:     getEnvInt("LOCKOUT_DURATION_SECONDS", 900),
-		SecretKeyBase:           getEnv("SECRET_KEY_BASE", ""),
-		AdminMFAPolicy:          normalizeAdminMFAPolicy(getEnv("ADMIN_MFA_POLICY", "off")),
-		DPoPMode:                normalizeDPoPMode(getEnv("DPOP_MODE", "off")),
-		TokenExchangeMode:       normalizeTokenExchangeMode(getEnv("TOKEN_EXCHANGE_MODE", "off")),
-		ImpersonationTokenTTL:   time.Duration(getEnvInt("IMPERSONATION_TOKEN_TTL", 300)) * time.Second,
-		ImpersonationStepUpMode: normalizeStepUpMode(getEnv("IMPERSONATION_STEPUP_MODE", "off")),
-		ImpersonationMaxAuthAge: time.Duration(getEnvInt("IMPERSONATION_MAX_AUTH_AGE", 900)) * time.Second,
-		DelegationStepUpMode:    normalizeStepUpMode(getEnv("DELEGATION_STEPUP_MODE", "off")),
-		RefreshReuseMode:        normalizeStepUpMode(getEnv("REFRESH_REUSE_MODE", "off")),
-		ScopePolicyMode:         normalizeStepUpMode(getEnv("SCOPE_POLICY_MODE", "off")),
-		AudienceMode:            normalizeAudienceMode(getEnv("AUDIENCE_MODE", "off")),
-		ClaimsNamespace:         getEnv("CLAIMS_NAMESPACE", ""),
-		WebhooksEnabled:         strings.EqualFold(strings.TrimSpace(getEnv("WEBHOOKS_MODE", "off")), "on"),
-		WebhookCacheRefresh:     time.Duration(getEnvInt("WEBHOOK_CACHE_REFRESH", 60)) * time.Second,
-		WebhookMaxAttempts:      getEnvInt("WEBHOOK_MAX_ATTEMPTS", 6),
-		WebhookPollInterval:     time.Duration(getEnvInt("WEBHOOK_POLL_INTERVAL", 10)) * time.Second,
-		WebhookBatchSize:        getEnvInt("WEBHOOK_BATCH_SIZE", 20),
-		WebhookSendTimeout:      time.Duration(getEnvInt("WEBHOOK_SEND_TIMEOUT", 5)) * time.Second,
-		StateBackend:            state.NormalizeBackend(getEnv("STATE_BACKEND", "memory")),
-		StateSweepInterval:      time.Duration(getEnvInt("STATE_SWEEP_INTERVAL", 300)) * time.Second,
-		StateOpTimeout:          time.Duration(getEnvInt("STATE_OP_TIMEOUT_MS", 2000)) * time.Millisecond,
-		PolicyMode:              string(policy.NormalizeMode(getEnv("POLICY_MODE", "off"))),
-		PolicyRefreshInterval:   time.Duration(getEnvInt("POLICY_REFRESH_INTERVAL", 10)) * time.Second,
-		PolicyDecisionRetention: time.Duration(getEnvInt("POLICY_DECISION_RETENTION_DAYS", 30)) * 24 * time.Hour,
+		MaxFailedAttempts:        getEnvInt("MAX_FAILED_ATTEMPTS", 5),
+		LockoutDurationSecs:      getEnvInt("LOCKOUT_DURATION_SECONDS", 900),
+		SecretKeyBase:            getEnv("SECRET_KEY_BASE", ""),
+		AdminMFAPolicy:           normalizeAdminMFAPolicy(getEnv("ADMIN_MFA_POLICY", "off")),
+		AdminAppSignInPolicy:     normalizeStepUpMode(getEnv("ADMIN_APP_SIGNIN_POLICY", "off")),
+		OperatorConsoleClientIDs: getEnv("OPERATOR_CONSOLE_CLIENT_IDS", ""),
+		DPoPMode:                 normalizeDPoPMode(getEnv("DPOP_MODE", "off")),
+		TokenExchangeMode:        normalizeTokenExchangeMode(getEnv("TOKEN_EXCHANGE_MODE", "off")),
+		ImpersonationTokenTTL:    time.Duration(getEnvInt("IMPERSONATION_TOKEN_TTL", 300)) * time.Second,
+		ImpersonationStepUpMode:  normalizeStepUpMode(getEnv("IMPERSONATION_STEPUP_MODE", "off")),
+		ImpersonationMaxAuthAge:  time.Duration(getEnvInt("IMPERSONATION_MAX_AUTH_AGE", 900)) * time.Second,
+		DelegationStepUpMode:     normalizeStepUpMode(getEnv("DELEGATION_STEPUP_MODE", "off")),
+		RefreshReuseMode:         normalizeStepUpMode(getEnv("REFRESH_REUSE_MODE", "off")),
+		ScopePolicyMode:          normalizeStepUpMode(getEnv("SCOPE_POLICY_MODE", "off")),
+		AudienceMode:             normalizeAudienceMode(getEnv("AUDIENCE_MODE", "off")),
+		ClaimsNamespace:          getEnv("CLAIMS_NAMESPACE", ""),
+		WebhooksEnabled:          strings.EqualFold(strings.TrimSpace(getEnv("WEBHOOKS_MODE", "off")), "on"),
+		WebhookCacheRefresh:      time.Duration(getEnvInt("WEBHOOK_CACHE_REFRESH", 60)) * time.Second,
+		WebhookMaxAttempts:       getEnvInt("WEBHOOK_MAX_ATTEMPTS", 6),
+		WebhookPollInterval:      time.Duration(getEnvInt("WEBHOOK_POLL_INTERVAL", 10)) * time.Second,
+		WebhookBatchSize:         getEnvInt("WEBHOOK_BATCH_SIZE", 20),
+		WebhookSendTimeout:       time.Duration(getEnvInt("WEBHOOK_SEND_TIMEOUT", 5)) * time.Second,
+		StateBackend:             state.NormalizeBackend(getEnv("STATE_BACKEND", "memory")),
+		StateSweepInterval:       time.Duration(getEnvInt("STATE_SWEEP_INTERVAL", 300)) * time.Second,
+		StateOpTimeout:           time.Duration(getEnvInt("STATE_OP_TIMEOUT_MS", 2000)) * time.Millisecond,
+		PolicyMode:               string(policy.NormalizeMode(getEnv("POLICY_MODE", "off"))),
+		PolicyRefreshInterval:    time.Duration(getEnvInt("POLICY_REFRESH_INTERVAL", 10)) * time.Second,
+		PolicyDecisionRetention:  time.Duration(getEnvInt("POLICY_DECISION_RETENTION_DAYS", 30)) * 24 * time.Hour,
 
 		// Rate Limiting
 		// LOW-03 fix: window env vars now have an explicit _MS suffix so
@@ -432,6 +445,11 @@ func Load() *Config {
 // Validate validates the configuration for the given environment
 // Returns an error if required configuration is missing in production
 func (c *Config) Validate() error {
+	// Every environment: enforce with no console listed would lock every
+	// operator out of the consoles. Refuse to start instead.
+	if c.AdminAppSignInPolicy == "enforce" && len(c.ConsoleClientIDs()) == 0 {
+		return fmt.Errorf("ADMIN_APP_SIGNIN_POLICY=enforce needs OPERATOR_CONSOLE_CLIENT_IDS (or ADMIN_CONSOLE_CLIENT_ID): without a console, no admin could sign in")
+	}
 	if c.IsProduction() {
 		// Critical security settings that must be set in production
 		if c.SecretKeyBase == "" {
@@ -488,6 +506,21 @@ func (c *Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+// ConsoleClientIDs returns the operator consoles' client_ids: those listed in
+// OPERATOR_CONSOLE_CLIENT_IDS plus ADMIN_CONSOLE_CLIENT_ID, trimmed, without
+// empty entries or duplicates.
+func (c *Config) ConsoleClientIDs() []string {
+	var ids []string
+	seen := map[string]bool{}
+	for _, id := range append(strings.Split(c.OperatorConsoleClientIDs, ","), c.AdminConsoleClientID) {
+		if id = strings.TrimSpace(id); id != "" && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // IsProduction returns true if running in production environment

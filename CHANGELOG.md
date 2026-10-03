@@ -10,6 +10,19 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Added
+
+- **Operator accounts stay out of the applications: `ADMIN_APP_SIGNIN_POLICY`** (`off` by
+  default). A Socrate admin or superadmin has no membership in any app and so far became the
+  implicit `admin` of any app it signed in to. With `enforce` it signs in to the operator consoles
+  only, listed in the new `OPERATOR_CONSOLE_CLIENT_IDS` (plus `ADMIN_CONSOLE_CLIENT_ID`). On any
+  other app the sign-in page refuses it ("This is a Socrate administrator account…"), no code is
+  issued, and the refresh grant answers `invalid_grant`, so an open app session ends at its next
+  refresh. The rule is enforced once, in Socrate, for every app; no app has to recognise an
+  operator token. `observe` allows the sign-in and audits it as `admin_app_signin`, which shows who
+  still needs a personal account first. Socrate refuses to start with `enforce` and no console
+  listed. Ordinary users and app members are not affected.
+
 ## [1.8.0] - 2026-10-03
 
 Minor release on the **v1.x** line: additive only, requested by Lakebridge.

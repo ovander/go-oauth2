@@ -210,6 +210,8 @@ FROM_NAME=Socrate
 # Admin plane hardening
 ADMIN_ELEVATION_MAX_AGE=300             # step-up freshness for destructive admin actions
 ADMIN_MFA_POLICY=enforce                # admins must enrol TOTP before the admin portal admits them
+OPERATOR_CONSOLE_CLIENT_IDS=<admin-bff-client-id>,<monitoring-bff-client-id>
+ADMIN_APP_SIGNIN_POLICY=enforce         # operator accounts sign in to the consoles only (observe first)
 ADMIN_PASSWORD_LOGIN_ENABLED=false      # consoles use Authorization Code + PKCE through their BFFs
 RATE_LIMIT_TOKEN=60                     # never 0 in production (Validate() warns)
 
@@ -367,6 +369,13 @@ the consoles' hosted login included (since v1.7.1). Enrol each admin first
 (`/api/profile/mfa/enroll`, then `/confirm`), and only then switch to `enforce`:
 an admin without MFA cannot sign in to enrol afterwards. Once enrolled, the
 hosted login asks for the authentication code after the password.
+
+Keep operator accounts out of the applications: list the consoles' client_ids in
+`OPERATOR_CONSOLE_CLIENT_IDS` and set `ADMIN_APP_SIGNIN_POLICY=enforce`. A global
+admin then signs in to the consoles only; any other app refuses it on Socrate's
+sign-in page (and an open app session ends at its next refresh). Run `observe`
+first: each admin sign-in to an app is audited as `admin_app_signin`, which shows
+who still uses an operator account in an app and needs a personal one.
 
 ---
 

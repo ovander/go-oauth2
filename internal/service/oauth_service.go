@@ -1272,6 +1272,8 @@ func (s *oauthService) GetOpenIDConfiguration(issuer string) *dto.OpenIDConfigur
 		// being listed does not mean it is present on every token.
 		ClaimsSupported:    []string{"sub", "iss", "aud", "exp", "iat", "nbf", "email", "email_verified", "name", "preferred_username", "picture", "role", "app_roles", "token_version", "auth_time", "acr", "amr", "act", "cnf"},
 		AcrValuesSupported: []string{"pwd", "mfa"},
+		// OIDC Core §3.1.2.1 prompt: login and none (see OAuthHandler.Authorize).
+		PromptValuesSupported: []string{"none", "login"},
 		// RFC 9207: the authorization response includes the `iss` parameter.
 		AuthorizationResponseIssParameterSupported: true,
 	}

@@ -241,6 +241,32 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// OIDC Core §3.1.2.1 prompt. "none" asks for no page at all: this server
+	// always asks for consent (CRIT-04), so it can only answer with an error,
+	// login_required or consent_required, and "none" with any other value is
+	// invalid. "login" asks for a fresh authentication even when the browser
+	// is already signed in (e.g. before a sensitive action, together with
+	// max_age); the login page sets a new auth_time. Other values are ignored.
+	promptNone, promptLogin, err := parsePrompt(r.URL.Query().Get("prompt"))
+	if err != nil {
+		h.redirectWithError(w, r, req.RedirectURI, req.State, "invalid_request", err.Error())
+		return
+	}
+
+	// Check if user is authenticated
+	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if promptNone {
+		code := "consent_required"
+		if !ok {
+			code = "login_required"
+		}
+		h.redirectWithError(w, r, req.RedirectURI, req.State, code, "prompt=none cannot be satisfied")
+		return
+	}
+	if promptLogin {
+		ok = false
+	}
+
 	// CRIT-03: generate a CSRF token and set it as a SameSite=Strict cookie.
 	// The same value is embedded in the form so we can verify it on POST.
 	csrfToken, err := auth.GenerateCSRFToken(w, h.httpsRequired)
@@ -249,8 +275,6 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user is authenticated
-	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		// User not authenticated — render login page with CSRF token.
 		_ = h.templateService.RenderLogin(w, service.LoginPageData{
@@ -277,6 +301,25 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.renderConsentPage(w, req, app.Name, userID, csrfToken)
+}
+
+// parsePrompt reads the space-separated OIDC prompt parameter. It reports
+// whether "none" and "login" are present; "none" combined with any other value
+// is an error (OIDC Core §3.1.2.1). Unknown values are ignored.
+func parsePrompt(raw string) (none, login bool, err error) {
+	values := strings.Fields(raw)
+	for _, v := range values {
+		switch v {
+		case "none":
+			none = true
+		case "login":
+			login = true
+		}
+	}
+	if none && len(values) > 1 {
+		return false, false, errors.New("prompt=none cannot be combined with other values")
+	}
+	return none, login, nil
 }
 
 // POST /oauth/authorize — handles two actions:

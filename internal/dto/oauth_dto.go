@@ -125,6 +125,10 @@ type OpenIDConfiguration struct {
 	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported"`
 	ClaimsSupported                   []string `json:"claims_supported"`
 	CodeChallengeMethodsSupported     []string `json:"code_challenge_methods_supported"`
+	// PromptValuesSupported advertises the OIDC prompt values /oauth/authorize
+	// honours: "login" (always re-authenticate) and "none" (fail instead of
+	// showing any page).
+	PromptValuesSupported []string `json:"prompt_values_supported,omitempty"`
 	// AcrValuesSupported advertises the authentication context class values the
 	// OP can assert (RFC 8176 / OIDC Discovery): "pwd" (password) and "mfa"
 	// (multi-factor). Omitted when empty.

@@ -303,6 +303,10 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	h.renderConsentPage(w, req, app.Name, userID, csrfToken)
 }
 
+// adminAppSignInRefusedMessage is shown on Socrate's sign-in page when
+// ADMIN_APP_SIGNIN_POLICY=enforce refuses an operator account on an app.
+const adminAppSignInRefusedMessage = "This is a Socrate administrator account: it can only sign in to the Socrate consoles. Use your personal account for this application"
+
 // parsePrompt reads the space-separated OIDC prompt parameter. It reports
 // whether "none" and "login" are present; "none" combined with any other value
 // is an error (OIDC Core §3.1.2.1). Unknown values are ignored.
@@ -465,6 +469,9 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 			renderLoginError("Please verify your email address first")
 		case errors.Is(err, service.ErrAccountLocked):
 			renderLoginError("Your account has been locked. Please try again later")
+		case errors.Is(err, service.ErrAdminAppSignInRefused):
+			// ADMIN_APP_SIGNIN_POLICY=enforce, before the generic "no access".
+			renderLoginError(adminAppSignInRefusedMessage)
 		case errors.Is(err, service.ErrRoleNotFound):
 			renderLoginError("You do not have access to this application")
 		case errors.Is(err, service.ErrMFARequired):
@@ -535,6 +542,10 @@ func (h *OAuthHandler) handleConsentPost(w http.ResponseWriter, r *http.Request,
 	code, err := h.oauthService.Authorize(r.Context(), req, userID)
 	if err != nil {
 		switch {
+		case errors.Is(err, service.ErrAdminAppSignInRefused):
+			// Shown on Socrate's page, not sent back to the application: the
+			// operator must read it, and the app gets nothing for this account.
+			h.renderOAuthError(w, "access_denied", adminAppSignInRefusedMessage, "")
 		case errors.Is(err, service.ErrRoleNotFound):
 			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "access_denied", "user does not have access to this application")
 		case errors.Is(err, service.ErrReauthRequired):

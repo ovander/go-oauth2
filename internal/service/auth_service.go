@@ -70,12 +70,34 @@ type authService struct {
 	// bearer refresh endpoint delegates to. Wired by bootstrap via
 	// SetRefreshGranter once the OAuth service is constructed.
 	refreshGranter RefreshGranter
+	// adminAppSignIn refuses or audits a Socrate admin signing in to an
+	// application that is not an operator console (ADMIN_APP_SIGNIN_POLICY).
+	adminAppSignIn AdminAppSignInPolicy
 }
 
 // SetRefreshGranter wires the single hardened refresh path so that
 // /api/auth/refresh and /oauth/token share one rotation/replay/DPoP-enforcing
 // implementation. Bootstrap calls this after the OAuth service is built.
 func (s *authService) SetRefreshGranter(g RefreshGranter) { s.refreshGranter = g }
+
+// SetAdminAppSignInPolicy wires ADMIN_APP_SIGNIN_POLICY into the hosted login.
+func (s *authService) SetAdminAppSignInPolicy(p AdminAppSignInPolicy) { s.adminAppSignIn = p }
+
+// checkAdminAppSignIn applies ADMIN_APP_SIGNIN_POLICY to a Socrate admin
+// signing in to app without a membership: observe audits it, enforce refuses
+// it with ErrAdminAppSignInRefused.
+func (s *authService) checkAdminAppSignIn(ctx context.Context, user *model.User, app *model.App, path string) error {
+	if !s.adminAppSignIn.outsideConsoles(user, app) {
+		return nil
+	}
+	refused := s.adminAppSignIn.refuses()
+	s.logSecurityEvent(ctx, model.SecurityEventAdminAppSignIn, &user.ID, &app.ID, !refused,
+		s.adminAppSignIn.adminAppSignInDetails(user, app, path))
+	if refused {
+		return ErrAdminAppSignInRefused
+	}
+	return nil
+}
 
 // enforceAdminMFAPolicy applies the admin-enrollment MFA policy when a Socrate
 // admin or superadmin signs in, on any login path (loginType is audited). It is
@@ -485,6 +507,11 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 		// member of that client. Non-admins still require a membership row.
 		if !user.IsGlobalAdmin() {
 			return nil, fmt.Errorf("%w: user has no access to app", ErrRoleNotFound)
+		}
+		// ADMIN_APP_SIGNIN_POLICY: outside the operator consoles, an admin's
+		// sign-in is audited (observe) or refused here, on the sign-in page.
+		if err := s.checkAdminAppSignIn(ctx, user, app, "login"); err != nil {
+			return nil, err
 		}
 		userAppRole = &model.UserAppRole{UserID: user.ID, AppID: app.ID, Role: model.AppRoleAdmin}
 	}

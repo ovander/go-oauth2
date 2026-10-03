@@ -66,6 +66,11 @@ const (
 	// step-up (in place of a TOTP code).
 	SecurityEventMFARecoveryUsed SecurityEventType = "mfa_recovery_code_used"
 
+	// SecurityEventAdminAppSignIn: a Socrate admin or superadmin signed in to
+	// (observe) or was refused from (enforce) an application that is not an
+	// operator console (ADMIN_APP_SIGNIN_POLICY).
+	SecurityEventAdminAppSignIn SecurityEventType = "admin_app_signin"
+
 	// Delegation (RFC 8693 / EPIC-16): a token-exchange request was processed
 	// (in shadow, audited but not issued; in enforce, an exchanged token issued).
 	SecurityEventTokenExchange SecurityEventType = "token_exchange"

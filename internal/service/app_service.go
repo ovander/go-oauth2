@@ -87,6 +87,13 @@ func (s *appService) Create(ctx context.Context, req dto.CreateAppRequest, owner
 			return nil, "", err
 		}
 	}
+	var accessTokenTTL *int
+	if req.AccessTokenTTLSeconds != nil {
+		var err error
+		if accessTokenTTL, err = normalizeAccessTokenTTL(*req.AccessTokenTTLSeconds, false); err != nil {
+			return nil, "", err
+		}
+	}
 
 	// Generate client ID
 	clientID, err := generateSecureToken(16)
@@ -141,6 +148,8 @@ func (s *appService) Create(ctx context.Context, req dto.CreateAppRequest, owner
 		OwnerID:            &ownerID,
 		CreatedAt:          time.Now(),
 		UpdatedAt:          time.Now(),
+
+		AccessTokenTTLSeconds: accessTokenTTL,
 	}
 
 	if err := s.repo.Create(ctx, app); err != nil {
@@ -192,6 +201,14 @@ func (s *appService) Update(ctx context.Context, id uint, req dto.UpdateAppReque
 		}
 		app.ClaimMappings = *req.ClaimMappings
 	}
+	if req.AccessTokenTTLSeconds != nil {
+		ttl, err := normalizeAccessTokenTTL(*req.AccessTokenTTLSeconds, true)
+		if err != nil {
+			return nil, err
+		}
+		app.AccessTokenTTLSeconds = ttl
+	}
+
 	// The magic-link page must stay on an origin of the redirect URIs, so it
 	// is checked whenever either changes.
 	if req.MagicLinkURL != nil {

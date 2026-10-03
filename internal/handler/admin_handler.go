@@ -108,6 +108,10 @@ func appChangeSet(before, after *model.App) (changed []string, detail map[string
 	if !stringPtrEqual(before.MagicLinkURL, after.MagicLinkURL) {
 		markVal("magic_link_url", derefString(before.MagicLinkURL), derefString(after.MagicLinkURL))
 	}
+	// A longer token lifetime widens the window a stolen token stays usable.
+	if derefInt(before.AccessTokenTTLSeconds) != derefInt(after.AccessTokenTTLSeconds) {
+		markVal("access_token_ttl_seconds", derefInt(before.AccessTokenTTLSeconds), derefInt(after.AccessTokenTTLSeconds))
+	}
 	return changed, detail
 }
 
@@ -1165,7 +1169,17 @@ func appToResponse(app model.App) dto.AppResponse {
 		MagicLinkURL:       app.MagicLinkURL,
 		OwnerID:            app.OwnerID,
 		CreatedAt:          app.CreatedAt,
+
+		AccessTokenTTLSeconds: app.AccessTokenTTLSeconds,
 	}
+}
+
+// derefInt returns *p, or 0 for nil.
+func derefInt(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
 }
 
 func derefString(s *string) string {

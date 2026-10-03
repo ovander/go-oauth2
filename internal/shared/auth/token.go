@@ -371,7 +371,7 @@ func (ts *TokenService) generateTokenSet(user *model.User, app *model.App, role 
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		IDToken:      idToken,
-		ExpiresIn:    int(ts.accessTokenTTL.Seconds()),
+		ExpiresIn:    int(ts.AccessTokenTTLFor(app).Seconds()),
 	}, nil
 }
 
@@ -390,7 +390,7 @@ func (ts *TokenService) newAccessClaims(user *model.User, app *model.App, role s
 			Audience:  jwt.ClaimStrings(ts.accessAudience(app)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now), // Token valid immediately (nbf claim)
-			ExpiresAt: jwt.NewNumericDate(now.Add(ts.accessTokenTTL)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(ts.AccessTokenTTLFor(app))),
 			ID:        uuid.New().String(),
 		},
 		Scope:        scope,
@@ -632,7 +632,7 @@ func (ts *TokenService) GenerateClientCredentialsToken(app *model.App, scope str
 			Audience:  jwt.ClaimStrings{app.ClientID},
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(ts.accessTokenTTL)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(ts.AccessTokenTTLFor(app))),
 			ID:        uuid.New().String(),
 		},
 		Scope: scope,
@@ -794,6 +794,18 @@ func (ts *TokenService) calculateAtHash(accessToken string) string {
 
 // GetAccessTokenTTL returns the access token TTL
 func (ts *TokenService) GetAccessTokenTTL() time.Duration {
+	return ts.accessTokenTTL
+}
+
+// AccessTokenTTLFor is the lifetime of an access token issued to app: its own
+// AccessTokenTTLSeconds when set and shorter than the server-wide TTL, else the
+// server-wide TTL. A per-client value can only shorten it.
+func (ts *TokenService) AccessTokenTTLFor(app *model.App) time.Duration {
+	if app != nil && app.AccessTokenTTLSeconds != nil && *app.AccessTokenTTLSeconds > 0 {
+		if d := time.Duration(*app.AccessTokenTTLSeconds) * time.Second; d < ts.accessTokenTTL {
+			return d
+		}
+	}
 	return ts.accessTokenTTL
 }
 

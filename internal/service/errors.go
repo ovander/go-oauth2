@@ -45,4 +45,26 @@ var (
 	// the role was granted when the invite was sent, so the user signs in with
 	// their own password (or resets it through their mailbox).
 	ErrInviteAccountActive = errors.New("an account already exists for this email: sign in instead")
+
+	// ErrInvalidAccessTokenTTL rejects a per-client access-token lifetime
+	// outside [MinAccessTokenTTLSeconds, MaxAccessTokenTTLSeconds].
+	ErrInvalidAccessTokenTTL = errors.New("invalid access_token_ttl_seconds: must be between 60 and 86400")
 )
+
+// Bounds of a per-client access-token lifetime, in seconds.
+const (
+	MinAccessTokenTTLSeconds = 60
+	MaxAccessTokenTTLSeconds = 86400
+)
+
+// normalizeAccessTokenTTL validates a per-client access-token lifetime for a
+// create (clearAllowed false) or an update (0 clears it).
+func normalizeAccessTokenTTL(v int, clearAllowed bool) (*int, error) {
+	if v == 0 && clearAllowed {
+		return nil, nil
+	}
+	if v < MinAccessTokenTTLSeconds || v > MaxAccessTokenTTLSeconds {
+		return nil, ErrInvalidAccessTokenTTL
+	}
+	return &v, nil
+}

@@ -619,6 +619,19 @@ var migrations = []Migration{
 			return db.Exec("ALTER TABLE users ADD COLUMN avatar_url TEXT").Error
 		},
 	},
+	{
+		ID:   "0028",
+		Name: "add_apps.access_token_ttl_seconds",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("apps") {
+				return nil
+			}
+			if db.Migrator().HasColumn(&model.App{}, "access_token_ttl_seconds") {
+				return nil
+			}
+			return db.Exec("ALTER TABLE apps ADD COLUMN access_token_ttl_seconds INTEGER").Error
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

@@ -975,7 +975,7 @@ func (s *oauthService) handleClientCredentialsGrant(ctx context.Context, req dto
 	return &dto.TokenResponse{
 		AccessToken: accessToken,
 		TokenType:   "Bearer",
-		ExpiresIn:   int(s.tokenService.GetAccessTokenTTL().Seconds()),
+		ExpiresIn:   int(s.tokenService.AccessTokenTTLFor(app).Seconds()),
 		Scope:       scope,
 	}, nil
 }

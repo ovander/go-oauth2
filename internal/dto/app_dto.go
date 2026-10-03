@@ -40,6 +40,10 @@ type CreateAppRequest struct {
 	// localhost), no fragment, same origin as one of redirect_uris. Optional;
 	// without it the app cannot send magic links.
 	MagicLinkURL *string `json:"magic_link_url,omitempty"`
+	// AccessTokenTTLSeconds shortens the access tokens issued to this client,
+	// 60 to 86400 seconds; the server-wide ACCESS_TOKEN_TTL stays the maximum.
+	// Optional; without it the server-wide value applies.
+	AccessTokenTTLSeconds *int `json:"access_token_ttl_seconds,omitempty"`
 }
 
 type UpdateAppRequest struct {
@@ -67,6 +71,10 @@ type UpdateAppRequest struct {
 	// MagicLinkURL replaces the page magic-link emails open. Omitted (nil) =
 	// unchanged; an empty string clears it (magic links are then refused).
 	MagicLinkURL *string `json:"magic_link_url,omitempty"`
+	// AccessTokenTTLSeconds replaces the client's access-token lifetime, 60 to
+	// 86400 seconds. Omitted (nil) = unchanged; 0 clears it (the server-wide
+	// ACCESS_TOKEN_TTL applies again).
+	AccessTokenTTLSeconds *int `json:"access_token_ttl_seconds,omitempty"`
 }
 
 type AddAppUserRequest struct {
@@ -101,6 +109,10 @@ type AppResponse struct {
 	MagicLinkURL *string   `json:"magic_link_url,omitempty"`
 	OwnerID      *uint     `json:"owner_id,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
+	// AccessTokenTTLSeconds is the client's own access-token lifetime; absent
+	// when the server-wide ACCESS_TOKEN_TTL applies. A value above it has no
+	// effect: tokens never outlive the server-wide maximum.
+	AccessTokenTTLSeconds *int `json:"access_token_ttl_seconds,omitempty"`
 }
 
 type AppWithSecretResponse struct {

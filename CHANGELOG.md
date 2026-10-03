@@ -10,6 +10,16 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Added
+
+- **A per-client access-token lifetime.** An app can carry `access_token_ttl_seconds` (60 to
+  86400, admin API create and update; `0` on update clears it). Access tokens issued to that
+  client, user tokens and `client_credentials` tokens alike, then expire sooner, and `expires_in`
+  says so. It can only shorten: the server-wide `ACCESS_TOKEN_TTL` stays the maximum. A change is
+  audited in `client_updated`. **Migration `0028`** adds the nullable
+  `apps.access_token_ttl_seconds` column. Requested by Lakebridge (5-minute service tokens, 15-minute
+  user tokens).
+
 ## [1.7.1] - 2026-10-02
 
 Patch release on the **v1.x** line with two security fixes, found when every past audit finding

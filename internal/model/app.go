@@ -78,6 +78,12 @@ type App struct {
 	// one of RedirectURIs. Nil means magic links are not configured for this
 	// app, and a request for one is refused instead of emailing a dead link.
 	MagicLinkURL *string `gorm:"column:magic_link_url" json:"magic_link_url,omitempty"`
+
+	// AccessTokenTTLSeconds shortens the lifetime of the access tokens issued
+	// to this client (user tokens and client_credentials tokens alike). It can
+	// only shorten: the server-wide ACCESS_TOKEN_TTL stays the maximum. Nil
+	// means the server-wide value.
+	AccessTokenTTLSeconds *int `gorm:"column:access_token_ttl_seconds" json:"access_token_ttl_seconds,omitempty"`
 }
 
 // ScopeAllowed reports whether the client may request scope under its

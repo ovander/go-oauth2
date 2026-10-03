@@ -12,7 +12,7 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The notes are the CHANGELOG section of the tagged version ("## [X.Y.Z] - date"),
       # so the release says exactly what the changelog says. A tag whose section is missing

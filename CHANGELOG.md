@@ -26,6 +26,13 @@ Capabilities**, non-breaking).
   `login_required` or `consent_required` instead of showing a page; combined with another value it
   is `invalid_request`. Discovery advertises `prompt_values_supported: ["none", "login"]`.
   Requested by Lakebridge.
+- **A per-client access-token lifetime.** An app can carry `access_token_ttl_seconds` (60 to
+  86400, admin API create and update; `0` on update clears it). Access tokens issued to that
+  client, user tokens and `client_credentials` tokens alike, then expire sooner, and `expires_in`
+  says so. It can only shorten: the server-wide `ACCESS_TOKEN_TTL` stays the maximum. A change is
+  audited in `client_updated`. **Migration `0028`** adds the nullable
+  `apps.access_token_ttl_seconds` column. Requested by Lakebridge (5-minute service tokens, 15-minute
+  user tokens).
 
 ## [1.7.1] - 2026-10-02
 

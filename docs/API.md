@@ -544,6 +544,12 @@ admin's tokens are revoked (token-version bump) and they must log in again
   and `""` clears it; a `redirect_uris` change that would leave it on a
   foreign origin is refused unless it moves in the same request. A change is
   audited in `client_updated` like a redirect URI change.
+  `access_token_ttl_seconds` (optional, v1.8.0) shortens the lifetime of the
+  access tokens issued to this client, user and `client_credentials` tokens
+  alike (`expires_in` follows): 60 to 86400, otherwise `400 invalid
+  access_token_ttl_seconds`. It can only shorten: the server-wide
+  `ACCESS_TOKEN_TTL` stays the maximum. On update, omitting it leaves it
+  unchanged and `0` clears it. A change is audited in `client_updated`.
 - `GET /{id}` · `PUT /{id}` · `DELETE /{id}`
 - `POST /{id}/rotate-secret` — issue a new secret (returned once).
 
@@ -554,6 +560,7 @@ admin's tokens are revoked (token-version bump) and they must log in again
   "redirect_uris": ["https://app.example.com/callback"], "owner_id": 5,
   "audiences": [], "allowed_scopes": [], "claim_mappings": {},
   "magic_link_url": "https://app.example.com/auth/magic",
+  "access_token_ttl_seconds": 300,
   "created_at": "2026-01-01T00:00:00Z" }
 ```
 

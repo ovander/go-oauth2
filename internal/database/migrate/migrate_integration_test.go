@@ -1,10 +1,14 @@
 package migrate_test
 
 import (
+	"fmt"
+	"net/url"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/ovander/go-oauth2/internal/database/migrate"
+	"github.com/ovander/go-oauth2/internal/model"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	glogger "gorm.io/gorm/logger"
@@ -79,4 +83,70 @@ func TestMigrations_SharedStateTablesAreUnlogged(t *testing.T) {
 			t.Errorf("%s relpersistence = %q, want %q (unlogged)", table, persistence, "u")
 		}
 	}
+}
+
+// 0028 adds apps.access_token_ttl_seconds on a fresh install and on an upgrade
+// from a database that predates it (the column absent and 0028 not recorded).
+// It runs in a database of its own: dropping a column in the shared test
+// database would race with the other packages' tests.
+func TestMigration0028_AccessTokenTTLColumn(t *testing.T) {
+	db := scratchDB(t)
+	// A fresh install creates the tables from the models (AutoMigrate), which
+	// already carry the column; the numbered migrations then run on top.
+	if err := db.AutoMigrate(&model.App{}); err != nil {
+		t.Fatalf("automigrate apps: %v", err)
+	}
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	hasColumn := func() bool {
+		var n int64
+		db.Raw(`SELECT count(*) FROM information_schema.columns
+			WHERE table_name = 'apps' AND column_name = 'access_token_ttl_seconds'`).Scan(&n)
+		return n == 1
+	}
+	if !hasColumn() {
+		t.Fatal("fresh install: apps.access_token_ttl_seconds missing")
+	}
+
+	if err := db.Exec("ALTER TABLE apps DROP COLUMN access_token_ttl_seconds").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("DELETE FROM schema_migrations WHERE id = '0028'").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("upgrade run: %v", err)
+	}
+	if !hasColumn() {
+		t.Fatal("upgrade: apps.access_token_ttl_seconds not added")
+	}
+}
+
+// scratchDB creates an empty database next to TEST_DATABASE_URL's, for a test
+// that changes the schema, and drops it at the end. It skips when the role
+// may not create databases.
+func scratchDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	admin := testDB(t)
+	name := fmt.Sprintf("socrate_mig_%d", time.Now().UnixNano())
+	if err := admin.Exec("CREATE DATABASE " + name).Error; err != nil {
+		t.Skipf("cannot create a scratch database (%v)", err)
+	}
+	u, err := url.Parse(os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.Path = "/" + name
+	db, err := gorm.Open(postgres.Open(u.String()), &gorm.Config{Logger: glogger.Default.LogMode(glogger.Silent)})
+	if err != nil {
+		t.Fatalf("connect to the scratch database: %v", err)
+	}
+	t.Cleanup(func() {
+		if sqlDB, err := db.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+		_ = admin.Exec("DROP DATABASE IF EXISTS " + name + " WITH (FORCE)").Error
+	})
+	return db
 }

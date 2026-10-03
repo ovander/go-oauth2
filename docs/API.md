@@ -352,8 +352,17 @@ routes** on the Admin router, which are scoped to that exact app:
 - `POST /api/apps/{app_id}/service/users` — create a user inside the app.
 - `GET /api/apps/{app_id}/service/users/{user_id}` — look up one of the app's
   members by numeric id (a token's `sub`): `{ "id", "email", "name", "role",
-  "is_verified", "invite_sent", "last_login", "created_at" }`. `404` when the
-  user is not a member of this app (a Socrate admin never is) or does not exist.
+  "is_verified", "invite_sent", "avatar_url", "last_login", "created_at",
+  "token_version", "locked" }`. `404` when the user is not a member of this app
+  (a Socrate admin never is) or does not exist. **Revocation check (v1.8.0):** a
+  user token whose `token_version` claim is lower than the returned
+  `token_version` was revoked: a sign-out through `/api/auth/logout`, a password
+  change or reset, a block, an admin's "revoke all tokens", or refresh-token
+  reuse detection. It costs one call with the app's cached service-account
+  token, unlike `/oauth/introspect`, which verifies the client secret (bcrypt)
+  on every call and only answers for tokens issued to the calling client. A
+  single token revoked through `/oauth/revoke`, or an OIDC logout naming one
+  token, is not reflected here; introspection is.
 - `PATCH /api/apps/{app_id}/service/users/{user_id}` — update profile fields of
   one of the app's members: any of `name`, `title`, `division`, `company`,
   `country`, `phone`, `job_title`, `department`, `language`, `timezone`,

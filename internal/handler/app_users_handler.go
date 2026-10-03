@@ -125,16 +125,19 @@ func (h *AppUsersHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tokenVersion, locked := user.TokenVersion, user.IsLocked()
 	writeJSON(w, dto.AppUserResponse{
-		ID:         user.ID,
-		Email:      user.Email,
-		Name:       user.Name,
-		Role:       string(role.Role),
-		IsVerified: user.IsVerified,
-		InviteSent: role.InviteSent,
-		AvatarURL:  user.AvatarURL,
-		LastLogin:  user.LastLogin,
-		CreatedAt:  role.CreatedAt,
+		ID:           user.ID,
+		Email:        user.Email,
+		Name:         user.Name,
+		Role:         string(role.Role),
+		IsVerified:   user.IsVerified,
+		InviteSent:   role.InviteSent,
+		AvatarURL:    user.AvatarURL,
+		LastLogin:    user.LastLogin,
+		CreatedAt:    role.CreatedAt,
+		TokenVersion: &tokenVersion,
+		Locked:       &locked,
 	})
 }
 

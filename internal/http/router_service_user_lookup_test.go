@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ovander/go-oauth2/internal/handler"
 	"github.com/ovander/go-oauth2/internal/model"
@@ -95,5 +96,36 @@ func TestServiceUserLookup_TheCallerMustBeTheApp(t *testing.T) {
 	h.ServeHTTP(rr, req)
 	if rr.Code != nethttp.StatusUnauthorized || strings.Contains(rr.Body.String(), "alice") {
 		t.Errorf("no token → %d %s, want 401", rr.Code, rr.Body.String())
+	}
+}
+
+// v1.8.0: the single-member look-up carries token_version and locked, so a
+// resource server can check a user token's revocation with its own service
+// token. A list never carries them.
+func TestServiceUserLookup_ReturnsTokenVersionAndLocked(t *testing.T) {
+	f, h := newServiceLookupRouter(t)
+	f.alice.TokenVersion = 7
+	until := time.Now().Add(time.Hour)
+	f.alice.LockedUntil = &until
+
+	rr := lookup(h, "3", "10", f.serviceToken(t, f.billing))
+	if rr.Code != nethttp.StatusOK {
+		t.Fatalf("member look-up → %d %s", rr.Code, rr.Body.String())
+	}
+	var got struct {
+		TokenVersion *int  `json:"token_version"`
+		Locked       *bool `json:"locked"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.TokenVersion == nil || *got.TokenVersion != 7 || got.Locked == nil || !*got.Locked {
+		t.Fatalf("token_version / locked = %v / %v, want 7 / true", got.TokenVersion, got.Locked)
+	}
+
+	f.alice.LockedUntil = nil
+	rr = lookup(h, "3", "10", f.serviceToken(t, f.billing))
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil || got.Locked == nil || *got.Locked {
+		t.Fatalf("unlocked user: locked = %v (%v)", got.Locked, err)
 	}
 }

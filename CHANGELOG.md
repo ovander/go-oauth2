@@ -10,6 +10,17 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Added
+
+- **A cheap revocation check for resource servers.** The member look-up
+  `GET /api/apps/{app_id}/service/users/{user_id}` (and its app-admin twin) now returns
+  `token_version` and `locked`. A user token whose `token_version` claim is lower than the
+  returned value was revoked (sign-out through `/api/auth/logout`, password change or reset,
+  block, "revoke all tokens", refresh-token reuse). A gateway checks it with its cached
+  service-account token, where `/oauth/introspect` verifies the client secret (bcrypt) on every
+  call and answers only for tokens issued to the calling client. Lists do not carry the two
+  fields. Requested by Lakebridge.
+
 ## [1.7.1] - 2026-10-02
 
 Patch release on the **v1.x** line with two security fixes, found when every past audit finding

@@ -139,6 +139,7 @@ GET https://auth.example.com/oauth/authorize
 | `nonce` | recommended | echoed into the ID token |
 | `code_challenge` / `code_challenge_method` | required for public clients | `S256` |
 | `max_age` | optional | OIDC: forces re-auth if the session is older |
+| `prompt` | optional | OIDC (v1.8.0): `login` always shows the login page, even for a signed-in browser, and sets a new `auth_time` (use it with `max_age` before a sensitive action); `none` never shows a page and redirects with `login_required` or `consent_required` (the consent page is always shown, so `none` cannot succeed); `none` with another value is `invalid_request`. Other values are ignored. |
 
 The server renders a login page (if the user has no session) followed by a
 **consent page**. On approval it redirects to:

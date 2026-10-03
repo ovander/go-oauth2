@@ -10,6 +10,15 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Added
+
+- **`prompt=login` and `prompt=none` on `/oauth/authorize`** (OIDC Core §3.1.2.1). `login`
+  always shows the login page, even for a signed-in browser, so the new tokens carry a fresh
+  `auth_time` (with `max_age`, the step-up before a sensitive action). `none` redirects with
+  `login_required` or `consent_required` instead of showing a page; combined with another value it
+  is `invalid_request`. Discovery advertises `prompt_values_supported: ["none", "login"]`.
+  Requested by Lakebridge.
+
 ## [1.7.1] - 2026-10-02
 
 Patch release on the **v1.x** line with two security fixes, found when every past audit finding

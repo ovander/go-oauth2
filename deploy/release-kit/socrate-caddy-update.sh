@@ -14,6 +14,9 @@
 #      BFF's POST /bff/csp-report), from caddy/admin-reporting-endpoints.txt and
 #      caddy/admin-csp-report-only.txt — inserted after the CSP line, in the same form, or
 #      updated in place if already there.
+#   4. admin site, when the bundle carries caddy/admin-bff-paths.txt: every path the admin
+#      console's deploy/Caddyfile routes to the BFF is in the site's @bff matcher (admin v1.5.0
+#      adds /api/profile/mfa and /api/profile/mfa/*). Missing paths are appended; none is removed.
 # Nothing else in the site files changes. The legacy site and the main Caddyfile are not touched.
 # On a validation or reload failure the originals are restored.
 set -euo pipefail
@@ -50,6 +53,12 @@ if [ -f "$BUNDLE/caddy/admin-csp-report-only.txt" ] || [ -f "$BUNDLE/caddy/admin
   [ "$RE" = 'csp="/bff/csp-report"' ] || die "admin-reporting-endpoints.txt looks wrong: $RE"
 fi
 
+BFF_PATHS=""
+if [ -f "$BUNDLE/caddy/admin-bff-paths.txt" ]; then
+  BFF_PATHS="$(tr '\n' ' ' < "$BUNDLE/caddy/admin-bff-paths.txt")"
+  case " $BFF_PATHS " in *" /bff/* "*" /api/admin/* "*) ;; *) die "admin-bff-paths.txt looks wrong: $BFF_PATHS";; esac
+fi
+
 # Compute the new contents into temp files (no change on disk yet).
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 python3 - "$MON_SITE" "$tmp/mon" <<'MONPY'
@@ -62,9 +71,9 @@ if '/api/version' not in l.split():
     s = s.replace(l, l.rstrip('\n') + ' /api/version\n', 1)
 open(sys.argv[2], 'w').write(s)
 MONPY
-python3 - "$ADMIN_SITE" "$tmp/admin" "$CSP" "$RO" "$RE" <<'ADMINPY'
+python3 - "$ADMIN_SITE" "$tmp/admin" "$CSP" "$RO" "$RE" "$BFF_PATHS" <<'ADMINPY'
 import re, sys
-site, out, csp, ro, rep = sys.argv[1:6]
+site, out, csp, ro, rep, bff_paths = sys.argv[1:7]
 s = open(site).read()
 
 # The enforced policy: exactly one line, "Content-Security-Policy" followed by whitespace (so the
@@ -91,6 +100,15 @@ if ro:
     end = pat.search(s).end()
     s, end = upsert(s, end, 'Reporting-Endpoints', '`' + rep + '`')
     s, end = upsert(s, end, 'Content-Security-Policy-Report-Only', '"' + ro + '"')
+
+if bff_paths.split():
+    lines = [l for l in s.splitlines(True) if re.match(r'\s*@bff path ', l)]
+    if len(lines) != 1: sys.exit(f"expected one '@bff path' line in {site}, found {len(lines)}")
+    l = lines[0]
+    have = l.split()
+    missing = [p for p in bff_paths.split() if p not in have]
+    if missing:
+        s = s.replace(l, l.rstrip('\n') + ' ' + ' '.join(missing) + '\n', 1)
 open(out, 'w').write(s)
 ADMINPY
 
@@ -98,7 +116,7 @@ changed=0
 printf '\n\033[1m▶ plan\033[0m\n'
 if cmp -s "$MON_SITE" "$tmp/mon"; then ok "monitor: @bff already routes /api/version"; else
   changed=1; info "monitor ($MON_SITE):"; { diff -u "$MON_SITE" "$tmp/mon" | sed -n '3,$p' | grep '^[-+]' | sed 's/^/      /'; } || true; fi
-if cmp -s "$ADMIN_SITE" "$tmp/admin"; then ok "admin: CSP canonical${RO:+, Report-Only and Reporting-Endpoints in place}"; else
+if cmp -s "$ADMIN_SITE" "$tmp/admin"; then ok "admin: CSP canonical${RO:+, Report-Only and Reporting-Endpoints in place}${BFF_PATHS:+, @bff routes every console path}"; else
   changed=1; info "admin ($ADMIN_SITE):"; { diff -u "$ADMIN_SITE" "$tmp/admin" | sed -n '3,$p' | grep '^[-+]' | cut -c1-160 | sed 's/^/      /'; } || true; fi
 grep -q 'includeSubDomains"' "$ADMIN_SITE" && info "not changed: admin HSTS has no 'preload' (the repo's has) — add it only if you intend to submit the domain to the HSTS preload list"
 [ "$changed" = 1 ] || { printf '\nNothing to do.\n'; exit 0; }
@@ -136,6 +154,12 @@ if [ -n "$RO" ]; then
   [ "$code" = 415 ] && ok "POST /bff/csp-report reaches the admin BFF (415 for a non-report body)" \
     || warn "POST /bff/csp-report answered '$code' (want 415) — is admin BFF v1.1.0 installed?"
 fi
+case " $BFF_PATHS " in *" /api/profile/mfa "*)
+  # Anonymous: the BFF answers 401; the SPA fallback would answer 200 with index.html.
+  code="$(curl -sS --noproxy '*' -o /dev/null -w '%{http_code}' --max-time 10 --resolve "$ADMIN_HOST:443:127.0.0.1" "https://$ADMIN_HOST/api/profile/mfa" || true)"
+  [ "$code" = 401 ] && ok "GET /api/profile/mfa reaches the admin BFF (401 without a session)" \
+    || warn "GET /api/profile/mfa answered '$code' (want 401) — check the admin @bff matcher";;
+esac
 body="$(curl -sS --noproxy '*' --max-time 10 --resolve "$MON_HOST:443:127.0.0.1" "https://$MON_HOST/api/version" || true)"
 case "$body" in \{*\"version\"*) ok "monitor /api/version → $body";;
   *'<!doctype'*|*'<!DOCTYPE'*) warn "monitor /api/version returns the SPA — is the monitoring BFF v1.0.0+ installed?";;

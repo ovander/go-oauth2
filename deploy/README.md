@@ -18,6 +18,9 @@ an **env template**, and a **bootstrap** script.
 > | Env file | `/etc/socrate/socrate.env` (`0640`, `root:socrate`) |
 > | Signing keys (writable) | `/var/lib/socrate/keys` (`KEYS_PATH`) |
 > | Optional GeoIP data | `/var/lib/socrate/data` |
+>
+> **Upgrading a running suite** (Socrate and both consoles together) uses the release kit in
+> [`release-kit/`](release-kit/README.md): one bundle built from the three tags, one installer.
 
 ## Where Socrate sits
 

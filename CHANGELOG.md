@@ -10,6 +10,14 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Added
+
+- `deploy/release-kit/`: the suite release kit, now versioned here. `socrate-release.sh` builds
+  the bundle (Socrate, both consoles, units, admin Caddy headers and `@bff` paths) from the three
+  tags on the owner's workstation; `socrate-vps-install.sh` installs it; `socrate-caddy-update.sh`
+  now also adds the admin console's missing `@bff` paths (admin v1.5.0's `/api/profile/mfa`). CI
+  checks that the deploy scripts parse.
+
 ## [1.10.0] - 2026-10-04
 
 Minor release on the **v1.x** line. Tokens from the authorization-code grant now report the real

@@ -653,7 +653,7 @@ func (s *authService) AdminLogin(ctx context.Context, req dto.AdminLoginRequest)
 	// Create a virtual "admin-portal" app for token generation
 	adminApp := &model.App{
 		ID:       0,
-		ClientID: "admin-portal",
+		ClientID: AdminPortalClientID,
 		Name:     "Admin Portal",
 	}
 
@@ -737,7 +737,7 @@ func (s *authService) ReAuthenticate(ctx context.Context, userID uint, password,
 	}
 
 	now := time.Now()
-	adminApp := &model.App{ID: 0, ClientID: "admin-portal", Name: "Admin Portal"}
+	adminApp := &model.App{ID: 0, ClientID: AdminPortalClientID, Name: "Admin Portal"}
 	amr, acr := loginAuthnContext(user.MFAEnabled)
 	tokenSet, err := s.tokenService.GenerateTokenSetWithAuth(
 		user, adminApp, string(user.Role),

@@ -18,6 +18,11 @@ const (
 	AdminAppSignInEnforce = "enforce"
 )
 
+// AdminPortalClientID is the audience of the tokens Socrate mints itself for
+// the admin API: the deprecated /api/admin/login and the step-up
+// /api/admin/elevate. It is not a registered client (client_ids are random).
+const AdminPortalClientID = "admin-portal"
+
 // ErrAdminAppSignInRefused is returned when ADMIN_APP_SIGNIN_POLICY=enforce
 // refuses a Socrate admin on an application that is not an operator console.
 // It wraps ErrRoleNotFound, so every caller that handles "no access to this

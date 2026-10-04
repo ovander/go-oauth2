@@ -111,6 +111,13 @@ type Config struct {
 	// signing in under every AdminAppSignInPolicy mode. AdminConsoleClientID is
 	// always included. OPERATOR_CONSOLE_CLIENT_IDS.
 	OperatorConsoleClientIDs string
+	// AdminAPIAudienceMode confines the admin API to tokens issued to the
+	// operator consoles (M-03): "off" (default — any valid token of a global
+	// admin, unchanged), "observe" (allow but audit admin_api_audience), or
+	// "enforce" (refuse with 403 invalid_audience). Accepted: the
+	// ConsoleClientIDs plus Socrate's own admin-portal audience (the deprecated
+	// password login and /api/admin/elevate). ADMIN_API_AUDIENCE_MODE.
+	AdminAPIAudienceMode string
 	// AuditWriteMode is how security audit rows are written: "sync" (default —
 	// inside the request, as before) or "async" (queued and appended in batches
 	// by a background writer, so a token request no longer waits on the audit
@@ -365,6 +372,7 @@ func Load() *Config {
 		AdminMFAPolicy:           normalizeAdminMFAPolicy(getEnv("ADMIN_MFA_POLICY", "off")),
 		AdminAppSignInPolicy:     normalizeStepUpMode(getEnv("ADMIN_APP_SIGNIN_POLICY", "off")),
 		OperatorConsoleClientIDs: getEnv("OPERATOR_CONSOLE_CLIENT_IDS", ""),
+		AdminAPIAudienceMode:     normalizeStepUpMode(getEnv("ADMIN_API_AUDIENCE_MODE", "off")),
 		AuditWriteMode:           normalizeAuditWriteMode(getEnv("AUDIT_WRITE_MODE", "sync")),
 		DPoPMode:                 normalizeDPoPMode(getEnv("DPOP_MODE", "off")),
 		TokenExchangeMode:        normalizeTokenExchangeMode(getEnv("TOKEN_EXCHANGE_MODE", "off")),
@@ -456,6 +464,11 @@ func (c *Config) Validate() error {
 	// operator out of the consoles. Refuse to start instead.
 	if c.AdminAppSignInPolicy == "enforce" && len(c.ConsoleClientIDs()) == 0 {
 		return fmt.Errorf("ADMIN_APP_SIGNIN_POLICY=enforce needs OPERATOR_CONSOLE_CLIENT_IDS (or ADMIN_CONSOLE_CLIENT_ID): without a console, no admin could sign in")
+	}
+	// Same lock-out guard: enforce with no console would refuse the consoles'
+	// own tokens on every admin API call.
+	if c.AdminAPIAudienceMode == "enforce" && len(c.ConsoleClientIDs()) == 0 {
+		return fmt.Errorf("ADMIN_API_AUDIENCE_MODE=enforce needs OPERATOR_CONSOLE_CLIENT_IDS (or ADMIN_CONSOLE_CLIENT_ID): without a console, the admin API would refuse the consoles")
 	}
 	if c.IsProduction() {
 		// Critical security settings that must be set in production

@@ -10,6 +10,19 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Changed
+
+- **Go 1.27.1 as the `go` directive** (was `go 1.25.13` with `toolchain go1.27.1`). The module
+  now declares the Go it is built, tested and shipped with, so its language level and `GODEBUG`
+  defaults match the toolchain. Defaults that change for Socrate: crypto functions always use the
+  system random source, TLS also offers the hybrid post-quantum key exchange, `net/url` rejects
+  stray colons in a host, and crash tracebacks include goroutine labels. The DPoP thumbprint reads
+  key coordinates through `ecdsa.PublicKey.Bytes()` instead of the deprecated `X`/`Y` fields (same
+  thumbprint). Dependencies: `x/crypto` v0.57.0 (the v0.55 pin is gone), `gorm` v1.31.2, the
+  Postgres driver v1.6.3, `pgx` v5.10.0, `chi` v5.3.2, `cors` v1.2.2, `logrus` v1.10.2,
+  `x/sync`, `x/sys`, `x/text`. CI reads the Go version from the `go` line when there is no
+  `toolchain` line, and builds govulncheck (now pinned to v1.8.0) with it.
+
 ### Added
 
 - **Operator accounts stay out of the applications: `ADMIN_APP_SIGNIN_POLICY`** (`off` by

@@ -563,6 +563,9 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 		Roles:              []string{string(userAppRole.Role)},
 		AppRoles:           appRoles,
 		MustChangePassword: user.MustChangePassword,
+		AuthTime:           now.Unix(),
+		AMR:                amr,
+		ACR:                acr,
 	}, nil
 }
 

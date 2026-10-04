@@ -69,6 +69,13 @@ func NewCodeStoreWithTTL(repo repository.AuthorizationCodeRepository, ttl time.D
 
 // GenerateCode generates and stores a new authorization code
 func (cs *CodeStore) GenerateCode(ctx context.Context, userID, appID uint, clientID, redirectURI, scope, nonce, codeChallenge, codeChallengeMethod, role string, appRoles map[string]string) (string, error) {
+	return cs.GenerateCodeWithAuthn(ctx, userID, appID, clientID, redirectURI, scope, nonce, codeChallenge, codeChallengeMethod, role, appRoles, AuthnEvidence{})
+}
+
+// GenerateCodeWithAuthn is GenerateCode that also stores the end-user
+// authentication evidence behind the code, so the tokens it is redeemed for
+// carry the real auth_time, amr and acr.
+func (cs *CodeStore) GenerateCodeWithAuthn(ctx context.Context, userID, appID uint, clientID, redirectURI, scope, nonce, codeChallenge, codeChallengeMethod, role string, appRoles map[string]string, authn AuthnEvidence) (string, error) {
 	// Generate cryptographically secure random code
 	codeBytes := make([]byte, 32)
 	if _, err := rand.Read(codeBytes); err != nil {
@@ -89,6 +96,9 @@ func (cs *CodeStore) GenerateCode(ctx context.Context, userID, appID uint, clien
 		CodeChallengeMethod: codeChallengeMethod,
 		Role:                role,
 		AppRoles:            appRoles,
+		AuthTime:            authn.AuthTime,
+		AMR:                 model.StringArray(authn.AMR),
+		ACR:                 authn.ACR,
 		Used:                false,
 		ExpiresAt:           now.Add(cs.ttl),
 		CreatedAt:           now,

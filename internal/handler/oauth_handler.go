@@ -300,7 +300,18 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.renderConsentPage(w, req, app.Name, userID, csrfToken)
+	h.renderConsentPage(w, req, app.Name, userID, csrfToken, bearerAuthnEvidence(r))
+}
+
+// bearerAuthnEvidence is the sign-in evidence of the access token that
+// authenticated this request (OptionalAuthMiddleware): its auth_time, amr and
+// acr. Zero when the request carries no verified token.
+func bearerAuthnEvidence(r *http.Request) auth.AuthnEvidence {
+	claims, ok := r.Context().Value(contextkeys.JWTClaimsKey).(*auth.AccessTokenClaims)
+	if !ok || claims == nil {
+		return auth.AuthnEvidence{}
+	}
+	return auth.AuthnEvidence{AuthTime: claims.AuthTime, AMR: claims.Amr, ACR: claims.Acr}
 }
 
 // adminAppSignInRefusedMessage is shown on Socrate's sign-in page when
@@ -500,7 +511,9 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.renderConsentPage(w, req, app.Name, loginResp.UserID, csrfToken)
+	// The sign-in that just happened is the authentication behind the code.
+	h.renderConsentPage(w, req, app.Name, loginResp.UserID, csrfToken,
+		auth.AuthnEvidence{AuthTime: loginResp.AuthTime, AMR: loginResp.AMR, ACR: loginResp.ACR})
 }
 
 // handleConsentPost processes the explicit "Allow" / "Deny" consent POST.
@@ -510,7 +523,7 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 func (h *OAuthHandler) handleConsentPost(w http.ResponseWriter, r *http.Request, req dto.AuthorizeRequest, appName string) {
 	// Validate and extract the signed user identity.
 	consentTokenStr := r.FormValue("consent_token")
-	userID, tokenClientID, err := auth.ValidateConsentToken(consentTokenStr, h.secretKey)
+	userID, tokenClientID, authn, err := auth.ValidateConsentTokenWithAuthn(consentTokenStr, h.secretKey)
 	if err != nil {
 		h.renderOAuthError(w, "invalid_request", "Consent session expired or invalid. Please sign in again.", "")
 		return
@@ -539,7 +552,7 @@ func (h *OAuthHandler) handleConsentPost(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	code, err := h.oauthService.Authorize(r.Context(), req, userID)
+	code, err := h.oauthService.Authorize(service.WithAuthnEvidence(r.Context(), authn), req, userID)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrAdminAppSignInRefused):
@@ -600,8 +613,8 @@ func buildAuthzRedirect(redirectURL *url.URL, code, state, issuer string) string
 // renderConsentPage issues a consent token for userID/clientID, then renders
 // the consent HTML page.  Called from both the GET and POST (after login)
 // handlers.
-func (h *OAuthHandler) renderConsentPage(w http.ResponseWriter, req dto.AuthorizeRequest, appName string, userID uint, csrfToken string) {
-	consentToken, err := auth.IssueConsentToken(userID, req.ClientID, h.secretKey)
+func (h *OAuthHandler) renderConsentPage(w http.ResponseWriter, req dto.AuthorizeRequest, appName string, userID uint, csrfToken string, authn auth.AuthnEvidence) {
+	consentToken, err := auth.IssueConsentTokenWithAuthn(userID, req.ClientID, authn, h.secretKey)
 	if err != nil {
 		h.renderOAuthError(w, "server_error", "failed to generate consent token", "")
 		return

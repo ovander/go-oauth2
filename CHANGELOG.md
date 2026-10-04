@@ -10,6 +10,20 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Authorization-code tokens report the real sign-in: `auth_time`, `amr` and `acr`.** Tokens
+  from the authorization-code grant carried no `amr`/`acr`, and their `auth_time` was the time the
+  code was redeemed, not when the user signed in. So the PDP obligation `require_mfa` could never
+  be met on an application's tokens, and `require_fresh_auth` (or a resource server's own
+  freshness check) was satisfied by any code redemption, even one resting on an old sign-in. The
+  hosted login's evidence (when, and with which methods) now rides in the signed consent token,
+  is stored on the authorization code and stamped on the access, ID and refresh tokens; refreshes
+  keep it. A browser already signed in through a bearer token passes that token's evidence.
+  `max_age` is checked against the same sign-in. A code without evidence falls back to the user's
+  last login, never to a fresher time. **Migration `0029`** adds `auth_time`, `amr` and `acr` to
+  `authorization_codes` (nullable). Reported by Lakebridge (#308).
+
 ## [1.9.0] - 2026-10-04
 
 Minor release on the **v1.x** line: three new controls, all `off` (or `sync`) by default, and the

@@ -632,6 +632,28 @@ var migrations = []Migration{
 			return db.Exec("ALTER TABLE apps ADD COLUMN access_token_ttl_seconds INTEGER").Error
 		},
 	},
+	{
+		ID:   "0029",
+		Name: "add_authorization_codes.auth_time_amr_acr",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("authorization_codes") {
+				return nil
+			}
+			for _, col := range []struct{ name, ddl string }{
+				{"auth_time", "BIGINT"},
+				{"amr", "TEXT[]"},
+				{"acr", "TEXT"},
+			} {
+				if db.Migrator().HasColumn(&model.AuthorizationCode{}, col.name) {
+					continue
+				}
+				if err := db.Exec("ALTER TABLE authorization_codes ADD COLUMN " + col.name + " " + col.ddl).Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

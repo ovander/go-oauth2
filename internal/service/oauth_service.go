@@ -382,8 +382,18 @@ func (s *oauthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, 
 	// propagated from the original refresh token (preserving the time of
 	// the last actual user authentication) rather than being updated on each
 	// refresh, which is correct OIDC behaviour.  See LOW-04.
-	if req.MaxAge >= 0 && user.LastLogin != nil {
-		sessionAge := int(time.Since(*user.LastLogin).Seconds())
+	//
+	// The sign-in evidence carried by the consent token, when present, is the
+	// authentication this request rests on, so it wins over LastLogin (which
+	// any later login on another client also moves). Without evidence (a
+	// caller predating it) the code records LastLogin as its auth_time: the
+	// best known sign-in, never a fresher one than the user's.
+	authn := AuthnEvidenceFrom(ctx)
+	if authn.AuthTime == 0 && user.LastLogin != nil {
+		authn.AuthTime = user.LastLogin.Unix()
+	}
+	if req.MaxAge >= 0 && authn.AuthTime != 0 {
+		sessionAge := int(time.Since(time.Unix(authn.AuthTime, 0)).Seconds())
 		if sessionAge > req.MaxAge {
 			return "", fmt.Errorf("%w: session age %ds exceeds max_age %ds",
 				ErrReauthRequired, sessionAge, req.MaxAge)
@@ -433,8 +443,8 @@ func (s *oauthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, 
 		appRoles = make(map[string]string)
 	}
 
-	// Generate authorization code
-	code, err := s.codeStore.GenerateCode(
+	// Generate authorization code, carrying the sign-in evidence.
+	code, err := s.codeStore.GenerateCodeWithAuthn(
 		ctx,
 		userID,
 		app.ID,
@@ -446,12 +456,33 @@ func (s *oauthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, 
 		req.CodeChallengeMethod,
 		string(userAppRole.Role),
 		appRoles,
+		authn,
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate authorization code: %w", err)
 	}
 
 	return code, nil
+}
+
+// authnEvidenceKey carries the end-user authentication evidence into
+// Authorize (see WithAuthnEvidence).
+type authnEvidenceKey struct{}
+
+// WithAuthnEvidence returns ctx carrying how and when the user authenticated
+// before an authorization request (from the hosted login, or the access token
+// of an already signed-in browser, through the signed consent token).
+// Authorize stores it on the code, so the code's tokens report the real
+// auth_time, amr and acr, and uses its auth_time for max_age.
+func WithAuthnEvidence(ctx context.Context, ev auth.AuthnEvidence) context.Context {
+	return context.WithValue(ctx, authnEvidenceKey{}, ev)
+}
+
+// AuthnEvidenceFrom returns the evidence WithAuthnEvidence put on ctx (the
+// zero value when there is none).
+func AuthnEvidenceFrom(ctx context.Context) auth.AuthnEvidence {
+	ev, _ := ctx.Value(authnEvidenceKey{}).(auth.AuthnEvidence)
+	return ev
 }
 
 // Token handles the OAuth 2.0 token request
@@ -626,14 +657,21 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 	if err := hooks.RunBeforeTokenIssue(ctx, &hooks.TokenIssue{User: user, App: app, Grant: "authorization_code", Scope: authCode.Scope}); err != nil {
 		return nil, err
 	}
-	tokenSet, err := s.tokenService.GenerateTokenSetWithDPoP(
+	// The tokens report the sign-in behind the code, not its redemption: a
+	// code issued before the evidence existed (migration 0029) falls back to
+	// now, as before.
+	authn := auth.AuthnEvidence{AuthTime: authCode.AuthTime, AMR: authCode.AMR, ACR: authCode.ACR}
+	if authn.AuthTime == 0 {
+		authn.AuthTime = now.Unix()
+	}
+	tokenSet, err := s.tokenService.GenerateTokenSetWithEvidence(
 		user,
 		app,
 		authCode.Role,
 		authCode.Scope,
 		authCode.AppRoles,
 		authCode.Nonce,
-		now.Unix(),
+		authn,
 		dpopJKTFromContext(ctx),
 	)
 	if err != nil {
@@ -855,14 +893,14 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 	if err := hooks.RunBeforeTokenIssue(ctx, &hooks.TokenIssue{User: user, App: app, Grant: "refresh_token", Scope: claims.Scope}); err != nil {
 		return nil, err
 	}
-	tokenSet, err := s.tokenService.GenerateTokenSetWithDPoP(
+	tokenSet, err := s.tokenService.GenerateTokenSetWithEvidence(
 		user,
 		app,
 		string(userAppRole.Role),
 		claims.Scope,
 		appRoles,
 		"", // nonce: intentionally absent on refresh — see LOW-04 comment above
-		claims.AuthTime,
+		auth.AuthnEvidence{AuthTime: claims.AuthTime, AMR: claims.Amr, ACR: claims.Acr},
 		dpopJKTFromContext(ctx),
 	)
 	if err != nil {

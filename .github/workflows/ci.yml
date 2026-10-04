@@ -53,6 +53,15 @@ jobs:
       # drops a toolchain line equal to the go line). Fail loudly if this job
       # compiled with anything else, or if the Dockerfile's image has drifted
       # from it — the release image is what actually ships.
+      # The release kit runs on the owner's Mac (bash 3.2) and the deploy scripts on the VPS:
+      # catch a syntax error here, not mid-deploy. socrate-release.sh stays ASCII-only.
+      - name: Deploy scripts parse
+        run: |
+          for f in deploy/release-kit/*.sh deploy/scripts/*.sh; do bash -n "$f" || exit 1; done
+          if LC_ALL=C grep -n '[^[:print:][:space:]]' deploy/release-kit/socrate-release.sh; then
+            echo "::error::deploy/release-kit/socrate-release.sh must stay ASCII-only"; exit 1
+          fi
+
       - name: Toolchain matches go.mod (CI and Dockerfile)
         run: |
           want=$(awk '/^toolchain /{t=$2} /^go /{g="go"$2} END{print (t != "" ? t : g)}' go.mod)

@@ -77,4 +77,6 @@ are static linux/amd64 builds (`CGO_ENABLED=0`, `-trimpath`).
 
 `socrate-release.sh` stays ASCII-only and bash 3.2-compatible (no associative arrays,
 `mapfile` or `${var,,}`), because macOS ships bash 3.2. CI checks that every script here
-parses and that `socrate-release.sh` is ASCII.
+parses and that `socrate-release.sh` is ASCII, and runs `test-caddy-update.sh`, which drives
+`socrate-caddy-update.sh` end to end (dry run and `--apply`) on fixture sites with stub `caddy`,
+`systemctl` and `curl`. Run it locally as root or with sudo before changing the updater.

@@ -22,6 +22,16 @@ Capabilities**, non-breaking).
   operator token. `observe` allows the sign-in and audits it as `admin_app_signin`, which shows who
   still needs a personal account first. Socrate refuses to start with `enforce` and no console
   listed. Ordinary users and app members are not affected.
+- **Audit rows off the token path: `AUDIT_WRITE_MODE=async`** (default `sync`, unchanged). With
+  integrity stamping (RFC-007) every audit row takes the chain's advisory lock and holds it until
+  its own commit, inside the request: every token issuance waited on one global lock and one
+  commit each, so a slow disk stalled them all (the intermittent `token_refresh` perf failures).
+  With `async`, `Create` queues the row and returns; one background writer appends the queue in
+  batches, each batch in one transaction under the same lock, chained in queue order, with the
+  webhook outbox still written in the row's transaction (A3). A full queue writes synchronously,
+  never drops; a failed batch is retried row by row; shutdown drains the queue. Trade-off: rows
+  still queued when the process is killed without a graceful shutdown are lost. New metric
+  `socrate_audit_async_writes_total{outcome}`.
 
 ## [1.8.0] - 2026-10-03
 

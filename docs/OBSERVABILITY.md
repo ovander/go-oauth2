@@ -19,6 +19,7 @@ user, client id, IP address or token** — those belong in the audit log.
 | `socrate_http_request_duration_seconds` | histogram | `router`, `route`, `method` | RED latency (buckets 5 ms … 5 s) |
 | `socrate_tokens_issued_total` | counter | `grant` (`authorization_code`, `refresh_token`, `client_credentials`, …), `outcome` (`success`, `invalid_grant`, `invalid_client`, `invalid_scope`, `unauthorized_client`, `unsupported_grant_type`, `error`) | token endpoint results |
 | `socrate_security_events_total` | counter | `event_type` (every `SecurityEventType`: `login_success`, `login_failed`, `refresh_token_reuse`, `dpop_validation_failed`, `pkce_validation_failed`, `scope_denied`, `ip_blocked`, …), `success` | one counter per persisted audit event — the SOC console's raw signal as a time series |
+| `socrate_audit_async_writes_total` | counter | `outcome` (`ok`, `error`, `sync_fallback`) | `AUDIT_WRITE_MODE=async` only: rows the background appender wrote (`ok`) or failed to write as a batch (`error`, then retried row by row; a row lost for good is logged at error level), and rows written synchronously because the queue was full (`sync_fallback`) |
 | `socrate_rate_limit_hits_total` | counter | `route` | 429s per route pattern |
 | `socrate_ip_blocks_total` | counter | — | requests refused by the block list |
 | `socrate_policy_decisions_total` | counter | `source` (`admin_pep`, `decide_api`), `mode` (`shadow`/`enforce`), `outcome` (`allow`/`deny`/`error`) | A4 policy decisions; `error` means no policy version could be loaded |

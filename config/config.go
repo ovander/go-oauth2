@@ -111,6 +111,12 @@ type Config struct {
 	// signing in under every AdminAppSignInPolicy mode. AdminConsoleClientID is
 	// always included. OPERATOR_CONSOLE_CLIENT_IDS.
 	OperatorConsoleClientIDs string
+	// AuditWriteMode is how security audit rows are written: "sync" (default —
+	// inside the request, as before) or "async" (queued and appended in batches
+	// by a background writer, so a token request no longer waits on the audit
+	// chain lock and its commit; rows still queued at a crash are lost).
+	// AUDIT_WRITE_MODE.
+	AuditWriteMode string
 	// DPoPMode controls DPoP (RFC 9449) sender-constraint handling at the token
 	// endpoint: "off" (default), "observe" (verify any DPoP proof, log telemetry,
 	// and bind the issued token when a valid proof is sent, but never reject), or
@@ -359,6 +365,7 @@ func Load() *Config {
 		AdminMFAPolicy:           normalizeAdminMFAPolicy(getEnv("ADMIN_MFA_POLICY", "off")),
 		AdminAppSignInPolicy:     normalizeStepUpMode(getEnv("ADMIN_APP_SIGNIN_POLICY", "off")),
 		OperatorConsoleClientIDs: getEnv("OPERATOR_CONSOLE_CLIENT_IDS", ""),
+		AuditWriteMode:           normalizeAuditWriteMode(getEnv("AUDIT_WRITE_MODE", "sync")),
 		DPoPMode:                 normalizeDPoPMode(getEnv("DPOP_MODE", "off")),
 		TokenExchangeMode:        normalizeTokenExchangeMode(getEnv("TOKEN_EXCHANGE_MODE", "off")),
 		ImpersonationTokenTTL:    time.Duration(getEnvInt("IMPERSONATION_TOKEN_TTL", 300)) * time.Second,
@@ -567,6 +574,15 @@ func normalizeAudienceMode(v string) string {
 		return "dual"
 	}
 	return "off"
+}
+
+// normalizeAuditWriteMode returns "async" only for that value, else "sync"
+// (a typo keeps the historical inline write).
+func normalizeAuditWriteMode(v string) string {
+	if strings.ToLower(strings.TrimSpace(v)) == "async" {
+		return "async"
+	}
+	return "sync"
 }
 
 // normalizeStepUpMode lower-cases and validates the impersonation step-up mode,

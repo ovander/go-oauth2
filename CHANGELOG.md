@@ -10,6 +10,20 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-04
+
+Minor release on the **v1.x** line: three new controls, all `off` (or `sync`) by default, and the
+move to Go 1.27.1.
+- `ADMIN_APP_SIGNIN_POLICY`: Socrate admin accounts sign in to the operator consoles only.
+- `ADMIN_API_AUDIENCE_MODE` (M-03): the admin API accepts only tokens issued to the consoles.
+- `AUDIT_WRITE_MODE=async`: audit rows are appended by a background writer, off the token path.
+
+No migration. **Deploy notes:** nothing changes until a mode is set. Both admin controls need the
+new `OPERATOR_CONSOLE_CLIENT_IDS` (the admin and monitoring BFFs' client_ids); Socrate refuses to
+start with either on `enforce` and no console listed. Roll out with `observe` first and watch
+`admin_app_signin` and `admin_api_audience` in the monitoring console. Built with Go 1.27.1 (the
+`go` directive): see the `GODEBUG` defaults below.
+
 ### Changed
 
 - **Go 1.27.1 as the `go` directive** (was `go 1.25.13` with `toolchain go1.27.1`). The module
@@ -1791,7 +1805,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/ovander/go-oauth2/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/ovander/go-oauth2/compare/v1.7.1...v1.8.0
 [1.7.1]: https://github.com/ovander/go-oauth2/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/ovander/go-oauth2/compare/v1.6.0...v1.7.0

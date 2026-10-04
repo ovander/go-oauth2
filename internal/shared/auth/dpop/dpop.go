@@ -214,11 +214,15 @@ const p256CoordSize = 32
 // whitespace ({"crv","kty","x","y"}) and the coordinates are fixed 32-byte
 // big-endian, so the value is canonical regardless of the proof's own encoding.
 func thumbprint(pub *ecdsa.PublicKey) (string, error) {
+	x, y, err := p256Coordinates(pub)
+	if err != nil {
+		return "", err
+	}
 	canonical := map[string]string{
 		"crv": "P-256",
 		"kty": "EC",
-		"x":   base64.RawURLEncoding.EncodeToString(leftPad(pub.X.Bytes(), 32)),
-		"y":   base64.RawURLEncoding.EncodeToString(leftPad(pub.Y.Bytes(), 32)),
+		"x":   base64.RawURLEncoding.EncodeToString(x),
+		"y":   base64.RawURLEncoding.EncodeToString(y),
 	}
 	// encoding/json marshals map keys in sorted order, matching RFC 7638.
 	b, err := json.Marshal(canonical)
@@ -227,6 +231,19 @@ func thumbprint(pub *ecdsa.PublicKey) (string, error) {
 	}
 	sum := sha256.Sum256(b)
 	return base64.RawURLEncoding.EncodeToString(sum[:]), nil
+}
+
+// p256Coordinates returns the fixed 32-byte big-endian x and y of a P-256
+// public key, from its uncompressed encoding (0x04 || x || y).
+func p256Coordinates(pub *ecdsa.PublicKey) (x, y []byte, err error) {
+	b, err := pub.Bytes()
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %v", ErrInvalidJWK, err)
+	}
+	if len(b) != 1+2*p256CoordSize || b[0] != 4 {
+		return nil, nil, fmt.Errorf("%w: not an uncompressed P-256 point", ErrInvalidJWK)
+	}
+	return b[1 : 1+p256CoordSize], b[1+p256CoordSize:], nil
 }
 
 // leftPad returns b left-padded with zero bytes to exactly size bytes.

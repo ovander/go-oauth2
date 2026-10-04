@@ -18,9 +18,15 @@ type AuthorizationCode struct {
 	CodeChallengeMethod string            `gorm:"column:code_challenge_method" json:"code_challenge_method"`
 	Role                string            `gorm:"column:role" json:"role"`
 	AppRoles            map[string]string `gorm:"type:jsonb;serializer:json;default:'{}'" json:"app_roles"`
-	Used                bool              `gorm:"column:used;default:false;index" json:"used"`
-	ExpiresAt           time.Time         `gorm:"column:expires_at;not null;index" json:"expires_at"`
-	CreatedAt           time.Time         `gorm:"column:inserted_at" json:"created_at"`
+	// AuthTime, AMR and ACR are the end-user authentication behind the code
+	// (when the user signed in, and how), stamped on the tokens it is
+	// redeemed for. Zero on codes issued before migration 0029.
+	AuthTime  int64       `gorm:"column:auth_time" json:"auth_time,omitempty"`
+	AMR       StringArray `gorm:"type:text[];column:amr" json:"amr,omitempty"`
+	ACR       string      `gorm:"column:acr" json:"acr,omitempty"`
+	Used      bool        `gorm:"column:used;default:false;index" json:"used"`
+	ExpiresAt time.Time   `gorm:"column:expires_at;not null;index" json:"expires_at"`
+	CreatedAt time.Time   `gorm:"column:inserted_at" json:"created_at"`
 }
 
 func (AuthorizationCode) TableName() string {

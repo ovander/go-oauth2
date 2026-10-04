@@ -205,10 +205,15 @@ func (c AccessTokenClaims) MarshalJSON() ([]byte, error) {
 // RefreshTokenClaims represents refresh token claims
 type RefreshTokenClaims struct {
 	jwt.RegisteredClaims
-	Scope    string            `json:"scope,omitempty"`
-	Role     string            `json:"role,omitempty"`
-	Ver      int               `json:"ver"`
-	AuthTime int64             `json:"auth_time"`
+	Scope    string `json:"scope,omitempty"`
+	Role     string `json:"role,omitempty"`
+	Ver      int    `json:"ver"`
+	AuthTime int64  `json:"auth_time"`
+	// Amr / Acr carry the sign-in's authentication methods through refreshes,
+	// so a refreshed access token keeps the evidence of the original login
+	// (absent on refresh tokens issued before they existed).
+	Amr      []string          `json:"amr,omitempty"`
+	Acr      string            `json:"acr,omitempty"`
 	Type     string            `json:"type"`
 	AppRoles map[string]string `json:"app_roles,omitempty"`
 	Roles    []string          `json:"roles,omitempty"`
@@ -341,6 +346,15 @@ func (ts *TokenService) GenerateTokenSetWithDPoP(user *model.User, app *model.Ap
 	return ts.generateTokenSet(user, app, role, scope, appRoles, nonce, authTime, jkt, authnContext{})
 }
 
+// GenerateTokenSetWithEvidence generates a token set carrying the end-user
+// authentication evidence of the grant: auth_time, amr and acr on the access
+// and ID tokens, and on the refresh token so refreshes keep them. A zero
+// AuthTime falls back to now, as GenerateTokenSet does. jkt binds the access
+// and refresh tokens to a DPoP key when non-empty.
+func (ts *TokenService) GenerateTokenSetWithEvidence(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, nonce string, ev AuthnEvidence, jkt string) (*TokenSet, error) {
+	return ts.generateTokenSet(user, app, role, scope, appRoles, nonce, ev.AuthTime, jkt, authnContext{amr: ev.AMR, acr: ev.ACR})
+}
+
 func (ts *TokenService) generateTokenSet(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, nonce string, authTime int64, jkt string, ac authnContext) (*TokenSet, error) {
 	now := time.Now()
 	if authTime == 0 {
@@ -356,7 +370,7 @@ func (ts *TokenService) generateTokenSet(user *model.User, app *model.App, role 
 	}
 
 	// Generate refresh token (sender-constrained to the DPoP key when jkt is set).
-	refreshToken, err := ts.generateRefreshToken(user, app, role, scope, appRoles, now, authTime, jkt)
+	refreshToken, err := ts.generateRefreshToken(user, app, role, scope, appRoles, now, authTime, jkt, ac)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
@@ -474,7 +488,7 @@ func (ts *TokenService) GenerateExchangedTokenWithTTL(subject string, audience [
 
 // generateRefreshToken generates a refresh token, optionally sender-constrained
 // to a DPoP key thumbprint (cnf.jkt) when jkt is non-empty.
-func (ts *TokenService) generateRefreshToken(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, now time.Time, authTime int64, jkt string) (string, error) {
+func (ts *TokenService) generateRefreshToken(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, now time.Time, authTime int64, jkt string, ac authnContext) (string, error) {
 	roles := []string{}
 	if role != "" {
 		roles = append(roles, role)
@@ -494,6 +508,8 @@ func (ts *TokenService) generateRefreshToken(user *model.User, app *model.App, r
 		Role:     role,
 		Ver:      user.TokenVersion,
 		AuthTime: authTime,
+		Amr:      ac.amr,
+		Acr:      ac.acr,
 		Type:     "refresh",
 		AppRoles: appRoles,
 		Roles:    roles,

@@ -75,8 +75,11 @@ Access-token claims include: `sub`, `iss`, `aud`, `exp`, `iat`, `nbf`, `email`,
 `email_verified`, `name`, `preferred_username`, `role`, `app_roles`,
 `token_version`, `auth_time`, and — for interactive logins — `amr`/`acr`
 (RFC 8176 authentication methods / context class: `["pwd"]`/`pwd` for a password
-login, `["pwd","otp","mfa"]`/`mfa` when a second factor was used). Verify
-signatures against the JWKS endpoint (§7).
+login, `["pwd","otp","mfa"]`/`mfa` when a second factor was used). Tokens from the
+authorization-code grant carry the sign-in behind the code (since v1.10.0): its
+`auth_time` is when the user authenticated on the hosted login page, not when the
+code was redeemed, with that sign-in's `amr`/`acr`; refreshes keep all three.
+Verify signatures against the JWKS endpoint (§7).
 
 **Nuclear revocation:** every user has a `token_version`. Logout, password
 reset, or admin "revoke tokens" increments it, instantly invalidating all
@@ -442,7 +445,8 @@ parsing the JWT:
   freshness/step-up decisions. Omitted when the token has no associated user
   authentication (client-credentials / token-exchange results).
 - `amr` / `acr` — authentication methods / context class (RFC 8176), for gating
-  on authentication strength (e.g. require `mfa`). Present for interactive logins.
+  on authentication strength (e.g. require `mfa`). Present for interactive logins,
+  including tokens from the authorization-code grant and their refreshes.
 - `cnf` `{ "jkt": "..." }` — DPoP sender-constraint (RFC 9449 §7), when present.
 - `act` `{ "sub": "...", "act": {...} }` — the actor (delegation/impersonation)
   chain (RFC 8693 §4.1), when the token was minted via token exchange.

@@ -91,3 +91,21 @@ func TestLogin_NonAdmin_NoMembership_Rejected(t *testing.T) {
 		t.Errorf("a non-admin without membership must be rejected with ErrRoleNotFound, got: %v", err)
 	}
 }
+
+// Login reports the sign-in it performed (when, and how), which the hosted
+// login carries into the authorization code.
+func TestLogin_ReturnsTheSignInEvidence(t *testing.T) {
+	pw := "Str0ng!Passw0rd"
+	hash, _ := auth.HashPassword(pw)
+	admin := &model.User{ID: 42, Email: "admin@example.com", HashedPassword: hash, IsVerified: true, Role: model.UserRoleSuperadmin}
+	before := time.Now().Unix()
+	resp, err := newLoginSvc(t, admin).Login(context.Background(), dto.LoginRequest{
+		Email: "admin@example.com", Password: pw, AppClientID: "admin-console-dev2",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.AuthTime < before || len(resp.AMR) != 1 || resp.AMR[0] != "pwd" || resp.ACR != "pwd" {
+		t.Fatalf("evidence = %d %v %q, want now, [pwd], pwd", resp.AuthTime, resp.AMR, resp.ACR)
+	}
+}

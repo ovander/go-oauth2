@@ -87,6 +87,12 @@ type LoginResponse struct {
 	Roles              []string          `json:"roles"`
 	AppRoles           map[string]string `json:"app_roles"`
 	MustChangePassword bool              `json:"must_change_password,omitempty"`
+	// AuthTime, AMR and ACR describe this sign-in (when, and how). They are
+	// not serialized: the hosted login carries them into the authorization
+	// code, so the code's tokens report the real authentication.
+	AuthTime int64    `json:"-"`
+	AMR      []string `json:"-"`
+	ACR      string   `json:"-"`
 }
 
 type RefreshResponse struct {

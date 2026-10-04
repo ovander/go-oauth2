@@ -89,7 +89,12 @@ strategy — introspection vs. local JWT validation — and how to tune it, see
 ### 2.4 Roles
 
 **Global roles** (on the user): `user`, `admin`, `superadmin`. `admin` and
-`superadmin` are "global admins" with implicit access to every app.
+`superadmin` are "global admins" with implicit access to every app: signing in
+to an app they are not a member of, they get the app role `admin`. With
+`ADMIN_APP_SIGNIN_POLICY=enforce` (v1.9.0, default `off`) they sign in to the
+operator consoles only (`OPERATOR_CONSOLE_CLIENT_IDS`): on any other app the
+sign-in page refuses them, no code is issued, and a refresh answers
+`invalid_grant`. `observe` allows it and audits `admin_app_signin`.
 
 **Per-app roles** (user ↔ app membership): `admin`, `manager`, `editor`,
 `viewer`, `user`. A user must have a role for an app to obtain a token for it

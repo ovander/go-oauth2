@@ -136,12 +136,13 @@ func LogStartupSummary(cfg *config.Config) {
 		"admin_port":  cfg.AdminPort,
 		"log_level":   logger.Logger.GetLevel().String(),
 		// Security posture (observe → enforce rollout flags).
-		"dpop_mode":           cfg.DPoPMode,
-		"token_exchange_mode": cfg.TokenExchangeMode,
-		"refresh_reuse_mode":  cfg.RefreshReuseMode,
-		"audience_mode":       cfg.AudienceMode,
-		"admin_mfa_policy":    cfg.AdminMFAPolicy,
-		"policy_mode":         cfg.PolicyMode,
+		"dpop_mode":               cfg.DPoPMode,
+		"token_exchange_mode":     cfg.TokenExchangeMode,
+		"refresh_reuse_mode":      cfg.RefreshReuseMode,
+		"audience_mode":           cfg.AudienceMode,
+		"admin_mfa_policy":        cfg.AdminMFAPolicy,
+		"admin_app_signin_policy": cfg.AdminAppSignInPolicy,
+		"policy_mode":             cfg.PolicyMode,
 		// Admin-console session hardening.
 		"admin_console_pkce":   cfg.AdminConsoleClientID != "",
 		"admin_elevation":      dur(cfg.AdminElevationMaxAge),
@@ -577,6 +578,19 @@ func Bootstrap(cfg *config.Config) *App {
 		logger.Fatalf("bootstrap: auth service does not support SetRefreshGranter")
 	}
 	rg.SetRefreshGranter(granter)
+
+	// ADMIN_APP_SIGNIN_POLICY: one policy for the hosted login (auth service)
+	// and for code issuance and refresh (OAuth service).
+	adminAppSignIn := service.NewAdminAppSignInPolicy(cfg.AdminAppSignInPolicy, cfg.ConsoleClientIDs())
+	for _, svc := range []any{authService, oauthService} {
+		ps, ok := svc.(interface {
+			SetAdminAppSignInPolicy(service.AdminAppSignInPolicy)
+		})
+		if !ok {
+			logger.Fatalf("bootstrap: %T does not support SetAdminAppSignInPolicy", svc)
+		}
+		ps.SetAdminAppSignInPolicy(adminAppSignIn)
+	}
 
 	// ==========================================
 	// Template Service

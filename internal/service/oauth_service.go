@@ -176,6 +176,29 @@ type oauthService struct {
 	// scopePolicyMode is "off" (default), "observe" or "enforce" for the
 	// per-client allowed_scopes policy (A1 / P3-8).
 	scopePolicyMode string
+	// adminAppSignIn refuses or audits a Socrate admin obtaining tokens for an
+	// application that is not an operator console (ADMIN_APP_SIGNIN_POLICY).
+	adminAppSignIn AdminAppSignInPolicy
+}
+
+// SetAdminAppSignInPolicy wires ADMIN_APP_SIGNIN_POLICY into code issuance and
+// the refresh grant.
+func (s *oauthService) SetAdminAppSignInPolicy(p AdminAppSignInPolicy) { s.adminAppSignIn = p }
+
+// checkAdminAppSignIn applies ADMIN_APP_SIGNIN_POLICY to a Socrate admin
+// obtaining tokens for app without a membership: observe audits it, enforce
+// refuses it with ErrAdminAppSignInRefused.
+func (s *oauthService) checkAdminAppSignIn(ctx context.Context, user *model.User, app *model.App, path string) error {
+	if !s.adminAppSignIn.outsideConsoles(user, app) {
+		return nil
+	}
+	refused := s.adminAppSignIn.refuses()
+	s.logSecurityEvent(ctx, model.SecurityEventAdminAppSignIn, &user.ID, &app.ID, !refused,
+		s.adminAppSignIn.adminAppSignInDetails(user, app, path))
+	if refused {
+		return ErrAdminAppSignInRefused
+	}
+	return nil
 }
 
 // Token-exchange rollout modes (RFC 8693 / EPIC-16).
@@ -395,6 +418,11 @@ func (s *oauthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, 
 	if err != nil {
 		if !user.IsGlobalAdmin() {
 			return "", fmt.Errorf("%w: user has no role for app_id=%d", ErrRoleNotFound, app.ID)
+		}
+		// ADMIN_APP_SIGNIN_POLICY, also here: a browser already signed in
+		// reaches code issuance without the login form.
+		if err := s.checkAdminAppSignIn(ctx, user, app, "authorize"); err != nil {
+			return "", err
 		}
 		userAppRole = &model.UserAppRole{UserID: userID, AppID: app.ID, Role: model.AppRoleAdmin}
 	}
@@ -788,6 +816,11 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 	if err != nil {
 		if !user.IsGlobalAdmin() {
 			return nil, fmt.Errorf("%w: user has no role for app", ErrRoleNotFound)
+		}
+		// ADMIN_APP_SIGNIN_POLICY, re-checked on every refresh: turning on
+		// enforce ends an admin's existing app sessions at their next refresh.
+		if err := s.checkAdminAppSignIn(ctx, user, app, "refresh"); err != nil {
+			return nil, err
 		}
 		userAppRole = &model.UserAppRole{UserID: user.ID, AppID: app.ID, Role: model.AppRoleAdmin}
 	}

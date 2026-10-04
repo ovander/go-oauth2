@@ -49,3 +49,22 @@ func TestConfig_Validate_AdminAppSignInEnforceNeedsAConsole(t *testing.T) {
 		t.Fatalf("observe needs no console: %v", err)
 	}
 }
+
+func TestConfig_AdminAPIAudienceMode(t *testing.T) {
+	t.Setenv("ADMIN_API_AUDIENCE_MODE", "")
+	if got := Load().AdminAPIAudienceMode; got != "off" {
+		t.Errorf("default = %q, want off", got)
+	}
+	t.Setenv("ADMIN_API_AUDIENCE_MODE", " ENFORCE ")
+	if got := Load().AdminAPIAudienceMode; got != "enforce" {
+		t.Errorf("normalised = %q, want enforce", got)
+	}
+	c := &Config{Environment: "development", AdminAPIAudienceMode: "enforce"}
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "ADMIN_API_AUDIENCE_MODE") {
+		t.Fatalf("enforce without a console: %v, want a refusal", err)
+	}
+	c.OperatorConsoleClientIDs = "admin-bff,monitoring-bff"
+	if err := c.Validate(); err != nil {
+		t.Fatalf("enforce with consoles: %v", err)
+	}
+}

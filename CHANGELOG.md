@@ -22,6 +22,14 @@ Capabilities**, non-breaking).
   operator token. `observe` allows the sign-in and audits it as `admin_app_signin`, which shows who
   still needs a personal account first. Socrate refuses to start with `enforce` and no console
   listed. Ordinary users and app members are not affected.
+- **The admin API accepts only the consoles' tokens: `ADMIN_API_AUDIENCE_MODE` (M-03,** `off` by
+  default). The admin API checked that a token was valid and belonged to a global admin, not which
+  client it was issued to, so the same admin's token from any application was a full admin-API
+  credential, usable by that application's backend. With `enforce`, a token's `aud[0]` must be one
+  of `OPERATOR_CONSOLE_CLIENT_IDS` (or `ADMIN_CONSOLE_CLIENT_ID`) or `admin-portal` (Socrate's own
+  tokens from `/api/admin/login` and `/api/admin/elevate`); anything else gets
+  `403 invalid_audience`. `observe` allows and audits `admin_api_audience`. Socrate refuses to
+  start with `enforce` and no console listed.
 
 ## [1.8.0] - 2026-10-03
 

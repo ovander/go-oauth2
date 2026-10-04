@@ -212,6 +212,7 @@ ADMIN_ELEVATION_MAX_AGE=300             # step-up freshness for destructive admi
 ADMIN_MFA_POLICY=enforce                # admins must enrol TOTP before the admin portal admits them
 OPERATOR_CONSOLE_CLIENT_IDS=<admin-bff-client-id>,<monitoring-bff-client-id>
 ADMIN_APP_SIGNIN_POLICY=enforce         # operator accounts sign in to the consoles only (observe first)
+ADMIN_API_AUDIENCE_MODE=enforce         # admin API accepts console-issued tokens only (M-03; observe first)
 ADMIN_PASSWORD_LOGIN_ENABLED=false      # consoles use Authorization Code + PKCE through their BFFs
 RATE_LIMIT_TOKEN=60                     # never 0 in production (Validate() warns)
 
@@ -376,6 +377,12 @@ admin then signs in to the consoles only; any other app refuses it on Socrate's
 sign-in page (and an open app session ends at its next refresh). Run `observe`
 first: each admin sign-in to an app is audited as `admin_app_signin`, which shows
 who still uses an operator account in an app and needs a personal one.
+
+Then confine the admin API itself to the consoles' tokens with
+`ADMIN_API_AUDIENCE_MODE=enforce` (M-03). Without it, any valid token of a global
+admin is accepted, whichever client it was issued to, so an application's
+backend holding such a token could drive the admin API. `observe` first: a
+token from anywhere else than a console is audited as `admin_api_audience`.
 
 ---
 

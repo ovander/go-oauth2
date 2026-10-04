@@ -70,6 +70,10 @@ const (
 	// (observe) or was refused from (enforce) an application that is not an
 	// operator console (ADMIN_APP_SIGNIN_POLICY).
 	SecurityEventAdminAppSignIn SecurityEventType = "admin_app_signin"
+	// SecurityEventAdminAPIAudience: the admin API was called (observe) or
+	// refused (enforce) with a token not issued to an operator console
+	// (ADMIN_API_AUDIENCE_MODE, M-03).
+	SecurityEventAdminAPIAudience SecurityEventType = "admin_api_audience"
 
 	// Delegation (RFC 8693 / EPIC-16): a token-exchange request was processed
 	// (in shadow, audited but not issued; in enforce, an exchanged token issued).

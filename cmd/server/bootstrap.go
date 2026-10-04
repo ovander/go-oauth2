@@ -142,6 +142,7 @@ func LogStartupSummary(cfg *config.Config) {
 		"audience_mode":           cfg.AudienceMode,
 		"admin_mfa_policy":        cfg.AdminMFAPolicy,
 		"admin_app_signin_policy": cfg.AdminAppSignInPolicy,
+		"admin_api_audience_mode": cfg.AdminAPIAudienceMode,
 		"policy_mode":             cfg.PolicyMode,
 		// Admin-console session hardening.
 		"admin_console_pkce":   cfg.AdminConsoleClientID != "",
@@ -930,6 +931,36 @@ func Bootstrap(cfg *config.Config) *App {
 				CreatedAt:     time.Now(),
 			})
 		}
+	}
+
+	// M-03: the admin API accepts only tokens issued to the operator consoles,
+	// or minted by Socrate itself for it (admin-portal). A mismatch is audited
+	// as admin_api_audience (observe: allowed; enforce: refused).
+	{
+		repo := securityAuditRepo
+		accepted := append(cfg.ConsoleClientIDs(), service.AdminPortalClientID)
+		routerConfig.AdminAudience = middleware.RequireAdminAudience(cfg.AdminAPIAudienceMode, accepted,
+			func(r *http.Request, clientID string, refused bool) {
+				var userID *uint
+				if id, ok := middleware.GetUserIDFromContext(r.Context()); ok {
+					userID = &id
+				}
+				eventType := model.SecurityEventAdminAPIAudience
+				_ = repo.Create(context.Background(), &model.SecurityAuditLog{
+					EventType:     eventType,
+					Severity:      model.GetSeverityForEvent(eventType, !refused),
+					UserID:        userID,
+					IPAddress:     middleware.GetClientIP(r),
+					UserAgent:     r.UserAgent(),
+					CorrelationID: middleware.GetCorrelationID(r.Context()),
+					Success:       !refused,
+					Details: map[string]interface{}{
+						"client_id": clientID, "path": r.URL.Path, "method": r.Method,
+						"mode": cfg.AdminAPIAudienceMode,
+					},
+					CreatedAt: time.Now(),
+				})
+			})
 	}
 
 	// ==========================================

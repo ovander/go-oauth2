@@ -91,6 +91,9 @@ type RouterConfig struct {
 	// ScopeEnforce turns on least-privilege OAuth-scope gating across the admin
 	// API (#201). False (default) leaves routes role-gated only.
 	ScopeEnforce bool
+	// AdminAudience confines /api/admin/* to tokens issued to the operator
+	// consoles (M-03, ADMIN_API_AUDIENCE_MODE). Nil is a pass-through.
+	AdminAudience func(http.Handler) http.Handler
 	// WebhookHandler serves the A3 webhook subscription and delivery-outbox
 	// admin API. Nil leaves those routes unregistered — carried on the config
 	// rather than as another positional parameter through three router
@@ -454,6 +457,12 @@ func newAdminRouter(
 	// ==========================================
 	r.Route("/api/admin", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo, config.AuthRejectSink))
+		// M-03: only a token issued to an operator console (or Socrate's own
+		// admin-portal token) reaches the admin API; a token the same admin got
+		// from an application is refused here, before any other gate.
+		if config.AdminAudience != nil {
+			r.Use(config.AdminAudience)
+		}
 		// A4: the policy enforcement point runs after authentication and in
 		// front of every code gate below, so in shadow mode it sees — and can
 		// be compared against — every decision those gates make, including

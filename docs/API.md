@@ -466,6 +466,14 @@ Revokes the session and optionally redirects to a validated
 All `/api/admin/*` routes require a Bearer access token belonging to a global
 admin (`admin`/`superadmin`). App-scoped routes require an app role.
 
+**Which tokens (M-03, v1.9.0).** With `ADMIN_API_AUDIENCE_MODE=enforce` (default
+`off`) the token must also have been issued to an operator console: its `aud[0]`
+is one of `OPERATOR_CONSOLE_CLIENT_IDS` (or `ADMIN_CONSOLE_CLIENT_ID`), or
+`admin-portal`, the audience Socrate gives the tokens of `POST /api/admin/login`
+and `POST /api/admin/elevate`. Any other token, such as the same admin's token
+from an application, gets `403 { "error": "invalid_audience" }`. `observe`
+allows it and audits `admin_api_audience`.
+
 **Forced password change (Tier-0).** If the admin's account is flagged
 `must_change_password` (returned in the login response), **every** `/api/admin/*`
 route returns `403 { "error": "password_change_required" }` — except

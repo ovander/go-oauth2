@@ -65,6 +65,9 @@ type App struct {
 	// webhookDispatchStop stops the webhook delivery dispatcher (A3 part 2).
 	// Nil when webhooks are disabled.
 	webhookDispatchStop func()
+	// auditAsync is the asynchronous audit appender (AUDIT_WRITE_MODE=async),
+	// drained last on shutdown. Nil in sync mode.
+	auditAsync *repository.AsyncAuditRepository
 	// stateSweepStop stops the shared-state sweeper (B4). Nil unless
 	// STATE_BACKEND=postgres.
 	stateSweepStop func()
@@ -143,6 +146,7 @@ func LogStartupSummary(cfg *config.Config) {
 		"admin_mfa_policy":        cfg.AdminMFAPolicy,
 		"admin_app_signin_policy": cfg.AdminAppSignInPolicy,
 		"admin_api_audience_mode": cfg.AdminAPIAudienceMode,
+		"audit_write_mode":        cfg.AuditWriteMode,
 		"policy_mode":             cfg.PolicyMode,
 		// Admin-console session hardening.
 		"admin_console_pkce":   cfg.AdminConsoleClientID != "",
@@ -248,6 +252,15 @@ func (a *App) Stop() {
 	}
 	if a.dpopReplayCache != nil {
 		a.dpopReplayCache.Stop()
+	}
+	// Last: every worker above may still write audit rows. Drain the queue
+	// before main closes the database.
+	if a.auditAsync != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := a.auditAsync.Close(ctx); err != nil {
+			logger.Errorf("audit: %d queued security events not written at shutdown: %v", a.auditAsync.Pending(), err)
+		}
+		cancel()
 	}
 }
 
@@ -410,6 +423,20 @@ func Bootstrap(cfg *config.Config) *App {
 	// SECRET_KEY_BASE (held in config, never in the DB). Empty secret disables it.
 	// B1: every persisted security event is also a Prometheus counter.
 	auditRepoBase := repository.NewSecurityAuditLogRepositoryWithIntegrity(db, []byte(cfg.SecretKeyBase))
+	// AUDIT_WRITE_MODE=async: a background writer appends the rows in batches,
+	// so a request no longer waits on the audit chain lock and its commit.
+	// Drained last at shutdown (App.Stop).
+	var auditAsync *repository.AsyncAuditRepository
+	if cfg.AuditWriteMode == "async" {
+		a, err := repository.NewAsyncAuditRepository(auditRepoBase, repository.AsyncAuditConfig{
+			OnSyncFallback: metrics.AuditAsyncSyncFallback,
+			OnBatch:        metrics.AuditAsyncBatch,
+		})
+		if err != nil {
+			logger.Fatalf("bootstrap: %v", err)
+		}
+		auditAsync, auditRepoBase = a, a
+	}
 	securityAuditRepo := metrics.InstrumentAuditRepo(auditRepoBase)
 
 	// A3: webhook subscriptions and the delivery outbox. The outbox producer is
@@ -1010,6 +1037,7 @@ func Bootstrap(cfg *config.Config) *App {
 			usedTokenCleanupStop: usedTokenCleanupStop,
 			webhookCacheStop:     webhookCacheStop,
 			webhookDispatchStop:  webhookDispatchStop,
+			auditAsync:           auditAsync,
 			stateSweepStop:       stateSweepStop,
 			dpopReplayCache:      dpopReplayCache,
 
@@ -1055,6 +1083,7 @@ func Bootstrap(cfg *config.Config) *App {
 		usedTokenCleanupStop: usedTokenCleanupStop,
 		webhookCacheStop:     webhookCacheStop,
 		webhookDispatchStop:  webhookDispatchStop,
+		auditAsync:           auditAsync,
 		stateSweepStop:       stateSweepStop,
 		dpopReplayCache:      dpopReplayCache,
 

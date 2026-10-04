@@ -106,56 +106,82 @@ func NewSecurityAuditLogRepositoryWithIntegrity(db *gorm.DB, secret []byte) Secu
 const auditChainLockKey = int64(0x4155444954434841) // "AUDITCHA"
 
 func (r *gormSecurityAuditLogRepository) Create(ctx context.Context, log *model.SecurityAuditLog) error {
+	return r.createRows(ctx, []*model.SecurityAuditLog{log})
+}
+
+// normalizeAuditCreatedAt stamps a missing CreatedAt and reduces it to
+// microseconds (PostgreSQL precision), so the stored timestamp equals what the
+// integrity hash is computed over and what a later read returns — keeping
+// VerifyAuditRowHash stable across a round trip (RFC-007).
+func normalizeAuditCreatedAt(log *model.SecurityAuditLog) {
 	if log.CreatedAt.IsZero() {
 		log.CreatedAt = time.Now()
 	}
-	// RFC-007: reduce to microseconds (PostgreSQL precision) so the stored
-	// timestamp equals what the integrity hash is computed over and what a
-	// later read returns — keeping VerifyAuditRowHash stable across a round trip.
 	log.CreatedAt = log.CreatedAt.UTC().Truncate(time.Microsecond)
+}
+
+// createRows appends logs, in order, in one transaction. Create writes one row;
+// the asynchronous appender writes a batch, so a burst of events costs one
+// chain lock and one commit instead of one each.
+func (r *gormSecurityAuditLogRepository) createRows(ctx context.Context, logs []*model.SecurityAuditLog) error {
+	for _, log := range logs {
+		normalizeAuditCreatedAt(log)
+	}
 
 	// No integrity secret and no outbox: preserve prior (unchained, unstamped,
 	// single-statement) behaviour exactly.
 	if len(r.secret) == 0 && r.outbox == nil {
-		return r.db.WithContext(ctx).Create(log).Error
+		if len(logs) == 1 {
+			return r.db.WithContext(ctx).Create(logs[0]).Error
+		}
+		return r.db.WithContext(ctx).Create(logs).Error
 	}
 
-	// Outbox without integrity stamping: one transaction, audit row first.
+	// Outbox without integrity stamping: one transaction, each audit row
+	// before its own outbox entries.
 	if len(r.secret) == 0 {
 		return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			if err := tx.Create(log).Error; err != nil {
-				return err
+			for _, log := range logs {
+				if err := tx.Create(log).Error; err != nil {
+					return err
+				}
+				r.writeOutbox(ctx, tx, log)
 			}
-			r.writeOutbox(ctx, tx, log)
 			return nil
 		})
 	}
 
-	// RFC-007: chain the row to the current tip and stamp the HMAC inside a
+	// RFC-007: chain each row to its predecessor and stamp the HMAC inside a
 	// transaction. A transaction-scoped advisory lock serializes concurrent
 	// audit appends so the chain links to a single, stable predecessor and does
-	// not fork. The lock is released automatically at commit/rollback.
+	// not fork. The lock is released automatically at commit/rollback. Rows
+	// are inserted in order, so ascending ids follow the chain.
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", auditChainLockKey).Error; err != nil {
 			return err
 		}
 		var tip model.SecurityAuditLog
+		prev := ""
 		err := tx.Where("row_hash <> ''").Order("id DESC").Limit(1).Take(&tip).Error
 		switch {
 		case err == nil:
-			log.PrevHash = tip.RowHash
+			prev = tip.RowHash
 		case errors.Is(err, gorm.ErrRecordNotFound):
-			log.PrevHash = "" // genesis row
+			// genesis row
 		default:
 			return err
 		}
-		log.RowHash = computeAuditRowHash(r.secret, log)
-		if err := tx.Create(log).Error; err != nil {
-			return err
+		for _, log := range logs {
+			log.PrevHash = prev
+			log.RowHash = computeAuditRowHash(r.secret, log)
+			if err := tx.Create(log).Error; err != nil {
+				return err
+			}
+			// A3: enqueue the webhook deliveries for this row in the same
+			// transaction, after the row exists so the delivery can reference it.
+			r.writeOutbox(ctx, tx, log)
+			prev = log.RowHash
 		}
-		// A3: enqueue the webhook deliveries for this row in the same
-		// transaction, after the row exists so the delivery can reference it.
-		r.writeOutbox(ctx, tx, log)
 		return nil
 	})
 }

@@ -62,6 +62,10 @@ var (
 		Namespace: ns, Subsystem: "policy", Name: "divergences_total",
 		Help: "Requests where the policy decision and the code gates disagreed, by kind. Must be zero before a code gate is retired.",
 	}, []string{"source", "kind"})
+	auditAsync = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: ns, Subsystem: "audit", Name: "async_writes_total",
+		Help: "AUDIT_WRITE_MODE=async: rows written by the background appender (outcome ok or error) and rows written synchronously because the queue was full (outcome sync_fallback).",
+	}, []string{"outcome"})
 	buildInfo = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: ns, Name: "build_info",
 		Help: "Build metadata (always 1).",
@@ -168,6 +172,19 @@ func PolicyDecision(source, mode, outcome string) {
 // PolicyDivergence records one disagreement between the policy and the code
 // gates it shadows.
 func PolicyDivergence(source, kind string) { policyDivergences.WithLabelValues(source, kind).Inc() }
+
+// AuditAsyncSyncFallback counts a row written synchronously because the
+// asynchronous audit queue was full.
+func AuditAsyncSyncFallback() { auditAsync.WithLabelValues("sync_fallback").Inc() }
+
+// AuditAsyncBatch counts the rows of one background audit batch by outcome.
+func AuditAsyncBatch(rows int, err error) {
+	outcome := "ok"
+	if err != nil {
+		outcome = "error"
+	}
+	auditAsync.WithLabelValues(outcome).Add(float64(rows))
+}
 
 // auditRepo decorates the security audit repository so every persisted event
 // is also counted — one hook covers logins, refresh reuse, DPoP and PKCE

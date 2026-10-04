@@ -1,0 +1,69 @@
+total 183748
+drwxr-x--- 13 olivier olivier     4096 Oct  3 09:18 .
+drwxr-xr-x  4 root    root        4096 Feb 25  2026 ..
+-rw-------  1 olivier olivier    42130 Oct  4 07:22 .bash_history
+-rw-r--r--  1 olivier olivier      220 Feb 25  2026 .bash_logout
+-rw-r--r--  1 olivier olivier     3833 Feb 25  2026 .bashrc
+drwx------  2 olivier olivier     4096 Feb 25  2026 .cache
+-rw-r--r--  1 olivier olivier      807 Feb 25  2026 .profile
+drwx------  2 olivier olivier     4096 Feb 25  2026 .ssh
+-rw-r--r--  1 olivier olivier        0 Feb 25  2026 .sudo_as_admin_successful
+-rw-r--r--  1 olivier olivier     9952 Oct  2 08:08 carry-over-preflight.sh
+-rw-r--r--  1 olivier olivier     9929 Oct  2 08:08 carry-over.sh
+-rw-r--r--  1 olivier olivier     5174 Oct  2 08:08 move-user-to-legacy-id.sh
+-rw-r--r--  1 olivier olivier  8616960 Oct  1 18:38 new-socrate-suite-v1.6.0.tar.gz
+-rw-r--r--  1 olivier olivier     2917 Oct  2 08:08 reserve-legacy-ids.sh
+drwxrwxr-x  3 olivier olivier     4096 Mar  4  2026 socrate
+-rw-r--r--  1 olivier olivier    12076 Sep 30 04:30 socrate-apps-access.sh
+-rw-r--r--  1 olivier olivier     1695 Sep 29 16:06 socrate-backup-setup.sh
+-rw-r--r--  1 olivier olivier     4984 Sep 29 16:06 socrate-backup.sh
+-rw-r--r--  1 olivier olivier     8616 Oct  3 08:44 socrate-caddy-update.sh
+-rw-rw-r--  1 olivier olivier       20 Sep 28 20:47 socrate-db-2026-09-28.sql.gz
+-rw-r--r--  1 olivier olivier     7338 Sep 29 10:00 socrate-legacy-rename.sh
+drwxr-xr-x  5 olivier olivier     4096 Sep 29 10:16 socrate-suite-v1.4.0
+-rw-r--r--  1 olivier olivier 22393666 Sep 29 15:44 socrate-suite-v1.4.0.tar.gz
+drwxr-xr-x  6 olivier olivier     4096 Sep 29 19:14 socrate-suite-v1.5.0
+-rw-r--r--  1 olivier olivier 22396371 Sep 29 19:18 socrate-suite-v1.5.0.tar.gz
+drwxr-xr-x  6 olivier olivier     4096 Sep 29 20:36 socrate-suite-v1.5.1
+-rw-r--r--  1 olivier olivier 22412330 Sep 29 20:39 socrate-suite-v1.5.1.tar.gz
+drwxr-xr-x  6 olivier olivier     4096 Sep 29 22:01 socrate-suite-v1.5.2
+-rw-r--r--  1 olivier olivier 22411299 Sep 30 04:17 socrate-suite-v1.5.2.tar.gz
+drwxr-xr-x  6 olivier olivier     4096 Sep 30 15:38 socrate-suite-v1.5.3
+-rw-r--r--  1 olivier olivier 22415730 Sep 30 16:06 socrate-suite-v1.5.3.tar.gz
+drwxr-xr-x  6 olivier olivier     4096 Sep 30 21:35 socrate-suite-v1.6.0
+-rw-r--r--  1 olivier olivier 22428913 Sep 30 21:37 socrate-suite-v1.6.0.tar.gz
+drwxr-xr-x  6 olivier olivier     4096 Oct  2 02:57 socrate-suite-v1.7.0
+-rw-r--r--  1 olivier olivier 22421090 Oct  2 04:59 socrate-suite-v1.7.0.tar.gz
+drwxr-xr-x  6 olivier olivier     4096 Oct  3 08:43 socrate-suite-v1.7.1
+-rw-r--r--  1 olivier olivier 22408701 Oct  3 09:16 socrate-suite-v1.7.1.tar.gz
+-rw-r--r--  1 olivier olivier    18405 Oct  3 09:16 socrate-vps-install.sh
+-rw-r--r--  1 olivier olivier    16556 Sep 29 09:33 socrate-vps-prep.sh
+socrate-suite-v1.7.1
+socrate-suite-v1.7.1/MANIFEST
+socrate-suite-v1.7.1/SHA256SUMS
+socrate-suite-v1.7.1/bin
+socrate-suite-v1.7.1/bin/socrate
+socrate-suite-v1.7.1/bin/socrate-admin-bff
+socrate-suite-v1.7.1/bin/socrate-monitoring-bff
+socrate-suite-v1.7.1/bin/socrate-seed
+socrate-suite-v1.7.1/caddy
+socrate-suite-v1.7.1/caddy/admin-csp-report-only.txt
+socrate-suite-v1.7.1/caddy/admin-csp.txt
+socrate-suite-v1.7.1/caddy/admin-reporting-endpoints.txt
+socrate-suite-v1.7.1/systemd
+socrate-suite-v1.7.1/systemd/socrate-admin-bff.service
+socrate-suite-v1.7.1/systemd/socrate-monitoring-bff.service
+socrate-suite-v1.7.1/systemd/socrate.service
+socrate-suite-v1.7.1/www
+socrate-suite-v1.7.1/www/admin
+socrate-suite-v1.7.1/www/admin/dist
+socrate-suite-v1.7.1/www/monitoring
+socrate-suite-v1.7.1/www/monitoring/dist
+Socrate suite release bundle — built 2026-10-03T08:42:45Z, linux/amd64, CGO disabled (static)
+socrate, socrate-seed        github.com/ovander/go-oauth2       v1.7.1  commit 19be693c2b64347f07711fe41f549d8ba202b250
+socrate-admin-bff, www/admin github.com/ovander/oauth2-admin    v1.4.0  commit 4e87c64012e012c014a50b76698c51c9ffbc73c1
+socrate-monitoring-bff, www/monitoring  github.com/ovander/oauth2-monitoring  v1.0.1  commit aec7a0a9752275eefca741df53d1d5feef15e357
+systemd/*.service            canonical units from each repo at its ref
+caddy/admin-csp.txt          admin CSP from oauth2-admin v1.4.0 deploy/Caddyfile (== productionCsp())
+caddy/admin-csp-report-only.txt, admin-reporting-endpoints.txt  Report-Only policy + Reporting-Endpoints from the same Caddyfile (== productionCspReportOnly(), REPORTING_ENDPOINTS)
+Go go1.27.1   Node v24.21.0

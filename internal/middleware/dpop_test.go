@@ -28,12 +28,12 @@ func makeProof(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("genkey: %v", err)
 	}
-	pad := func(b []byte) string {
-		out := make([]byte, 32)
-		copy(out[32-len(b):], b)
-		return base64.RawURLEncoding.EncodeToString(out)
+	pt, err := k.PublicKey.Bytes() // 0x04 || x || y, 32 bytes each
+	if err != nil {
+		t.Fatal(err)
 	}
-	jwk := map[string]interface{}{"kty": "EC", "crv": "P-256", "x": pad(k.X.Bytes()), "y": pad(k.Y.Bytes())}
+	enc := base64.RawURLEncoding.EncodeToString
+	jwk := map[string]interface{}{"kty": "EC", "crv": "P-256", "x": enc(pt[1:33]), "y": enc(pt[33:])}
 	tok := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
 		"htm": "POST",
 		"htu": tokenURI,

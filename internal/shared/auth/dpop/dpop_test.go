@@ -1,10 +1,12 @@
 package dpop
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"testing"
@@ -20,11 +22,15 @@ func newKey(t *testing.T) (*ecdsa.PrivateKey, map[string]interface{}) {
 	if err != nil {
 		t.Fatalf("genkey: %v", err)
 	}
+	x, y, err := p256Coordinates(&k.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	jwk := map[string]interface{}{
 		"kty": "EC",
 		"crv": "P-256",
-		"x":   base64.RawURLEncoding.EncodeToString(leftPad(k.X.Bytes(), 32)),
-		"y":   base64.RawURLEncoding.EncodeToString(leftPad(k.Y.Bytes(), 32)),
+		"x":   base64.RawURLEncoding.EncodeToString(x),
+		"y":   base64.RawURLEncoding.EncodeToString(y),
 	}
 	return k, jwk
 }
@@ -190,7 +196,11 @@ func TestVerify_MissingJWK(t *testing.T) {
 
 func TestVerify_RejectsPrivateKeyInJWK(t *testing.T) {
 	key, jwk := newKey(t)
-	jwk["d"] = base64.RawURLEncoding.EncodeToString(key.D.Bytes()) // leak private param
+	d, err := key.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	jwk["d"] = base64.RawURLEncoding.EncodeToString(d) // leak private param
 	now := time.Now()
 	proof := makeProof(t, key, jwk, testHTM, testHTU, now, "j")
 	if _, err := Verify(proof, testHTM, testHTU, now); !errors.Is(err, ErrInvalidJWK) {
@@ -247,7 +257,10 @@ func jwkWith(x, y []byte) map[string]interface{} {
 // invalid-curve input.
 func TestParseECPublicKey_RejectsInvalidPoints(t *testing.T) {
 	k, _ := newKey(t)
-	x, y := leftPad(k.X.Bytes(), 32), leftPad(k.Y.Bytes(), 32)
+	x, y, err := p256Coordinates(&k.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	offCurve := append([]byte(nil), y...)
 	offCurve[31] ^= 0x01
@@ -267,7 +280,7 @@ func TestParseECPublicKey_RejectsInvalidPoints(t *testing.T) {
 		}
 	}
 
-	if pub, err := parseECPublicKey(jwkWith(x, y)); err != nil || pub.X.Cmp(k.X) != 0 || pub.Y.Cmp(k.Y) != 0 {
+	if pub, err := parseECPublicKey(jwkWith(x, y)); err != nil || !pub.Equal(&k.PublicKey) {
 		t.Fatalf("valid key: pub=%v err=%v", pub, err)
 	}
 }
@@ -276,18 +289,22 @@ func TestParseECPublicKey_RejectsInvalidPoints(t *testing.T) {
 // accepted, and — the part that matters — binds to the same thumbprint as the
 // canonical encoding, so the lenient parse cannot change a token's binding.
 func TestParseECPublicKey_ShortCoordinate_SameThumbprint(t *testing.T) {
-	var k *ecdsa.PrivateKey
+	var x, y []byte
 	for {
-		k, _ = newKey(t)
-		if len(k.X.Bytes()) < 32 { // ~1 key in 256 has a leading zero byte
+		k, _ := newKey(t)
+		var err error
+		if x, y, err = p256Coordinates(&k.PublicKey); err != nil {
+			t.Fatal(err)
+		}
+		if x[0] == 0 { // ~1 key in 256 has a leading zero byte
 			break
 		}
 	}
-	short, err := parseECPublicKey(jwkWith(k.X.Bytes(), leftPad(k.Y.Bytes(), 32)))
+	short, err := parseECPublicKey(jwkWith(bytes.TrimLeft(x, "\x00"), y))
 	if err != nil {
 		t.Fatalf("short coordinate rejected: %v", err)
 	}
-	full, err := parseECPublicKey(jwkWith(leftPad(k.X.Bytes(), 32), leftPad(k.Y.Bytes(), 32)))
+	full, err := parseECPublicKey(jwkWith(x, y))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,5 +312,24 @@ func TestParseECPublicKey_ShortCoordinate_SameThumbprint(t *testing.T) {
 	tf, _ := thumbprint(full)
 	if ts != tf {
 		t.Fatalf("thumbprints differ: %s vs %s", ts, tf)
+	}
+}
+
+// RFC 7638 thumbprint of a fixed P-256 key (RFC 7517 Appendix A.1), computed
+// independently from its canonical JSON: the coordinates read through
+// ecdsa.PublicKey.Bytes() bind tokens exactly as before.
+func TestThumbprint_KnownKey(t *testing.T) {
+	const x, y = "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4", "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM"
+	pub, err := parseECPublicKey(map[string]interface{}{"kty": "EC", "crv": "P-256", "x": x, "y": y})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := thumbprint(pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte(`{"crv":"P-256","kty":"EC","x":"` + x + `","y":"` + y + `"}`))
+	if want := base64.RawURLEncoding.EncodeToString(sum[:]); got != want {
+		t.Fatalf("thumbprint = %s, want %s", got, want)
 	}
 }

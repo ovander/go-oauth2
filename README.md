@@ -237,7 +237,7 @@ OpenTelemetry tracing, an OpenAPI document.
 git clone  →  make run  →  seed a superadmin  →  register a client  →  curl  →  JWT  →  ✅ done
 ```
 
-**Prerequisites:** Go 1.25+ (the module pins `toolchain go1.27.1`, which the `go` command downloads), PostgreSQL 14+,
+**Prerequisites:** Go 1.27.1 (`go 1.27.1` in `go.mod`; with `GOTOOLCHAIN=auto` an older `go` command downloads it), PostgreSQL 14+,
 `make`, `openssl`.
 
 ```bash

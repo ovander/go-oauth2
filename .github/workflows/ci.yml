@@ -48,13 +48,14 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # go.mod's toolchain line is the single source of truth for the Go that
-      # builds Socrate. Fail loudly if this job compiled with anything else, or
-      # if the Dockerfile's image has drifted from it — the release image is
-      # what actually ships.
+      # go.mod is the single source of truth for the Go that builds Socrate:
+      # its toolchain line, or the go line when there is none (go mod tidy
+      # drops a toolchain line equal to the go line). Fail loudly if this job
+      # compiled with anything else, or if the Dockerfile's image has drifted
+      # from it — the release image is what actually ships.
       - name: Toolchain matches go.mod (CI and Dockerfile)
         run: |
-          want=$(awk '/^toolchain /{print $2}' go.mod)
+          want=$(awk '/^toolchain /{t=$2} /^go /{g="go"$2} END{print (t != "" ? t : g)}' go.mod)
           got=$(go env GOVERSION)
           image=go$(sed -nE 's/^FROM golang:([0-9.]+)-alpine.*/\1/p' Dockerfile)
           echo "go.mod toolchain: $want · CI: $got · Dockerfile: $image"
@@ -94,12 +95,12 @@ jobs:
           cache: true
 
       - name: Build golangci-lint with go.mod's toolchain
-        # setup-go installs the `go` line (1.25.x). golangci-lint v2.14 needs
-        # go >= 1.26, so `go install` outside the module would switch to the
-        # oldest toolchain line that satisfies it (go1.26.x), and that binary
-        # then refuses a module whose toolchain targets a newer Go. Pin the
-        # switch to go.mod's toolchain line instead.
-        run: echo "GOTOOLCHAIN=$(awk '/^toolchain/{print $2}' go.mod)" >> "$GITHUB_ENV"
+        # Pin the Go that builds golangci-lint to go.mod's (toolchain line, or
+        # the go line when there is none): `go install` outside the module
+        # would otherwise pick the oldest toolchain satisfying golangci-lint's
+        # own requirement, and that binary refuses a module targeting a newer Go.
+        run: |
+          echo "GOTOOLCHAIN=$(awk '/^toolchain /{t=$2} /^go /{g="go"$2} END{print (t != "" ? t : g)}' go.mod)" >> "$GITHUB_ENV"
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
@@ -124,8 +125,16 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      # Same trap as golangci-lint: `go install` outside the module would build
+      # govulncheck with the oldest Go its own go.mod accepts, and that binary
+      # refuses a module targeting a newer Go ("package requires newer Go
+      # version"). Build it with go.mod's Go, and pin it so a scanner release
+      # never changes the result unannounced.
+      - name: Install govulncheck with go.mod's toolchain
+        run: |
+          echo "GOTOOLCHAIN=$(awk '/^toolchain /{t=$2} /^go /{g="go"$2} END{print (t != "" ? t : g)}' go.mod)" >> "$GITHUB_ENV"
+          GOTOOLCHAIN=$(awk '/^toolchain /{t=$2} /^go /{g="go"$2} END{print (t != "" ? t : g)}' go.mod) \
+            go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
 
       - name: Run govulncheck
         run: govulncheck ./...

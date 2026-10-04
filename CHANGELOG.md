@@ -10,6 +10,18 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-04
+
+Minor release on the **v1.x** line. Tokens from the authorization-code grant now report the real
+sign-in: `auth_time` is when the user authenticated (not when the code was redeemed), and `amr` /
+`acr` say how; refreshes keep them. This makes the PDP obligations `require_mfa` and
+`require_fresh_auth` meaningful for application tokens (Lakebridge #308).
+
+**Migration `0029`** adds nullable `auth_time`, `amr` and `acr` columns to `authorization_codes`;
+it runs at startup. No new environment variable, no change of default. **Token contract:**
+`auth_time` on authorization-code tokens changes meaning (sign-in time, as OIDC defines it), and
+those tokens now carry `amr`/`acr`.
+
 ### Fixed
 
 - **Authorization-code tokens report the real sign-in: `auth_time`, `amr` and `acr`.** Tokens
@@ -1819,7 +1831,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/ovander/go-oauth2/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/ovander/go-oauth2/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/ovander/go-oauth2/compare/v1.7.1...v1.8.0
 [1.7.1]: https://github.com/ovander/go-oauth2/compare/v1.7.0...v1.7.1

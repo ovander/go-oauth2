@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # test-caddy-update.sh - run socrate-caddy-update.sh end to end (dry run and --apply) against
-# fixture Caddy sites and a fixture bundle, with stub caddy, systemctl and curl commands. Needs root (the updater checks
-# it): run as root, or with passwordless sudo, as on CI runners.
+# fixture Caddy sites and a fixture bundle, with stub caddy, systemctl and curl commands.
+# Needs root (the updater checks it): run as root, or with passwordless sudo, as on CI runners.
 #
 #   bash deploy/release-kit/test-caddy-update.sh
 set -euo pipefail
 
 KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 SUDO=""; [ "$(id -u)" = 0 ] || SUDO="sudo"
+# The updater runs as root and keeps its backups in a 0700 folder: inspect and clean up as root.
+T="$(mktemp -d)"; trap '$SUDO rm -rf "$T"' EXIT
 fails=0
 pass() { printf '  [ok] %s\n' "$*"; }
 fail() { printf '  [FAIL] %s\n' "$*"; fails=$((fails + 1)); }
@@ -98,7 +99,7 @@ if [ "$rc" != 0 ] && grep -q "expected one '@bff path' line" "$T/out"; then pass
 admin_site '/bff/* /api/admin/* /api/profile /api/version'
 run --apply
 if [ "$rc" = 0 ] && grep -qF '@bff path /bff/* /api/admin/* /api/profile /api/version /api/apps/* /api/profile/mfa /api/profile/mfa/* /api/auth/request-password-reset /api/auth/reset-password' "$T/sites/admin.example.caddy" \
-  && ls "$T"/backups/caddy-*/admin.example.caddy >/dev/null 2>&1; then
+  && $SUDO sh -c 'ls "$1"/backups/caddy-*/admin.example.caddy' sh "$T" >/dev/null 2>&1; then
   pass "--apply appends the missing paths and keeps a backup"
 else
   fail "--apply: rc=$rc"; sed 's/^/      /' "$T/out"; sed 's/^/      /' "$T/sites/admin.example.caddy"

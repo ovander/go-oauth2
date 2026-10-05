@@ -29,7 +29,7 @@ MON_HOST="${MON_HOST:-monitor.socrate.vandermoten.eu}"
 ADMIN_SITE="$SITES/$ADMIN_HOST.caddy"
 MON_SITE="$SITES/$MON_HOST.caddy"
 CADDYFILE="${CADDYFILE:-/etc/caddy/Caddyfile}"
-BACKUP="/var/backups/socrate/caddy-$(date +%Y%m%d-%H%M%S)"
+BACKUP="${BACKUP_ROOT:-/var/backups/socrate}/caddy-$(date +%Y%m%d-%H%M%S)"
 
 ok()   { printf '  \033[32m✔\033[0m %s\n' "$*"; }
 info() { printf '  · %s\n' "$*"; }
@@ -56,7 +56,11 @@ fi
 BFF_PATHS=""
 if [ -f "$BUNDLE/caddy/admin-bff-paths.txt" ]; then
   BFF_PATHS="$(tr '\n' ' ' < "$BUNDLE/caddy/admin-bff-paths.txt")"
-  case " $BFF_PATHS " in *" /bff/* "*" /api/admin/* "*) ;; *) die "admin-bff-paths.txt looks wrong: $BFF_PATHS";; esac
+  # One check per path: a single pattern with two space-delimited literals would need two
+  # spaces between adjacent paths, and refused every real file.
+  for p in '/bff/*' '/api/admin/*'; do
+    case " $BFF_PATHS " in *" $p "*) ;; *) die "admin-bff-paths.txt looks wrong (no $p): $BFF_PATHS";; esac
+  done
 fi
 
 # Compute the new contents into temp files (no change on disk yet).
@@ -71,9 +75,9 @@ if '/api/version' not in l.split():
     s = s.replace(l, l.rstrip('\n') + ' /api/version\n', 1)
 open(sys.argv[2], 'w').write(s)
 MONPY
-python3 - "$ADMIN_SITE" "$tmp/admin" "$CSP" "$RO" "$RE" "$BFF_PATHS" <<'ADMINPY'
+python3 - "$ADMIN_SITE" "$tmp/admin" "$CSP" "$RO" "$RE" "$BFF_PATHS" "$tmp/bff-added" <<'ADMINPY'
 import re, sys
-site, out, csp, ro, rep, bff_paths = sys.argv[1:7]
+site, out, csp, ro, rep, bff_paths, added_out = sys.argv[1:8]
 s = open(site).read()
 
 # The enforced policy: exactly one line, "Content-Security-Policy" followed by whitespace (so the
@@ -109,6 +113,7 @@ if bff_paths.split():
     missing = [p for p in bff_paths.split() if p not in have]
     if missing:
         s = s.replace(l, l.rstrip('\n') + ' ' + ' '.join(missing) + '\n', 1)
+        open(added_out, 'w').write(' '.join(missing) + '\n')
 open(out, 'w').write(s)
 ADMINPY
 
@@ -117,7 +122,9 @@ printf '\n\033[1m▶ plan\033[0m\n'
 if cmp -s "$MON_SITE" "$tmp/mon"; then ok "monitor: @bff already routes /api/version"; else
   changed=1; info "monitor ($MON_SITE):"; { diff -u "$MON_SITE" "$tmp/mon" | sed -n '3,$p' | grep '^[-+]' | sed 's/^/      /'; } || true; fi
 if cmp -s "$ADMIN_SITE" "$tmp/admin"; then ok "admin: CSP canonical${RO:+, Report-Only and Reporting-Endpoints in place}${BFF_PATHS:+, @bff routes every console path}"; else
-  changed=1; info "admin ($ADMIN_SITE):"; { diff -u "$ADMIN_SITE" "$tmp/admin" | sed -n '3,$p' | grep '^[-+]' | cut -c1-160 | sed 's/^/      /'; } || true; fi
+  changed=1; info "admin ($ADMIN_SITE):"; { diff -u "$ADMIN_SITE" "$tmp/admin" | sed -n '3,$p' | grep '^[-+]' | cut -c1-160 | sed 's/^/      /'; } || true
+  # The diff lines are cut for the long CSP values; name the added paths in full.
+  [ -s "$tmp/bff-added" ] && info "admin @bff matcher: adding $(cat "$tmp/bff-added")"; fi
 grep -q 'includeSubDomains"' "$ADMIN_SITE" && info "not changed: admin HSTS has no 'preload' (the repo's has) — add it only if you intend to submit the domain to the HSTS preload list"
 [ "$changed" = 1 ] || { printf '\nNothing to do.\n'; exit 0; }
 [ "$APPLY" = 1 ] || { printf '\nDry run only. Re-run with --apply.\n'; exit 0; }

@@ -62,6 +62,11 @@ jobs:
             echo "::error::deploy/release-kit/socrate-release.sh must stay ASCII-only"; exit 1
           fi
 
+      # The Caddy updater runs as root against the live sites: exercise it end to end (dry run
+      # and --apply) on fixture sites, with stub caddy/systemctl/curl, before it reaches the VPS.
+      - name: Caddy updater test
+        run: bash deploy/release-kit/test-caddy-update.sh
+
       - name: Toolchain matches go.mod (CI and Dockerfile)
         run: |
           want=$(awk '/^toolchain /{t=$2} /^go /{g="go"$2} END{print (t != "" ? t : g)}' go.mod)

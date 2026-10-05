@@ -18,6 +18,15 @@ Capabilities**, non-breaking).
   now also adds the admin console's missing `@bff` paths (admin v1.5.0's `/api/profile/mfa`). CI
   checks that the deploy scripts parse.
 
+### Fixed
+
+- `deploy/release-kit/socrate-caddy-update.sh` refused every bundle carrying
+  `caddy/admin-bff-paths.txt` ("admin-bff-paths.txt looks wrong"): its sanity check needed two
+  spaces between two adjacent paths. It now checks each required path on its own, and the plan
+  names the `@bff` paths it adds in full (the diff lines are cut for the long CSP values).
+  `test-caddy-update.sh` runs the updater end to end in CI; `BACKUP_ROOT` (default
+  `/var/backups/socrate`) sets where it keeps the previous site files.
+
 ## [1.10.0] - 2026-10-04
 
 Minor release on the **v1.x** line. Tokens from the authorization-code grant now report the real

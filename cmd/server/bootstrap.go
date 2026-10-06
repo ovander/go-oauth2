@@ -438,6 +438,10 @@ func Bootstrap(cfg *config.Config) *App {
 		auditAsync, auditRepoBase = a, a
 	}
 	securityAuditRepo := metrics.InstrumentAuditRepo(auditRepoBase)
+	// A2: a mapped claim a token did not get (a user attribute the user lacks,
+	// or a set dropped for its size) becomes a security event, at most once an
+	// hour per user, client and claim.
+	claimsEnricher.SetProblemReporter(service.NewClaimProblemRecorder(securityAuditRepo, time.Hour, 10000).Report)
 
 	// A3: webhook subscriptions and the delivery outbox. The outbox producer is
 	// installed on the *undecorated* audit repository, because it must run

@@ -10,6 +10,15 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Added
+
+- **Security events for mapped claims a token did not get.** `custom_claim_missing` (warning): a
+  client maps a user attribute (e.g. `user.attributes.tenant_id`) and the user has none, so the
+  claim is left out and an application requiring it refuses the user. `custom_claims_dropped`
+  (error): the mapped set exceeded the 2 KB cap and was left out whole (until now only a log
+  line). Each is recorded at most once an hour per user, client and claim, in a bounded memory,
+  off the token path. They appear in the monitoring console's security events.
+
 ## [1.11.0] - 2026-10-06
 
 Minor release on the **v1.x** line. Application users can turn on two-factor authentication on

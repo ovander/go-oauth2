@@ -147,6 +147,7 @@ What is in the code today (every item below is routed, tested and documented in 
 - Hosted login, consent, signup, password reset, invite pages (embedded templates)
 - Password (bcrypt, timing-safe) + lockout
 - TOTP MFA with encrypted secrets and one-time recovery codes
+- Hosted account security page (`/account/security`) for users to enrol MFA themselves (`ACCOUNT_SECURITY_PAGE`)
 - Magic links (passwordless), email verification
 - Invitations with app context; SMTP mail service
 - Global roles (`user/admin/superadmin`) + per-app roles (`admin/manager/editor/viewer/user`)
@@ -272,7 +273,8 @@ internal/
   database/migrate/  versioned schema steps applied with AUTO_MIGRATE=true
   model/ repository/ dto/ web/ (hosted pages) …
 pkg/            logger, database
-web/            embedded static assets        deploy/   VPS kit pointers
+web/            embedded static assets
+deploy/         VPS kit: env template, release-kit/ (build, verify, install the suite), migration contract
 docs/           architecture, API, deployment runbook, audits, roadmaps
 ```
 
@@ -332,9 +334,9 @@ sequenceDiagram
 
 **Getting started** — [API & integration guide](docs/API.md) · [Authentication flows](docs/AUTH-FLOWS.md) · [`CHANGELOG.md`](CHANGELOG.md) · feature-flag modes in [`.env.example`](.env.example)
 
-**Deploy & operate** — [Performance baseline & sizing](docs/PERFORMANCE-BASELINE.md) · [Linux VPS + Postgres + Caddy, multi-app runbook](docs/DEPLOYMENT-VPS-MULTI-APP.md) · [Pre-deploy checklist](deploy/PRE-DEPLOY-CHECKLIST.md) · [Migrating applications](deploy/migration/README.md) · [Revocation & freshness SLA](docs/REVOCATION-FRESHNESS-SLA.md) · [Alert rules](docs/ALERT-RULES.md) · [Geo analytics API](docs/GEO-ANALYTICS-API.md)
+**Deploy & operate** — [Performance baseline & sizing](docs/PERFORMANCE-BASELINE.md) · [Linux VPS + Postgres + Caddy, multi-app runbook](docs/DEPLOYMENT-VPS-MULTI-APP.md) · [Pre-deploy checklist](deploy/PRE-DEPLOY-CHECKLIST.md) · [Release kit](deploy/release-kit/README.md) · [Migrating applications](deploy/migration/README.md) · [Revocation & freshness SLA](docs/REVOCATION-FRESHNESS-SLA.md) · [Alert rules](docs/ALERT-RULES.md) · [Geo analytics API](docs/GEO-ANALYTICS-API.md)
 
-**Architecture** — [Reference architecture](docs/PLATFORM-REFERENCE-ARCHITECTURE.md) · [OP contract (v1.3)](deploy/migration/SOCRATE-V1.3.0-OP-CONTRACT.md)
+**Architecture** — [Reference architecture](docs/PLATFORM-REFERENCE-ARCHITECTURE.md) · [OP contract](deploy/migration/SOCRATE-V1.3.0-OP-CONTRACT.md)
 
 **Extend & observe** — [Hooks, scope policy, custom claims](docs/EXTENSIBILITY.md) · [Metrics & log schema](docs/OBSERVABILITY.md)
 

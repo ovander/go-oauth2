@@ -10,6 +10,17 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Documentation
+
+- **Docs brought up to date with v1.12.0.** `deploy/env/socrate.env.example` lists the opt-in
+  controls (`ACCOUNT_SECURITY_PAGE`, `AUDIENCE_MODE`, `SCOPE_POLICY_MODE`, `CLAIMS_NAMESPACE`,
+  `POLICY_MODE`, `ADMIN_MFA_POLICY`, `OPERATOR_CONSOLE_CLIENT_IDS`, `ADMIN_APP_SIGNIN_POLICY`,
+  `ADMIN_API_AUDIENCE_MODE`, `AUDIT_WRITE_MODE`), commented out at their defaults. The OP contract
+  and its copy in `APP-COMPAT-PROMPT.md` now give `picture` and `prompt_values_supported`, what
+  `/oauth/logout` really does, the v1.10.0 `auth_time` semantics, the `amr`/`acr` values, `aud`
+  under `AUDIENCE_MODE=dual`, per-client token lifetimes and namespaced custom claims. The README
+  mentions the account security page and the release kit. No code change.
+
 ## [1.12.0] - 2026-10-06
 
 Minor release on the **v1.x** line: what the monitoring console needs to watch an application's

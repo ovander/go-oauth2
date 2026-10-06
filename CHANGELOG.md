@@ -12,6 +12,13 @@ Capabilities**, non-breaking).
 
 ### Added
 
+- **Hosted account page, `/account/security`** (`ACCOUNT_SECURITY_PAGE`, default `off`): an
+  application's user signs in on Socrate's own page and turns two-factor authentication on (key,
+  `otpauth://` link, recovery codes) or off. Applications such as Lakebridge link to it instead
+  of building an MFA screen: their users had no way to enrol, so `require_mfa` could never be met.
+  The password check shares Login's lockout and audit, and every post shares the login rate limit;
+  no token is issued. Socrate admins are refused (they use the admin console). No server-side
+  session: a signed 10-minute page session plus a CSRF token, and every page is `no-store`.
 - `deploy/release-kit/`: the suite release kit, now versioned here. `socrate-release.sh` builds
   the bundle (Socrate, both consoles, units, admin Caddy headers and `@bff` paths) from the three
   tags on the owner's workstation; `socrate-vps-install.sh` installs it; `socrate-caddy-update.sh`

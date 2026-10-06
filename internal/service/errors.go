@@ -16,6 +16,9 @@ var (
 	// ErrInvalidUserAttributes indicates an attribute set (A2) that exceeds the
 	// count/name/size bounds, or that cannot be serialized.
 	ErrInvalidUserAttributes = errors.New("invalid user attributes")
+	// ErrAccountPageAdmin refuses a Socrate admin or superadmin on the hosted
+	// account page: they manage MFA in the admin console (ADMIN_MFA_POLICY).
+	ErrAccountPageAdmin = errors.New("account page: administrators manage MFA in the admin console")
 
 	// MFA login step-up. ErrMFARequired signals that the password was correct but
 	// a second factor (TOTP code) is needed to complete login; the client should

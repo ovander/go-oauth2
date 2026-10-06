@@ -109,6 +109,9 @@ type RouterConfig struct {
 	// (POST /api/apps/{app_id}/service/policy/decide). Nil leaves it
 	// unregistered.
 	PolicyDecideHandler *handler.PolicyDecideHandler
+	// AccountSecurityHandler serves the hosted account page (/account/security,
+	// ACCOUNT_SECURITY_PAGE). Nil leaves the route unregistered.
+	AccountSecurityHandler *internalweb.AccountSecurityHandler
 }
 
 // Routers holds both the OAuth and Admin routers for separate port binding
@@ -296,6 +299,15 @@ func newOAuthRouter(
 		r.Get("/invite", webHandler.AcceptInvitePage)
 		r.Post("/invite", webHandler.AcceptInviteSubmit)
 	})
+
+	// Hosted account page (ACCOUNT_SECURITY_PAGE): an application user turns
+	// MFA on or off. Every post can check a password or a code, so all of them
+	// share the login rate limit.
+	if h := config.AccountSecurityHandler; h != nil {
+		r.Get("/account/security", h.Page)
+		r.With(middleware.RateLimitMiddleware(config.LoginRateLimiter, config.TrustedProxyCIDRs)).
+			Post("/account/security", h.Submit)
+	}
 
 	// ==========================================
 	// User-Facing API Routes (Authentication & Profile)

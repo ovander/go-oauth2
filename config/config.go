@@ -100,6 +100,11 @@ type Config struct {
 	// "off" (default, unchanged behaviour), "observe" (allow but audit admins
 	// without MFA), or "enforce" (deny until the admin enrolls). RFC-011.
 	AdminMFAPolicy string
+	// AccountSecurityPage serves the hosted account page, /account/security,
+	// where an application user (not a Socrate admin) signs in and turns
+	// two-factor authentication on or off. ACCOUNT_SECURITY_PAGE: "off"
+	// (default — the route is not registered) | "on".
+	AccountSecurityPage bool
 	// AdminAppSignInPolicy governs whether a Socrate admin or superadmin may sign
 	// in to an application that is not an operator console: "off" (default,
 	// unchanged — an admin is the implicit admin of any app), "observe" (allow
@@ -370,6 +375,7 @@ func Load() *Config {
 		LockoutDurationSecs:      getEnvInt("LOCKOUT_DURATION_SECONDS", 900),
 		SecretKeyBase:            getEnv("SECRET_KEY_BASE", ""),
 		AdminMFAPolicy:           normalizeAdminMFAPolicy(getEnv("ADMIN_MFA_POLICY", "off")),
+		AccountSecurityPage:      strings.ToLower(strings.TrimSpace(getEnv("ACCOUNT_SECURITY_PAGE", "off"))) == "on",
 		AdminAppSignInPolicy:     normalizeStepUpMode(getEnv("ADMIN_APP_SIGNIN_POLICY", "off")),
 		OperatorConsoleClientIDs: getEnv("OPERATOR_CONSOLE_CLIENT_IDS", ""),
 		AdminAPIAudienceMode:     normalizeStepUpMode(getEnv("ADMIN_API_AUDIENCE_MODE", "off")),

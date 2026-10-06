@@ -10,6 +10,17 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-10-06
+
+Minor release on the **v1.x** line. Application users can turn on two-factor authentication on
+Socrate's own hosted page, `/account/security`, so a `require_mfa` obligation can be met for apps
+that do not build an MFA screen (Lakebridge #308). The suite release kit now lives in
+`deploy/release-kit/`, with a fixed Caddy updater tested end to end in CI.
+
+**New environment variable:** `ACCOUNT_SECURITY_PAGE` (`off` by default: the page does not exist
+until it is set to `on`). No migration (the schema stays at `0029`), no change of default, no
+token-contract change.
+
 ### Added
 
 - **Hosted account page, `/account/security`** (`ACCOUNT_SECURITY_PAGE`, default `off`): an
@@ -1855,7 +1866,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/ovander/go-oauth2/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/ovander/go-oauth2/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/ovander/go-oauth2/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/ovander/go-oauth2/compare/v1.7.1...v1.8.0

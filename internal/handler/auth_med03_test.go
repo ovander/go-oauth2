@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -62,6 +63,9 @@ func (s *med03AuthService) AcceptInvite(_ context.Context, _, _, _ string) (*dto
 	return nil, nil
 }
 func (s *med03AuthService) WithMFA(_ service.MFAService) service.AuthService { return s }
+func (s *med03AuthService) AuthenticateAccount(context.Context, string, string, string) (*model.User, error) {
+	return nil, errors.New("not used")
+}
 
 // ---------------------------------------------------------------------------
 // Minimal UserService stub (unused by Signup handler but required by constructor)

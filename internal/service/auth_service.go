@@ -29,6 +29,10 @@ type AuthService interface {
 	ChangePassword(ctx context.Context, userID uint, currentPassword, newPassword string) error
 	ValidateInviteToken(ctx context.Context, token string) (*dto.InviteValidationResponse, error)
 	AcceptInvite(ctx context.Context, token, name, password string) (*dto.LoginResponse, error)
+	// AuthenticateAccount verifies a user's own credentials for Socrate's hosted
+	// account page (ACCOUNT_SECURITY_PAGE). It issues no token and needs no
+	// application membership.
+	AuthenticateAccount(ctx context.Context, email, password, mfaCode string) (*model.User, error)
 	// WithMFA enables login step-up: when set, a user with MFA enabled must
 	// present a valid TOTP code (LoginRequest.MFACode) to complete login.
 	// Optional and nil-safe — without it, login behaviour is unchanged. Returns
@@ -439,33 +443,8 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 		return nil, ErrInvalidCredentials
 	}
 
-	if user.IsLocked() {
-		return nil, fmt.Errorf("%w: try again later", ErrAccountLocked)
-	}
-
-	if !auth.CheckPassword(req.Password, user.HashedPassword) {
-		if err := s.userRepo.IncrementFailedLoginAttempts(ctx, user.ID); err != nil {
-			logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
-		}
-		user, _ = s.userRepo.FindByID(ctx, user.ID)
-		if user.FailedLoginAttempts >= s.maxFailedAttempts {
-			lockUntil := time.Now().Add(s.lockoutDuration)
-			if err := s.userRepo.LockAccount(ctx, user.ID, &lockUntil); err != nil {
-				logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
-			}
-			// Log account lockout
-			s.logSecurityEvent(ctx, model.SecurityEventAccountLocked, &user.ID, nil, false, map[string]interface{}{
-				"email":           user.Email,
-				"failed_attempts": user.FailedLoginAttempts,
-			})
-			return nil, ErrAccountLocked
-		}
-		// Log failed login attempt
-		s.logSecurityEvent(ctx, model.SecurityEventLoginFailed, &user.ID, nil, false, map[string]interface{}{
-			"email":           user.Email,
-			"failed_attempts": user.FailedLoginAttempts,
-		})
-		return nil, ErrInvalidCredentials
+	if err := s.checkPasswordWithLockout(ctx, user, req.Password); err != nil {
+		return nil, err
 	}
 
 	if !user.IsVerified {
@@ -567,6 +546,87 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 		AMR:                amr,
 		ACR:                acr,
 	}, nil
+}
+
+// checkPasswordWithLockout refuses a locked account and checks the password.
+// A wrong password counts as a failed attempt; reaching the limit locks the
+// account. Both are audited. Shared by Login and AuthenticateAccount so every
+// password check on behalf of a user counts towards the same lockout.
+func (s *authService) checkPasswordWithLockout(ctx context.Context, user *model.User, password string) error {
+	if user.IsLocked() {
+		return fmt.Errorf("%w: try again later", ErrAccountLocked)
+	}
+	if auth.CheckPassword(password, user.HashedPassword) {
+		return nil
+	}
+	if err := s.userRepo.IncrementFailedLoginAttempts(ctx, user.ID); err != nil {
+		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
+	}
+	if refreshed, err := s.userRepo.FindByID(ctx, user.ID); err == nil && refreshed != nil {
+		user = refreshed
+	}
+	if user.FailedLoginAttempts >= s.maxFailedAttempts {
+		lockUntil := time.Now().Add(s.lockoutDuration)
+		if err := s.userRepo.LockAccount(ctx, user.ID, &lockUntil); err != nil {
+			logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
+		}
+		// Log account lockout
+		s.logSecurityEvent(ctx, model.SecurityEventAccountLocked, &user.ID, nil, false, map[string]interface{}{
+			"email":           user.Email,
+			"failed_attempts": user.FailedLoginAttempts,
+		})
+		return ErrAccountLocked
+	}
+	// Log failed login attempt
+	s.logSecurityEvent(ctx, model.SecurityEventLoginFailed, &user.ID, nil, false, map[string]interface{}{
+		"email":           user.Email,
+		"failed_attempts": user.FailedLoginAttempts,
+	})
+	return ErrInvalidCredentials
+}
+
+// AuthenticateAccount verifies a user's own credentials for Socrate's hosted
+// account page: the password, with the same lockout and audit as Login, then
+// the second factor when the user has one (a TOTP or recovery code). It issues
+// no token and checks no application membership.
+//
+// Socrate admins and superadmins are refused with ErrAccountPageAdmin, after
+// their password is verified: they manage MFA in the admin console, where
+// ADMIN_MFA_POLICY applies.
+func (s *authService) AuthenticateAccount(ctx context.Context, email, password, mfaCode string) (*model.User, error) {
+	user, err := s.userRepo.FindByEmail(ctx, email)
+	if err != nil {
+		// L1: same bcrypt cost as a known email with a wrong password.
+		auth.CheckDummyPassword()
+		return nil, ErrInvalidCredentials
+	}
+	if err := s.checkPasswordWithLockout(ctx, user, password); err != nil {
+		return nil, err
+	}
+	if !user.IsVerified {
+		return nil, fmt.Errorf("%w: please verify your email first", ErrUserNotVerified)
+	}
+	if user.IsGlobalAdmin() {
+		return nil, ErrAccountPageAdmin
+	}
+	if err := s.stepUpMFA(ctx, user, mfaCode); err != nil {
+		if errors.Is(err, ErrMFAInvalidCode) {
+			s.logSecurityEvent(ctx, model.SecurityEventLoginFailed, &user.ID, nil, false, map[string]interface{}{
+				"email":   user.Email,
+				"reason":  "mfa_invalid",
+				"context": "account_security",
+			})
+		}
+		return nil, err
+	}
+	if err := s.userRepo.ResetFailedLoginAttempts(ctx, user.ID); err != nil {
+		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
+	}
+	s.logSecurityEvent(ctx, model.SecurityEventLoginSuccess, &user.ID, nil, true, map[string]interface{}{
+		"email":   user.Email,
+		"context": "account_security",
+	})
+	return user, nil
 }
 
 // AdminLogin authenticates an admin user for the admin portal (no app context)

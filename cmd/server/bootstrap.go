@@ -721,6 +721,17 @@ func Bootstrap(cfg *config.Config) *App {
 	}
 	logger.Debug("✅ Web handler initialized")
 
+	// Hosted account page (ACCOUNT_SECURITY_PAGE=on): application users turn
+	// MFA on or off. Off by default: the route is not registered.
+	var accountSecurityHandler *web.AccountSecurityHandler
+	if cfg.AccountSecurityPage {
+		accountSecurityHandler, err = web.NewAccountSecurityHandler(authService, mfaService, []byte(cfg.SecretKeyBase), cfg.OAuthIssuer)
+		if err != nil {
+			logger.Fatalf("Failed to create the account security page: %v", err)
+		}
+		logger.Info("Account security page enabled at /account/security (ACCOUNT_SECURITY_PAGE=on)")
+	}
+
 	// ==========================================
 	// Auto-Defense System (automatic IP blocking)
 	// ==========================================
@@ -896,6 +907,8 @@ func Bootstrap(cfg *config.Config) *App {
 		// mode; the response carries the mode, which is how an application's
 		// enforcement point knows whether to act on the answer.
 		PolicyDecideHandler: handler.NewPolicyDecideHandler(pdp, tokenService, userRepo, usedTokenRepo, userAppRoleRepo),
+		// ACCOUNT_SECURITY_PAGE: nil (off) leaves /account/security unregistered.
+		AccountSecurityHandler: accountSecurityHandler,
 	}
 	if geoIPService != nil && geoIPService.IsConfigured() {
 		geo := geoIPService

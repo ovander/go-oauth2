@@ -86,6 +86,9 @@ func (s *m1m2AuthService) AcceptInvite(_ context.Context, _, _, _ string) (*dto.
 	panic("AcceptInvite called unexpectedly")
 }
 func (s *m1m2AuthService) WithMFA(_ service.MFAService) service.AuthService { return s }
+func (s *m1m2AuthService) AuthenticateAccount(context.Context, string, string, string) (*model.User, error) {
+	return nil, errors.New("not used")
+}
 
 var _ service.AuthService = (*m1m2AuthService)(nil)
 

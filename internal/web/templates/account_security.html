@@ -1,0 +1,135 @@
+{{define "content"}}
+<div class="card">
+    <div class="card-header">
+        <h1>Socrate</h1>
+        <p>Account security</p>
+    </div>
+    <div class="card-body">
+        {{if .Error}}
+        <div class="alert alert-error">{{.Error}}</div>
+        {{end}}
+        {{if .Notice}}
+        <div class="alert alert-success">{{.Notice}}</div>
+        {{end}}
+
+        {{if eq .View "signin"}}
+        <p class="text-muted" style="margin-bottom: 20px;">
+            Sign in to set up two-factor authentication for your account: a code from an authenticator app,
+            asked at every sign-in to the applications that use Socrate.
+        </p>
+        <form method="POST" action="/account/security">
+            <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+            <input type="hidden" name="action" value="signin">
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" value="{{.Email}}" required autocomplete="username" {{if not .ShowMFA}}autofocus{{end}}>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required autocomplete="current-password">
+            </div>
+            {{if .ShowMFA}}
+            <div class="form-group">
+                <label for="mfa_code">Authentication code</label>
+                <input type="text" id="mfa_code" name="mfa_code" required autofocus inputmode="numeric"
+                       autocomplete="one-time-code" placeholder="6-digit code, or a recovery code">
+            </div>
+            {{end}}
+            <button type="submit" class="btn">Sign in</button>
+        </form>
+
+        {{else if eq .View "overview"}}
+        {{if .Enabled}}
+        <p style="margin-bottom: 12px;"><strong>Two-factor authentication is on.</strong></p>
+        <p class="text-muted" style="margin-bottom: 20px;">
+            Sign-in asks for a code from your authenticator app. {{.Remaining}} recovery code(s) left.
+        </p>
+        <form method="POST" action="/account/security" style="margin-bottom: 12px;">
+            <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+            <input type="hidden" name="session" value="{{.Session}}">
+            <input type="hidden" name="action" value="recovery_codes">
+            <button type="submit" class="btn">New recovery codes</button>
+        </form>
+        <div class="divider"><span>turn off</span></div>
+        <form method="POST" action="/account/security">
+            <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+            <input type="hidden" name="session" value="{{.Session}}">
+            <input type="hidden" name="action" value="disable">
+            <div class="form-group">
+                <label for="disable_code">Current code or recovery code</label>
+                <input type="text" id="disable_code" name="code" required autocomplete="one-time-code">
+            </div>
+            <button type="submit" class="btn" style="background: #b91c1c;">Turn off two-factor authentication</button>
+        </form>
+        {{else}}
+        <p style="margin-bottom: 12px;"><strong>Two-factor authentication is off.</strong></p>
+        <p class="text-muted" style="margin-bottom: 20px;">
+            Add an authenticator app (Google Authenticator, 1Password, Authy…) to protect your account.
+            Some applications require it.
+        </p>
+        <form method="POST" action="/account/security">
+            <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+            <input type="hidden" name="session" value="{{.Session}}">
+            <input type="hidden" name="action" value="enroll">
+            <button type="submit" class="btn">Set up two-factor authentication</button>
+        </form>
+        {{end}}
+
+        {{else if eq .View "enroll"}}
+        {{if .Secret}}
+        <p class="text-muted" style="margin-bottom: 12px;">
+            Add this key to your authenticator app, then enter the 6-digit code it shows.
+        </p>
+        <p style="margin-bottom: 12px; font-family: monospace; font-size: 18px; word-break: break-all;" data-testid="mfa-secret">{{.Secret}}</p>
+        {{if .OTPAuth}}
+        <p style="margin-bottom: 20px;"><a class="link" href="{{.OTPAuth}}">Open in an authenticator app on this device</a></p>
+        {{end}}
+        {{else}}
+        <p class="text-muted" style="margin-bottom: 20px;">
+            Enter the 6-digit code your authenticator app shows for Socrate.
+        </p>
+        {{end}}
+        <form method="POST" action="/account/security">
+            <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+            <input type="hidden" name="session" value="{{.Session}}">
+            <input type="hidden" name="action" value="confirm">
+            <div class="form-group">
+                <label for="code">Code</label>
+                <input type="text" id="code" name="code" required autofocus inputmode="numeric"
+                       autocomplete="one-time-code" maxlength="6">
+            </div>
+            <button type="submit" class="btn">Turn on</button>
+        </form>
+        <form method="POST" action="/account/security" style="margin-top: 12px;">
+            <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+            <input type="hidden" name="session" value="{{.Session}}">
+            <input type="hidden" name="action" value="enroll">
+            <button type="submit" class="btn" style="background: #6b7280;">Start again with a new key</button>
+        </form>
+
+        {{else if eq .View "codes"}}
+        <p class="text-muted" style="margin-bottom: 12px;">
+            Save these recovery codes somewhere safe. Each one signs you in once if you lose your authenticator.
+            They are not shown again.
+        </p>
+        <ul style="list-style: none; margin-bottom: 20px; font-family: monospace; font-size: 16px; columns: 2;" data-testid="mfa-recovery-codes">
+            {{range .Codes}}<li style="padding: 4px 0;">{{.}}</li>{{end}}
+        </ul>
+        <form method="POST" action="/account/security">
+            <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+            <input type="hidden" name="session" value="{{.Session}}">
+            <input type="hidden" name="action" value="overview">
+            <button type="submit" class="btn">I have saved them</button>
+        </form>
+        {{end}}
+
+        {{if ne .View "signin"}}
+        <form method="POST" action="/account/security" style="margin-top: 20px;" class="text-center">
+            <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+            <input type="hidden" name="action" value="signout">
+            <button type="submit" class="link" style="background: none; border: none; cursor: pointer;">Sign out</button>
+        </form>
+        {{end}}
+    </div>
+</div>
+{{end}}

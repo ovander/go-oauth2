@@ -334,6 +334,23 @@ Two halves, by design:
   `picture` claim at `/oauth/userinfo`.
 - `GET /api/userinfo` → `UserResponse` for the authenticated user.
 
+### 5.10 Hosted account page — `/account/security` (`ACCOUNT_SECURITY_PAGE=on`)
+A page on the issuer where an application's user turns two-factor authentication on or off,
+without the application building a screen for it. Applications link to it, e.g. from an "MFA
+required" screen. Off by default: the route does not exist.
+- The user signs in on the page itself with their email and password, plus their code once
+  enrolled. Login's lockout, audit (`login_success` / `login_failed` with
+  `"context": "account_security"`) and rate limit apply; no token is issued and no application
+  membership is needed.
+- They can then set up an authenticator app (key and `otpauth://` link, confirmed with a code),
+  receive recovery codes, generate new ones, and turn MFA off (with a current code or a recovery
+  code). Each step uses the same service as `/api/profile/mfa`.
+- Socrate admins and superadmins are refused: they manage MFA in the admin console, where
+  `ADMIN_MFA_POLICY` applies.
+- There is no server-side session: signing in yields a signed 10-minute page session in a hidden
+  field, every post carries a double-submit CSRF token, and every page is `Cache-Control:
+  no-store` with `Referrer-Policy: no-referrer`.
+
 ---
 
 ## 6. Client Credentials (Machine-to-Machine)

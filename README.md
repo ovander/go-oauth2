@@ -81,7 +81,7 @@ graph TD
 | Component | Role | Where |
 |---|---|---|
 | **Socrate** | OAuth 2.1/OIDC authorization, tokens, JWKS, hosted login/consent, MFA, invitations, per-app RBAC, admin API, security telemetry, tamper-evident audit | **This repo** |
-| **backendkit** | Shared Go library: `jwtauth` (JWKS-validated bearer middleware), `bff` (server-side sessions, CSRF, fail-closed session→bearer proxy, login binding), `socrate` (API + token client), tiering, logging | [`ovander/backendkit`](https://github.com/ovander/backendkit) `v1.12.0` |
+| **backendkit** | Shared Go library: `jwtauth` (JWKS-validated bearer middleware), `bff` (server-side sessions, CSRF, fail-closed session→bearer proxy, login binding), `socrate` (API + token client), tiering, logging | [`ovander/backendkit`](https://github.com/ovander/backendkit) `v1.21.0` |
 | **Admin console** | Vue SPA + Go BFF: clients, users, per-app roles, superadmins, step-up for destructive actions | [`ovander/oauth2-admin`](https://github.com/ovander/oauth2-admin) |
 | **Monitoring console** | Vue SPA + Go BFF (optional Postgres sessions): security events, threats, geo analytics, alert rules, blocked IPs, reports, live event stream | [`ovander/oauth2-monitoring`](https://github.com/ovander/oauth2-monitoring) |
 | **Applications** | Domain logic only; embed backendkit; own tenant-scoped data | Separate repos |
@@ -212,7 +212,7 @@ releases. How to report a vulnerability and which versions are supported are in
 
 ## Maturity
 
-Socrate is **v1.12.0** on the v1.x line —
+Socrate is **v1.12.1** on the v1.x line —
 a single-instance, production-capable identity server with two operator consoles.
 
 | ✅ Production ready (today) | ◻️ Roadmap |

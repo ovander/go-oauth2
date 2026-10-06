@@ -34,7 +34,7 @@ supported values; fetch it if this environment has network access. **If you cann
 reach the OP (blocked egress), use the confirmed v1.3.0 values below instead of
 marking those checks UNKNOWN** — they are derived from the server source.
 
-CONFIRMED v1.3.0 DISCOVERY VALUES (`{iss}` = issuer, e.g. `https://socrate.vandermoten.eu`, no trailing slash):
+CONFIRMED DISCOVERY VALUES (v1.3.0, current as of v1.12.0; `{iss}` = issuer, e.g. `https://socrate.vandermoten.eu`, no trailing slash):
 - `authorization_endpoint` = `{iss}/oauth/authorize`, `token_endpoint` = `{iss}/oauth/token`,
   `userinfo_endpoint` = `{iss}/oauth/userinfo`, `revocation_endpoint` = `{iss}/oauth/revoke`,
   `introspection_endpoint` = `{iss}/oauth/introspect`, `jwks_uri` = `{iss}/.well-known/jwks.json`.
@@ -43,9 +43,13 @@ CONFIRMED v1.3.0 DISCOVERY VALUES (`{iss}` = issuer, e.g. `https://socrate.vande
 - `token_endpoint_auth_methods_supported` = client_secret_basic, client_secret_post.
 - `scopes_supported` = openid, email, profile, offline_access, api.
 - `id_token_signing_alg_values_supported` = RS256. JWKS keys carry `use:"sig"`, `kty:"RSA"`, `alg:"RS256"`, UUID `kid`.
-- **No `end_session_endpoint`** (no RP-initiated logout; revoke the refresh token instead).
+- `acr_values_supported` = pwd, mfa. `prompt_values_supported` = none, login.
+- **No `end_session_endpoint`** advertised. `{iss}/oauth/logout` exists but only redirects to a
+  registered redirect URI of an identified client; to end a session, revoke the refresh token.
 - `sub` = the user's numeric id as a decimal string (`app:<id>` for client_credentials).
 - `aud[0]` = the client's `client_id`. Refresh tokens are issued without needing `offline_access`.
+- `auth_time` = the hosted sign-in time (v1.10.0+), kept on refresh. `amr`/`acr` = `["pwd"]`/`pwd`,
+  or `["pwd","otp","mfa"]`/`mfa` after a second factor.
 
 Full reference: `deploy/migration/SOCRATE-V1.3.0-OP-CONTRACT.md` in the `ovander/go-oauth2` repo.
 

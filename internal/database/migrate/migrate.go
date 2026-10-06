@@ -654,6 +654,18 @@ var migrations = []Migration{
 			return nil
 		},
 	},
+	{
+		// A4: the obligations a logged decision carried (require_mfa,
+		// require_fresh_auth), so an unmet one is visible in the decision log.
+		ID:   "0030",
+		Name: "add_policy_decisions.obligations",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("policy_decisions") {
+				return nil
+			}
+			return db.Exec(`ALTER TABLE policy_decisions ADD COLUMN IF NOT EXISTS obligations TEXT[] NOT NULL DEFAULT '{}'`).Error
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

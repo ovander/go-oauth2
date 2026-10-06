@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/ovander/go-oauth2/internal/dto"
 	"github.com/ovander/go-oauth2/internal/metrics"
@@ -48,6 +49,9 @@ type PolicyDecideHandler struct {
 	usedTokenRepo   repository.UsedTokenRepository
 	userAppRoleRepo repository.UserAppRoleRepository
 	countryOf       func(ip string) string
+	// freshAuthMaxAge is the require_fresh_auth window for the decision log
+	// (SetFreshAuthMaxAge); zero leaves that obligation unchecked there.
+	freshAuthMaxAge time.Duration
 }
 
 func NewPolicyDecideHandler(
@@ -139,8 +143,19 @@ func (h *PolicyDecideHandler) Decide(w http.ResponseWriter, r *http.Request) {
 	metrics.PolicyDecision(policy.SourceDecideAPI, string(mode), outcome)
 	// Off means nothing is being consulted: the application's enforcement
 	// point will ignore this answer, so it is not evidence of anything.
-	if mode != policy.ModeOff && !d.Allow {
-		h.record(r, app, &in, d, mode, http.StatusOK)
+	if mode != policy.ModeOff {
+		switch unmet := h.unmetObligation(&in, d); {
+		case !d.Allow:
+			h.record(r, app, &in, d, mode, http.StatusOK)
+		case unmet != "":
+			// The answer stays an allow with its obligations (the
+			// application's PEP honours them), but this one will refuse:
+			// log it the way the admin API's PEP logs its own.
+			logged := d
+			logged.Allow = false
+			logged.Reason = policy.ReasonObligationUnmet + ":" + unmet
+			h.record(r, app, &in, logged, mode, http.StatusOK)
+		}
 	}
 
 	writeJSON(w, dto.PolicyDecideResponse{Decision: d, Mode: string(mode)})
@@ -238,12 +253,30 @@ func (h *PolicyDecideHandler) record(r *http.Request, app *model.App, in *policy
 		ResourceID:   in.Resource.ID,
 		IPAddress:    in.Context.IP,
 		StatusCode:   status,
+		Obligations:  d.Obligations,
 	}
 	if in.Principal.ID != 0 {
 		id := in.Principal.ID
 		rec.PrincipalID = &id
 	}
 	h.pdp.Record(r.Context(), rec)
+}
+
+// SetFreshAuthMaxAge sets the require_fresh_auth window used to tell, in the
+// decision log, whether an application's PEP will refuse an allow. It should
+// match the PEP's (backendkit pep's default is 5 minutes, like
+// ADMIN_ELEVATION_MAX_AGE). Zero or less disables that check.
+func (h *PolicyDecideHandler) SetFreshAuthMaxAge(d time.Duration) { h.freshAuthMaxAge = d }
+
+// unmetObligation reports the obligation the subject's token does not meet,
+// or "". Only a token subject has amr and auth_time (its principal carries a
+// non-nil AMR); for a bare user_id, or the application itself, the
+// application's PEP checks a token Socrate has not seen, so nothing is said.
+func (h *PolicyDecideHandler) unmetObligation(in *policy.Input, d policy.Decision) string {
+	if !d.Allow || len(d.Obligations) == 0 || in.Principal.Kind != policy.PrincipalUser || in.Principal.AMR == nil {
+		return ""
+	}
+	return policy.UnmetObligation(d.Obligations, in.Principal.AMR, in.Principal.AuthTime, h.freshAuthMaxAge, time.Now())
 }
 
 func validateDecideRequest(req *dto.PolicyDecideRequest) string {

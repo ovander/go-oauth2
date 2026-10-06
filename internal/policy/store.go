@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+
+	"github.com/ovander/go-oauth2/internal/model"
 )
 
 // Errors returned by the store and the service.
@@ -83,6 +85,9 @@ type DecisionRecord struct {
 	IPAddress     string `json:"ip_address,omitempty"`
 	// StatusCode is the response status the request ended with (admin PEP).
 	StatusCode int `json:"status_code,omitempty"`
+	// Obligations are the obligations the decision carried. With an unmet one,
+	// Allow is false and Reason is "obligation_unmet:<name>".
+	Obligations []string `json:"obligations,omitempty"`
 }
 
 // DecisionFilter narrows a decision-log query. Zero values mean "any".
@@ -253,11 +258,13 @@ func (s *PostgresStore) AppendDecision(ctx context.Context, r *DecisionRecord) e
 		`INSERT INTO policy_decisions (
 			created_at, correlation_id, source, mode, enforced, allow, divergence,
 			action, rule_id, reason, policy_version, principal_kind, principal_id,
-			client_id, resource_type, resource_id, ip_address, status_code
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			client_id, resource_type, resource_id, ip_address, status_code, obligations
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.CreatedAt, r.CorrelationID, r.Source, r.Mode, r.Enforced, r.Allow, r.Divergence,
 		r.Action, r.Rule, r.Reason, r.PolicyVersion, r.PrincipalKind, r.PrincipalID,
 		r.ClientID, r.ResourceType, r.ResourceID, r.IPAddress, r.StatusCode,
+		// Never NULL: StringArray writes a nil slice as NULL, and the column is NOT NULL.
+		model.StringArray(append([]string{}, r.Obligations...)),
 	).Error
 }
 
@@ -281,6 +288,7 @@ type decisionRow struct {
 	ResourceID    string
 	IPAddress     string
 	StatusCode    int
+	Obligations   model.StringArray `gorm:"type:text[]"`
 }
 
 // Decisions queries the decision log, newest first.
@@ -321,6 +329,9 @@ func (s *PostgresStore) Decisions(ctx context.Context, f DecisionFilter) ([]Deci
 			PrincipalKind: r.PrincipalKind, PrincipalID: r.PrincipalID, ClientID: r.ClientID,
 			ResourceType: r.ResourceType, ResourceID: r.ResourceID, IPAddress: r.IPAddress,
 			StatusCode: r.StatusCode,
+		}
+		if len(r.Obligations) > 0 {
+			out[i].Obligations = []string(r.Obligations)
 		}
 	}
 	return out, nil

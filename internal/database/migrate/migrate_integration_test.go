@@ -159,6 +159,45 @@ func TestMigration0029_AuthorizationCodeAuthnColumns(t *testing.T) {
 	}
 }
 
+// 0030 adds policy_decisions.obligations (NOT NULL, default empty) on a fresh
+// install and on an upgrade, without touching the rows already logged.
+func TestMigration0030_PolicyDecisionObligations(t *testing.T) {
+	db := scratchDB(t)
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	hasColumn := func() bool {
+		var n int64
+		db.Raw(`SELECT count(*) FROM information_schema.columns
+			WHERE table_name = 'policy_decisions' AND column_name = 'obligations' AND is_nullable = 'NO'`).Scan(&n)
+		return n == 1
+	}
+	if !hasColumn() {
+		t.Fatal("fresh install: policy_decisions.obligations missing or nullable")
+	}
+
+	if err := db.Exec("ALTER TABLE policy_decisions DROP COLUMN obligations").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO policy_decisions (source, mode, allow, action) VALUES ('admin_pep', 'shadow', false, 'GET /x')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("DELETE FROM schema_migrations WHERE id = '0030'").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("upgrade run: %v", err)
+	}
+	if !hasColumn() {
+		t.Fatal("upgrade: policy_decisions.obligations not added")
+	}
+	var empty int64
+	db.Raw(`SELECT count(*) FROM policy_decisions WHERE obligations = '{}'`).Scan(&empty)
+	if empty != 1 {
+		t.Fatalf("the existing row should read back with no obligations, got %d matching", empty)
+	}
+}
+
 // scratchDB creates an empty database next to TEST_DATABASE_URL's, for a test
 // that changes the schema, and drops it at the end. It skips when the role
 // may not create databases.

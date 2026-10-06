@@ -476,8 +476,16 @@ to the decision log with `source = decide_api` and the calling application's
 `client_id`, under the request's correlation id.
 
 **Obligations** are returned, not checked: the application's PEP honours them
-against the user's token (backendkit's `pep` does). If no policy version can be
-loaded the answer is `503 {"error": "policy_unavailable", "mode": ...}`.
+against the user's token (backendkit's `pep` does). The answer stays an allow
+with its obligations. But when the subject was given as a token and that token
+does not meet one (`require_mfa`: no `mfa` in `amr`; `require_fresh_auth`: a
+sign-in older than `ADMIN_ELEVATION_MAX_AGE`, the same 5-minute default as
+`pep`), the decision log records the refusal the application's PEP will make:
+`allow = false`, `reason = obligation_unmet:<name>`, as the admin API's PEP
+logs its own. Every logged row carries the decision's `obligations` (migration
+`0030`). With a bare `user_id` nothing is said: Socrate has not seen the token
+the PEP will check. If no policy version can be loaded the answer is
+`503 {"error": "policy_unavailable", "mode": ...}`.
 
 **backendkit.** `socrate.Client.Decide` calls this endpoint with the cached
 service token and forwards the request id. The `pep` package is the

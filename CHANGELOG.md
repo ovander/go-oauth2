@@ -10,6 +10,16 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Added
+
+- **Unmet obligations in the decision log.** The decide endpoint still answers an allow with its
+  obligations, but when the subject's token does not meet one (`require_mfa`, or
+  `require_fresh_auth` within `ADMIN_ELEVATION_MAX_AGE`) it now logs the refusal the application's
+  PEP will make (`allow: false`, `reason: obligation_unmet:<name>`), as the admin API's PEP does.
+  Shadow mode thus shows which users would be stopped for lack of MFA before enforcing. Every
+  logged decision carries its `obligations` (**migration `0030`**, `policy_decisions.obligations`,
+  `NOT NULL DEFAULT '{}'`). The admin PEP and the decide endpoint share one obligation check.
+
 ## [1.11.0] - 2026-10-06
 
 Minor release on the **v1.x** line. Application users can turn on two-factor authentication on

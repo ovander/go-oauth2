@@ -267,30 +267,18 @@ func writePolicyError(w http.ResponseWriter, code string, status int) {
 
 // unmetObligation returns the first obligation the request does not satisfy,
 // or "".
+//
+// The fresh-auth window is RequireFreshAuth's, so a zero window disables the
+// check here as it does there.
 func (p *PolicyPEP) unmetObligation(obligations []string, claims *auth.AccessTokenClaims) string {
-	for _, o := range obligations {
-		switch o {
-		case policy.ObligationFreshAuth:
-			// Identical to RequireFreshAuth, window included: a zero
-			// window disables the check there, so it does here too.
-			if p.elevationMaxAge <= 0 {
-				continue
-			}
-			if claims == nil || claims.AuthTime == 0 ||
-				time.Since(time.Unix(claims.AuthTime, 0)) > p.elevationMaxAge {
-				return o
-			}
-		case policy.ObligationMFA:
-			if claims == nil || !slices.Contains(claims.Amr, "mfa") {
-				return o
-			}
-		default:
-			// An obligation this PEP does not know how to honour cannot be
-			// honoured: treat it as unmet rather than silently dropping it.
-			return o
-		}
+	var (
+		amr      []string
+		authTime int64
+	)
+	if claims != nil {
+		amr, authTime = claims.Amr, claims.AuthTime
 	}
-	return ""
+	return policy.UnmetObligation(obligations, amr, authTime, p.elevationMaxAge, time.Now())
 }
 
 // principalFor builds the policy principal from the authenticated user and the

@@ -198,6 +198,26 @@ func TestPostgresStore_DecisionLog_FiltersAndSweep(t *testing.T) {
 	}
 }
 
+// Migration 0030: a decision's obligations round-trip, and a row without any
+// reads back as none (the column is NOT NULL DEFAULT '{}').
+func TestPostgresStore_DecisionObligations(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	s := policy.NewService(policy.NewPostgresStore(db), policy.ModeShadow, time.Minute)
+	s.Record(ctx, &policy.DecisionRecord{CorrelationID: "with", Source: "decide_api", Mode: "shadow", Action: "invoice.approve",
+		Reason: policy.ReasonObligationUnmet + ":" + policy.ObligationMFA, Obligations: []string{policy.ObligationFreshAuth, policy.ObligationMFA}})
+	s.Record(ctx, &policy.DecisionRecord{CorrelationID: "without", Source: "decide_api", Mode: "shadow", Action: "x", Reason: "denied_by_rule"})
+
+	with, err := s.Decisions(ctx, policy.DecisionFilter{CorrelationID: "with", Limit: 1})
+	if err != nil || len(with) != 1 || !reflect.DeepEqual(with[0].Obligations, []string{policy.ObligationFreshAuth, policy.ObligationMFA}) {
+		t.Fatalf("with obligations = %+v, %v", with, err)
+	}
+	without, err := s.Decisions(ctx, policy.DecisionFilter{CorrelationID: "without", Limit: 1})
+	if err != nil || len(without) != 1 || without[0].Obligations != nil {
+		t.Fatalf("without obligations = %+v, %v", without, err)
+	}
+}
+
 func TestPostgresStore_SummaryAndSourceFilters(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()

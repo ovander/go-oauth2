@@ -910,6 +910,9 @@ func Bootstrap(cfg *config.Config) *App {
 		// ACCOUNT_SECURITY_PAGE: nil (off) leaves /account/security unregistered.
 		AccountSecurityHandler: accountSecurityHandler,
 	}
+	// The decision log tells whether an application's PEP will refuse an
+	// allow for an unmet require_fresh_auth: use the same window as step-up.
+	routerConfig.PolicyDecideHandler.SetFreshAuthMaxAge(cfg.AdminElevationMaxAge)
 	if geoIPService != nil && geoIPService.IsConfigured() {
 		geo := geoIPService
 		countryOf := func(ip string) string {

@@ -202,11 +202,51 @@ func TestDecide_SubjectToken_ResolvesRoleAttributesAndTokenFacts(t *testing.T) {
 	if r.resp.Allow || r.resp.Rule != "large-invoices-need-approver" {
 		t.Fatalf("large invoice → %s", r.body)
 	}
-	d, _ := f.store.Decisions(context.Background(), policy.DecisionFilter{})
+	// Two rows: the small invoice's allow, whose require_mfa this
+	// password-only token does not meet (see TestDecide_UnmetObligation_…),
+	// then the large invoice's deny.
+	d, _ := f.store.Decisions(context.Background(), policy.DecisionFilter{CorrelationID: "corr-big-invoice"})
+	if all, _ := f.store.Decisions(context.Background(), policy.DecisionFilter{}); len(all) != 2 {
+		t.Fatalf("decision log has %d rows, want 2: %+v", len(all), all)
+	}
 	if len(d) != 1 || d[0].Source != policy.SourceDecideAPI || d[0].ClientID != "billing" ||
 		d[0].CorrelationID != "corr-big-invoice" || d[0].PrincipalID == nil || *d[0].PrincipalID != 10 ||
 		d[0].ResourceID != "inv-1" || d[0].Enforced {
 		t.Fatalf("decision log = %+v", d)
+	}
+}
+
+// An allow whose obligation the subject's token does not meet is answered as
+// an allow (the application's PEP honours the obligation), and logged as the
+// refusal that PEP will make, so shadow mode shows who lacks MFA.
+func TestDecide_UnmetObligation_IsLoggedNotAnswered(t *testing.T) {
+	f := newDecideFixture(t, policy.ModeShadow)
+	svc := f.serviceToken(t, f.billing)
+	approve := func(subject string) decideResult {
+		return f.decide(t, "3", svc, `{"subject":`+subject+`,"action":"invoice.approve","resource":{"type":"invoice","id":"inv-7","attributes":{"amount":250}}}`)
+	}
+
+	r := approve(`{"token":"` + f.userToken(t, f.alice, "pwd") + `"}`)
+	if r.code != 200 || !r.resp.Allow || len(r.resp.Obligations) != 1 {
+		t.Fatalf("the answer must stay an allow with its obligation: %d %s", r.code, r.body)
+	}
+	d, _ := f.store.Decisions(context.Background(), policy.DecisionFilter{})
+	if len(d) != 1 {
+		t.Fatalf("want one logged row, got %+v", d)
+	}
+	row := d[0]
+	if row.Allow || row.Reason != policy.ReasonObligationUnmet+":"+policy.ObligationMFA ||
+		row.Rule != "billing-admins-approve" || len(row.Obligations) != 1 || row.Obligations[0] != policy.ObligationMFA ||
+		row.PrincipalID == nil || *row.PrincipalID != 10 || row.ResourceID != "inv-7" {
+		t.Fatalf("logged row = %+v", row)
+	}
+
+	// Met (an MFA token), or unknowable (a bare user id: the application's
+	// PEP checks a token Socrate has not seen): nothing more is logged.
+	approve(`{"token":"` + f.userToken(t, f.alice, "pwd", "otp", "mfa") + `"}`)
+	approve(`{"user_id":10}`)
+	if d, _ := f.store.Decisions(context.Background(), policy.DecisionFilter{}); len(d) != 1 {
+		t.Fatalf("met or unknowable obligations must not be logged: %+v", d)
 	}
 }
 

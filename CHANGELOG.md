@@ -10,6 +10,18 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-10-06
+
+Minor release on the **v1.x** line: what the monitoring console needs to watch an application's
+rollout. The decision log shows the refusals an application's PEP makes for an unmet `require_mfa`
+or `require_fresh_auth`, so shadow mode shows who would be stopped before enforcing; and a mapped
+claim a token did not get (a missing `tenant_id` attribute, an oversized set) is recorded as a
+security event (Lakebridge #308).
+
+**Migration `0030`** adds `policy_decisions.obligations` (`TEXT[] NOT NULL DEFAULT '{}'`); it runs at
+startup. No new environment variable, no change of default, no token-contract change: the decide
+endpoint's answer is unchanged.
+
 ### Added
 
 - **Unmet obligations in the decision log.** The decide endpoint still answers an allow with its
@@ -1882,7 +1894,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.11.0...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.12.0...HEAD
+[1.12.0]: https://github.com/ovander/go-oauth2/compare/v1.11.0...v1.12.0
 [1.11.0]: https://github.com/ovander/go-oauth2/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/ovander/go-oauth2/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/ovander/go-oauth2/compare/v1.8.0...v1.9.0

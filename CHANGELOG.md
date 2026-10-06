@@ -10,8 +10,16 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.12.1] - 2026-10-06
+
+Patch release on the **v1.x** line: documentation only, no code change. The deploy env template,
+the OP contract and the README catch up with v1.12.0. No migration, no environment variable, no
+change of default, no token-contract change; the binary behaves exactly as v1.12.0.
+
 ### Documentation
 
+- README: the Go badge says 1.27.1, the version `go.mod` requires (it still read "1.25+ (toolchain
+  1.27)"), and the backendkit row names v1.21.0, the version the consoles ship.
 - **Docs brought up to date with v1.12.0.** `deploy/env/socrate.env.example` lists the opt-in
   controls (`ACCOUNT_SECURITY_PAGE`, `AUDIENCE_MODE`, `SCOPE_POLICY_MODE`, `CLAIMS_NAMESPACE`,
   `POLICY_MODE`, `ADMIN_MFA_POLICY`, `OPERATOR_CONSOLE_CLIENT_IDS`, `ADMIN_APP_SIGNIN_POLICY`,
@@ -1905,7 +1913,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.12.0...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.12.1...HEAD
+[1.12.1]: https://github.com/ovander/go-oauth2/compare/v1.12.0...v1.12.1
 [1.12.0]: https://github.com/ovander/go-oauth2/compare/v1.11.0...v1.12.0
 [1.11.0]: https://github.com/ovander/go-oauth2/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/ovander/go-oauth2/compare/v1.9.0...v1.10.0

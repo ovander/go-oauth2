@@ -74,6 +74,14 @@ const (
 	// refused (enforce) with a token not issued to an operator console
 	// (ADMIN_API_AUDIENCE_MODE, M-03).
 	SecurityEventAdminAPIAudience SecurityEventType = "admin_api_audience"
+	// SecurityEventCustomClaimMissing: a client maps a user attribute into its
+	// tokens (claim mappings, A2) and a user it issued for has no such
+	// attribute, so the claim was left out — e.g. a tenant_id an application
+	// requires. Deduplicated per user, client and claim.
+	SecurityEventCustomClaimMissing SecurityEventType = "custom_claim_missing"
+	// SecurityEventCustomClaimsDropped: a client's mapped claims for a user
+	// exceeded the size cap and were all left out of the token.
+	SecurityEventCustomClaimsDropped SecurityEventType = "custom_claims_dropped"
 
 	// Delegation (RFC 8693 / EPIC-16): a token-exchange request was processed
 	// (in shadow, audited but not issued; in enforce, an exchanged token issued).
@@ -149,7 +157,7 @@ func GetSeverityForEvent(eventType SecurityEventType, success bool) SecuritySeve
 		// Destructive / credential-changing client-lifecycle actions warrant SOC
 		// attention even on the success path (create/update stay at info).
 		return SecuritySeverityWarning
-	case SecurityEventAccountLocked, SecurityEventRateLimitExceeded:
+	case SecurityEventAccountLocked, SecurityEventRateLimitExceeded, SecurityEventCustomClaimsDropped:
 		return SecuritySeverityError
 	case SecurityEventBruteForceDetected, SecurityEventSuspiciousActivity, SecurityEventRevokedTokenUsed,
 		SecurityEventAuditIntegrityViolation:

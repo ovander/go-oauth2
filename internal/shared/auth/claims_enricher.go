@@ -33,12 +33,48 @@ type ClaimsEnricher interface {
 	CustomClaims(user *model.User, app *model.App, role string, target string) map[string]any
 }
 
+// Kinds of ClaimIssueProblem.
+const (
+	// ClaimProblemMissing: a user.attributes.<key> source resolved to nothing,
+	// so that claim was left out.
+	ClaimProblemMissing = "missing"
+	// ClaimProblemDropped: the mapped set exceeded MaxCustomClaimsBytes (or
+	// could not be serialized) and was left out whole.
+	ClaimProblemDropped = "dropped"
+)
+
+// ClaimIssueProblem describes a mapped claim a token did not get. It is
+// reported to the function set with SetProblemReporter, so an operator can see
+// it (a security event) rather than learn it from an application refusing the
+// user.
+type ClaimIssueProblem struct {
+	Kind     string
+	UserID   uint
+	AppID    uint
+	ClientID string
+	// Claim and Source name the mapping (missing only).
+	Claim  string
+	Source string
+	// Target is the token the claims were for: access or id.
+	Target string
+	// Size is the serialized size of the dropped set (dropped only; 0 when it
+	// could not be serialized).
+	Size int
+}
+
 // MappingEnricher resolves a client's model.ClaimMappings against the user and
-// app being issued for. It is stateless and safe for concurrent use.
+// app being issued for. It is safe for concurrent use.
 type MappingEnricher struct {
 	namespace string
 	maxBytes  int
+	report    func(ClaimIssueProblem)
 }
+
+// SetProblemReporter installs fn to hear about mapped claims a token did not
+// get: a user attribute a mapping names but the user lacks, and a set dropped
+// for its size. It is called on every issuance, inline, so fn must be cheap and
+// must deduplicate (refreshes repeat the same problem). Set once at startup.
+func (e *MappingEnricher) SetProblemReporter(fn func(ClaimIssueProblem)) { e.report = fn }
 
 // NewMappingEnricher builds an enricher that namespaces mapped claims with
 // namespace. An empty namespace falls back to DefaultClaimsNamespace; a
@@ -86,6 +122,12 @@ func (e *MappingEnricher) CustomClaims(user *model.User, app *model.App, role st
 		}
 		value, ok := resolveClaimSource(mapping.Source, user, app, role)
 		if !ok {
+			// Only a missing user attribute is an operator's problem to
+			// fix; an empty role or name is not reported.
+			if e.report != nil && user != nil && strings.HasPrefix(mapping.Source, model.ClaimSourceUserAttrPrefix) {
+				e.report(ClaimIssueProblem{Kind: ClaimProblemMissing, UserID: user.ID, AppID: app.ID,
+					ClientID: app.ClientID, Claim: name, Source: mapping.Source, Target: target})
+			}
 			continue
 		}
 		out[e.namespace+name] = value
@@ -102,6 +144,13 @@ func (e *MappingEnricher) CustomClaims(user *model.User, app *model.App, role st
 			"claims":    len(out),
 			"max_bytes": e.maxBytes,
 		}).Error("A2: custom claims dropped — mapped claim set is oversized or not serializable")
+		if e.report != nil {
+			p := ClaimIssueProblem{Kind: ClaimProblemDropped, AppID: app.ID, ClientID: app.ClientID, Target: target, Size: size}
+			if user != nil {
+				p.UserID = user.ID
+			}
+			e.report(p)
+		}
 		return nil
 	}
 

@@ -96,14 +96,19 @@ Safety properties, each covered by a test:
 - **Bounded.** An attribute set is capped at 32 entries / 4 KB
   (`service.MaxUserAttributes`…), and the mapped claim set at 2 KB per token
   (`auth.MaxCustomClaimsBytes`). Over the cap the custom claims are dropped
-  whole and logged at error level — the token is still issued and still valid,
-  it simply carries the standard claim set. A truncated, non-deterministic claim
-  set would be worse than none.
+  whole, logged at error level and recorded as a `custom_claims_dropped`
+  security event — the token is still issued and still valid, it simply carries
+  the standard claim set. A truncated, non-deterministic claim set would be
+  worse than none.
 - **Validated at write time.** An unsupported source, an unknown target or an
   unusable claim name is refused by the admin API (`400 invalid claim mapping`),
   not silently dropped at every issuance.
 - **Absent, not null.** A mapping whose source resolves to nothing (an attribute
-  the user does not have) yields no claim at all.
+  the user does not have) yields no claim at all. A missing user attribute is
+  recorded as a `custom_claim_missing` security event (user, client, claim), so
+  the monitoring console shows it before an application that requires the claim
+  (a `tenant_id`, say) refuses the user. Both events are recorded at most once an
+  hour per user, client and claim: every refresh repeats the problem.
 - **Admin-only.** Attributes are set through the admin API; they are not part of
   `PUT /api/profile`, so a user cannot mint their own claim values.
 

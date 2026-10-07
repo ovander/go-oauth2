@@ -746,7 +746,9 @@ OPTIONS`. Allowed headers include `Authorization`, `Content-Type`,
 
 ### Correlation IDs
 Send `X-Correlation-ID` to trace a request across logs; it is echoed back in the
-response.
+response. It is kept only if it is 1 to 128 characters of `A-Za-z0-9._:-` (a UUID, a ULID or
+similar); any other value, like a missing header, is replaced by a generated UUID. The request is
+never refused for it.
 
 ### Security headers
 The server sets `X-Content-Type-Options`, `X-Frame-Options`,

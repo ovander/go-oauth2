@@ -50,7 +50,7 @@ by logrus. Fields:
 | Field | Always | Source |
 |---|---|---|
 | `time`, `level`, `msg` | yes | logrus |
-| `correlation_id` | on requests | `X-Correlation-ID` (generated when absent), propagated to responses |
+| `correlation_id` | on requests | `X-Correlation-ID` (kept when 1–128 chars of `A-Za-z0-9._:-`, else generated), propagated to responses |
 | `request_id` | on requests | chi request id |
 | `client_ip` | on requests | the attributed client IP (`TRUSTED_PROXIES`-aware) — if this is always `127.0.0.1` behind Caddy, proxy trust is misconfigured |
 | `method`, `path`, `status`, `duration_ms` | on requests | **path, never the query string** — reset / verify / invite tokens travel in query strings |

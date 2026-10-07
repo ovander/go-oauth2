@@ -94,6 +94,44 @@ Source: `internal/shared/auth/token.go`, `internal/shared/auth/keys*.go`,
   `kid` (test-enforced). Key rotation keeps retired keys in the JWKS so in-flight
   tokens keep validating.
 
+## `client_credentials` tokens (service accounts)
+
+Source: `handleClientCredentialsGrant` (`internal/service/oauth_service.go`) and
+`GenerateClientCredentialsToken` (`internal/shared/auth/token.go`). A service-account token is an
+**access token only**: no refresh token, no ID token. The client authenticates with its secret
+(`client_secret_basic` or `client_secret_post`) and must be active.
+
+| Claim | Value |
+|---|---|
+| `iss` | the issuer |
+| `sub` | `app:<app_id>`, the numeric id of the calling client |
+| `aud` | `[<calling client_id>]`, **only**. `AUDIENCE_MODE=dual` does not apply to these tokens: the client's registered audiences are not added. |
+| `scope` | the requested scope, or `api` when none is requested. It must be names from `scopes_supported` (plus the console scopes) and pass the client's `allowed_scopes` under `SCOPE_POLICY_MODE`. |
+| `type` | `access` |
+| `iat`, `nbf`, `exp`, `jti` | always present. `exp` follows the client's `access_token_ttl_seconds`, else the server default (the same value as `expires_in`). |
+| Custom claims | the client's claim mappings with an **app or literal source** only (`literal:…`, `app.id`, `app.client_id`), issued under `CLAIMS_NAMESPACE` (e.g. `https://socrate/tenant_id`). User sources (`user.attributes.*`, `user.email`, `user.name`, `user.id`) and `app_role` yield nothing, and are not reported as `custom_claim_missing`. |
+| **Not present** | `role`, `roles`, `app_roles`, `token_version`, `auth_time`, `amr`, `acr`, `email`, `name`, `act`, `cnf` |
+
+The token response has `token_type: "Bearer"`. A client registered with `require_dpop` must
+present a DPoP proof to obtain one, but the issued token carries no `cnf`.
+
+**Implications for a resource server**
+
+- The audience a service-account token carries is the **caller's** `client_id`, not the resource
+  server's. A service that accepts calls from other services lists each caller's `client_id` in
+  its audience check (backendkit: `jwtauth.WithAudiences(callerA, callerB, …)`), then
+  distinguishes callers by `aud` or `sub`.
+- There is no user, so no `role`: authorise service calls on `sub` (`app:<id>`), the audience and
+  the custom claims, never on a role check that a missing `role` would silently fail open.
+- `RequireTenant`-style checks see a tenant only through a literal claim mapping (below).
+
+**Per-(consumer, tenant) service accounts.** When a service acts for one tenant at a time,
+register one confidential client per (consumer, tenant). Give each a claim mapping
+`"tenant_id": "literal:<tenant uuid>"` (target `access`) and the scopes it needs. Every token it
+obtains then carries `https://socrate/tenant_id: <tenant uuid>`, which backendkit reads with
+`jwtauth.WithTenantClaim("https://socrate/tenant_id")`. The tenant is fixed by registration, so a
+compromised consumer secret reaches one tenant only. Rotate or deactivate the client to revoke it.
+
 ## Client-registration implications
 
 - **PKCE S256 is mandatory** for interactive clients (public and confidential).

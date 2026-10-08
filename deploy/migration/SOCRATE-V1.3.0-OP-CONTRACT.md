@@ -79,7 +79,7 @@ Source: `internal/shared/auth/token.go`, `internal/shared/auth/keys*.go`,
 - **`aud` with `AUDIENCE_MODE=dual`** (server-wide, default `off`): the client's
   registered audiences are appended after the `client_id`, so `aud[0]` stays the
   `client_id`. Verifiers that check membership of their own id keep working. This applies to
-  every grant, `client_credentials` included (since v1.12.4; before, service-account tokens
+  every grant, `client_credentials` included (since v1.13.0; before, service-account tokens
   carried only the `client_id`).
 - **Access-token lifetime** is the server default unless the client has its own
   `access_token_ttl_seconds`; read `exp`, never assume a fixed TTL.
@@ -107,7 +107,7 @@ Source: `handleClientCredentialsGrant` (`internal/service/oauth_service.go`) and
 |---|---|
 | `iss` | the issuer |
 | `sub` | `app:<app_id>`, the numeric id of the calling client |
-| `aud` | `[<calling client_id>]` with `AUDIENCE_MODE=off`. With `dual`, the calling client's registered audiences follow it (deduplicated), so `aud[0]` is always the `client_id`. Before v1.12.4 `dual` did not apply to these tokens. |
+| `aud` | `[<calling client_id>]` with `AUDIENCE_MODE=off`. With `dual`, the calling client's registered audiences follow it (deduplicated), so `aud[0]` is always the `client_id`. Before v1.13.0 `dual` did not apply to these tokens. |
 | `scope` | the requested scope, or `api` when none is requested. It must be names from `scopes_supported` (plus the console scopes) and pass the client's `allowed_scopes` under `SCOPE_POLICY_MODE`. |
 | `type` | `access` |
 | `iat`, `nbf`, `exp`, `jti` | always present. `exp` follows the client's `access_token_ttl_seconds`, else the server default (the same value as `expires_in`). |

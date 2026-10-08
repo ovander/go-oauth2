@@ -10,6 +10,13 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.12.2] - 2026-10-08
+
+Patch release on the **v1.x** line: incoming `X-Correlation-ID` values are validated (a security
+fix against log injection), and the OP contract documents the claim set of a `client_credentials`
+token. No migration, no environment variable, no change of default, no token-contract change; a
+valid correlation ID is handled exactly as before.
+
 ### Security
 
 - **Incoming `X-Correlation-ID` values are validated.** An incoming ID is kept only if it is 1 to
@@ -1933,7 +1940,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.12.1...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.12.2...HEAD
+[1.12.2]: https://github.com/ovander/go-oauth2/compare/v1.12.1...v1.12.2
 [1.12.1]: https://github.com/ovander/go-oauth2/compare/v1.12.0...v1.12.1
 [1.12.0]: https://github.com/ovander/go-oauth2/compare/v1.11.0...v1.12.0
 [1.11.0]: https://github.com/ovander/go-oauth2/compare/v1.10.0...v1.11.0

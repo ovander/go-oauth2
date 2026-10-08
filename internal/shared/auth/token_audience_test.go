@@ -99,3 +99,50 @@ func TestAccessToken_DualModeNoAudiencesAndDedup(t *testing.T) {
 		t.Fatalf("aud = %v, want client_id de-duplicated against audiences", aud)
 	}
 }
+
+// #327: client_credentials tokens follow the audience mode like the other
+// grants. aud[0] stays the client_id in every case.
+func TestClientCredentialsToken_AudienceMode(t *testing.T) {
+	registered := &model.App{ID: 9, ClientID: "svc", Audiences: model.StringArray{"https://api.example.com", "svc", ""}}
+	bare := &model.App{ID: 9, ClientID: "svc"}
+	tests := []struct {
+		name string
+		mode string
+		app  *model.App
+		want []string
+	}{
+		{"off keeps client_id only", AudienceModeOff, registered, []string{"svc"}},
+		{"dual adds registered audiences, deduplicated", AudienceModeDual, registered, []string{"svc", "https://api.example.com"}},
+		{"dual without registered audiences", AudienceModeDual, bare, []string{"svc"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := audienceTokenService(t, tt.mode)
+			for _, gen := range []func() (string, error){
+				func() (string, error) { return ts.GenerateClientCredentialsToken(tt.app, "api") },
+				func() (string, error) { return ts.GenerateBoundClientCredentialsToken(tt.app, "api", "jkt") },
+			} {
+				tok, err := gen()
+				if err != nil {
+					t.Fatal(err)
+				}
+				claims, err := ts.VerifyAccessToken(tok)
+				if err != nil {
+					t.Fatal(err)
+				}
+				aud := []string(claims.Audience)
+				if len(aud) != len(tt.want) {
+					t.Fatalf("aud = %v, want %v", aud, tt.want)
+				}
+				for i := range aud {
+					if aud[i] != tt.want[i] {
+						t.Fatalf("aud = %v, want %v (aud[0] must stay the client_id)", aud, tt.want)
+					}
+				}
+				if claims.Subject != "app:9" {
+					t.Errorf("sub = %q, want app:9", claims.Subject)
+				}
+			}
+		})
+	}
+}

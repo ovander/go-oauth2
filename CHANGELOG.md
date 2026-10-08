@@ -10,6 +10,16 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-10-08
+
+Minor release on the **v1.x** line. The decision log can record what an application enforces while
+`POLICY_MODE` is still `off` (a decide request may carry `pep_mode`; answers advertise
+`pep_mode_accepted`), and `AUDIENCE_MODE=dual` now applies to `client_credentials` tokens. No
+migration, no environment variable, no change of default. **Deploy note:** production runs
+`AUDIENCE_MODE=dual`, so service-account tokens of clients with registered audiences gain them
+after `aud[0]`. Check any verifier that requires exactly one audience (Lakebridge's route groups)
+before deploying.
+
 ### Added
 
 - **The decision log records what an application's PEP enforces while `POLICY_MODE=off`** (#323).
@@ -1981,7 +1991,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.12.3...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.13.0...HEAD
+[1.13.0]: https://github.com/ovander/go-oauth2/compare/v1.12.3...v1.13.0
 [1.12.3]: https://github.com/ovander/go-oauth2/compare/v1.12.2...v1.12.3
 [1.12.2]: https://github.com/ovander/go-oauth2/compare/v1.12.1...v1.12.2
 [1.12.1]: https://github.com/ovander/go-oauth2/compare/v1.12.0...v1.12.1

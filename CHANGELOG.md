@@ -10,6 +10,13 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.12.3] - 2026-10-08
+
+Security patch on the **v1.x** line: `client_credentials` tokens requested with a DPoP proof are
+now bound to that key (`cnf.jkt`), so a `require_dpop` client no longer receives a replayable
+bearer token. No migration, no environment variable, no change of default; a token requested
+without a proof is unchanged.
+
 ### Security
 
 - **`client_credentials` tokens are bound to the DPoP key** (#328). A client registered with
@@ -1952,7 +1959,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.12.2...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.12.3...HEAD
+[1.12.3]: https://github.com/ovander/go-oauth2/compare/v1.12.2...v1.12.3
 [1.12.2]: https://github.com/ovander/go-oauth2/compare/v1.12.1...v1.12.2
 [1.12.1]: https://github.com/ovander/go-oauth2/compare/v1.12.0...v1.12.1
 [1.12.0]: https://github.com/ovander/go-oauth2/compare/v1.11.0...v1.12.0

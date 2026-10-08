@@ -9,8 +9,8 @@ Commands assume the canonical paths from [`deploy/README.md`](README.md) and the
 multi-app runbook [`docs/DEPLOYMENT-VPS-MULTI-APP.md`](../docs/DEPLOYMENT-VPS-MULTI-APP.md).
 
 ## 0. Release identity
-- [ ] The commit to deploy is **tagged** (e.g. `v1.12.2`); deploy that tag, not a
-      moving branch: `SOCRATE_REF=v1.12.2 ./oauth2-monitoring/deploy/scripts/push.sh <mon-tag>`.
+- [ ] The commit to deploy is **tagged** (e.g. `v1.12.3`); deploy that tag, not a
+      moving branch: `SOCRATE_REF=v1.12.3 ./oauth2-monitoring/deploy/scripts/push.sh <mon-tag>`.
 - [ ] After deploy, `curl -s localhost:8081/metrics | grep socrate_build_info`
       shows the **real version**, not `dev`.
 

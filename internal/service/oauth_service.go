@@ -1030,7 +1030,11 @@ func (s *oauthService) handleClientCredentialsGrant(ctx context.Context, req dto
 	if err := hooks.RunBeforeTokenIssue(ctx, &hooks.TokenIssue{App: app, Grant: "client_credentials", Scope: scope}); err != nil {
 		return nil, err
 	}
-	accessToken, err := s.tokenService.GenerateClientCredentialsToken(app, scope)
+	// #328: a verified DPoP proof sender-constrains the token (cnf.jkt), as for
+	// the other grants. requireDPoP above only demanded the proof; without this
+	// a require_dpop client still received a replayable bearer token.
+	jkt := dpopJKTFromContext(ctx)
+	accessToken, err := s.tokenService.GenerateBoundClientCredentialsToken(app, scope, jkt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
@@ -1041,6 +1045,7 @@ func (s *oauthService) handleClientCredentialsGrant(ctx context.Context, req dto
 		"scope":       scope,
 		"client_id":   clientID,
 		"token_types": []string{"access_token"},
+		"dpop_bound":  jkt != "",
 	}, app))
 
 	return &dto.TokenResponse{

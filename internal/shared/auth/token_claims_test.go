@@ -80,3 +80,34 @@ func TestVerify_AcceptsCorrectIssuerAndExpiry(t *testing.T) {
 		t.Errorf("normally-issued token should verify, got: %v", err)
 	}
 }
+
+// #328: GenerateBoundClientCredentialsToken issues cnf.jkt; an empty jkt and the
+// unbound GenerateClientCredentialsToken do not.
+func TestGenerateBoundClientCredentialsToken(t *testing.T) {
+	ts, _ := newIssuerTokenService(t)
+	app := &model.App{ID: 7, ClientID: "c"}
+	for _, tc := range []struct {
+		name, jkt string
+		gen       func() (string, error)
+	}{
+		{"bound", "jkt-1", func() (string, error) { return ts.GenerateBoundClientCredentialsToken(app, "api", "jkt-1") }},
+		{"empty jkt", "", func() (string, error) { return ts.GenerateBoundClientCredentialsToken(app, "api", "") }},
+		{"unbound helper", "", func() (string, error) { return ts.GenerateClientCredentialsToken(app, "api") }},
+	} {
+		tok, err := tc.gen()
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		claims, err := ts.VerifyAccessToken(tok)
+		if err != nil {
+			t.Fatalf("%s: verify: %v", tc.name, err)
+		}
+		got := ""
+		if claims.Cnf != nil {
+			got = claims.Cnf.JKT
+		}
+		if got != tc.jkt || claims.Subject != "app:7" {
+			t.Errorf("%s: cnf.jkt=%q sub=%q, want %q and app:7", tc.name, got, claims.Subject, tc.jkt)
+		}
+	}
+}

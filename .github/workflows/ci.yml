@@ -227,8 +227,25 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # Pinned, so a k6 release never changes the gate unannounced.
       - name: Install k6
-        run: go install go.k6.io/k6@latest
+        run: go install go.k6.io/k6@v1.8.1
+
+      # The smoke test measures Socrate, not the runner's disk. With the default
+      # AUDIT_WRITE_MODE=sync every token request appends an audit row under one
+      # advisory lock, and each commit waits for an fsync; on a runner with a slow
+      # or busy disk those waits queue every refresh (and the connections they hold)
+      # behind the lock, and p95 swings from tens of ms to near a second for the same
+      # code. Commits stay transactional and the code path is unchanged (sync audit,
+      # the lock, the transaction): only the flush to this throwaway database's disk
+      # is no longer awaited. Budgets are unchanged.
+      - name: Do not wait for disk flushes on the scratch database
+        run: |
+          docker exec ${{ job.services.postgres.id }} psql -U postgres -v ON_ERROR_STOP=1 \
+            -c "ALTER SYSTEM SET synchronous_commit = off" -c "SELECT pg_reload_conf()"
+          got=$(docker exec ${{ job.services.postgres.id }} psql -U postgres -tAc "SHOW synchronous_commit")
+          echo "synchronous_commit=$got"
+          test "$got" = "off"
 
       - name: Build the server
         run: go build -o /tmp/socrate ./cmd/server

@@ -10,6 +10,16 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Security
+
+- **Incoming `X-Correlation-ID` values are validated.** An incoming ID is kept only if it is 1 to
+  128 characters of `A-Za-z0-9._:-` (UUIDs, ULIDs and similar); any other value is replaced by a
+  generated UUID, as when the header is absent. Until now any value was stored in the request
+  context, echoed back and written to logs and audit fields, so line breaks, control characters or
+  kilobytes of text could be injected through it. The request is never refused for it, and valid
+  IDs are unchanged. It is the same rule as backendkit's `httpware.RequestID`
+  (ovander/backendkit#95) (#321).
+
 ### Documentation
 
 - **OP contract: the claim set of a `client_credentials` token.** A new section, derived from the

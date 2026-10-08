@@ -10,6 +10,18 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Added
+
+- **The decision log records what an application's PEP enforces while `POLICY_MODE=off`** (#323).
+  A decide request may carry `pep_mode` (`off`, `shadow` or `enforce`): the mode the
+  application's enforcement point applies when it is stricter than the server's (backendkit
+  `pep.Config.MinimumMode`). The decision is recorded under the stricter of the two, including
+  denials, unmet obligations and outages, so the monitoring console's Policy Decisions page shows
+  an application enforcing its rules while the server is still `off`. `pep_mode` cannot lower the
+  server's mode and never changes the answer, whose `mode` stays the server's. Any other value is
+  `400`. Every answer now carries `"pep_mode_accepted": true`, so a client sends the field only to
+  a server that accepts it; older servers refuse unknown fields.
+
 ## [1.12.3] - 2026-10-08
 
 Security patch on the **v1.x** line: `client_credentials` tokens requested with a DPoP proof are

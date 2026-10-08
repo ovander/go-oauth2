@@ -120,6 +120,11 @@ func (h *PolicyDecideHandler) Decide(w http.ResponseWriter, r *http.Request) {
 	in.Principal = principal
 
 	mode := h.pdp.Mode()
+	// The mode the decision is recorded under: the stricter of the server's
+	// and the application's enforcement point's (pep_mode), so a decision an
+	// application enforces while POLICY_MODE is off is still logged. The
+	// answer itself still reports the server's mode.
+	logMode := stricterMode(mode, policy.Mode(req.PEPMode))
 	var d policy.Decision
 	if locked {
 		d = policy.Decision{Allow: false, Reason: policy.ReasonSubjectLocked}
@@ -127,8 +132,8 @@ func (h *PolicyDecideHandler) Decide(w http.ResponseWriter, r *http.Request) {
 		d, err = h.pdp.Decide(r.Context(), in)
 		if err != nil {
 			metrics.PolicyDecision(policy.SourceDecideAPI, string(mode), "error")
-			if mode != policy.ModeOff {
-				h.record(r, app, &in, d, mode, http.StatusServiceUnavailable)
+			if logMode != policy.ModeOff {
+				h.record(r, app, &in, d, logMode, http.StatusServiceUnavailable)
 			}
 			w.WriteHeader(http.StatusServiceUnavailable)
 			writeJSON(w, map[string]string{"error": "policy_unavailable", "mode": string(mode)})
@@ -142,11 +147,12 @@ func (h *PolicyDecideHandler) Decide(w http.ResponseWriter, r *http.Request) {
 	}
 	metrics.PolicyDecision(policy.SourceDecideAPI, string(mode), outcome)
 	// Off means nothing is being consulted: the application's enforcement
-	// point will ignore this answer, so it is not evidence of anything.
-	if mode != policy.ModeOff {
+	// point will ignore this answer, so it is not evidence of anything —
+	// unless that point enforces anyway (pep_mode), which logMode reflects.
+	if logMode != policy.ModeOff {
 		switch unmet := h.unmetObligation(&in, d); {
 		case !d.Allow:
-			h.record(r, app, &in, d, mode, http.StatusOK)
+			h.record(r, app, &in, d, logMode, http.StatusOK)
 		case unmet != "":
 			// The answer stays an allow with its obligations (the
 			// application's PEP honours them), but this one will refuse:
@@ -154,11 +160,11 @@ func (h *PolicyDecideHandler) Decide(w http.ResponseWriter, r *http.Request) {
 			logged := d
 			logged.Allow = false
 			logged.Reason = policy.ReasonObligationUnmet + ":" + unmet
-			h.record(r, app, &in, logged, mode, http.StatusOK)
+			h.record(r, app, &in, logged, logMode, http.StatusOK)
 		}
 	}
 
-	writeJSON(w, dto.PolicyDecideResponse{Decision: d, Mode: string(mode)})
+	writeJSON(w, dto.PolicyDecideResponse{Decision: d, Mode: string(mode), PEPModeAccepted: true})
 }
 
 // resolveSubject builds the principal from Socrate's records. It reports
@@ -279,6 +285,27 @@ func (h *PolicyDecideHandler) unmetObligation(in *policy.Input, d policy.Decisio
 	return policy.UnmetObligation(d.Obligations, in.Principal.AMR, in.Principal.AuthTime, h.freshAuthMaxAge, time.Now())
 }
 
+// validPEPMode reports whether m is a mode an application's PEP may report.
+// Exact, lower-case values only: unlike POLICY_MODE, a typo here is refused
+// rather than read as off.
+func validPEPMode(m string) bool {
+	switch policy.Mode(m) {
+	case policy.ModeOff, policy.ModeShadow, policy.ModeEnforce:
+		return true
+	}
+	return false
+}
+
+// stricterMode returns the stricter of two modes (off < shadow < enforce); an
+// empty or unknown pep mode leaves the server's.
+func stricterMode(server, pep policy.Mode) policy.Mode {
+	rank := map[policy.Mode]int{policy.ModeOff: 0, policy.ModeShadow: 1, policy.ModeEnforce: 2}
+	if r, ok := rank[pep]; ok && r > rank[server] {
+		return pep
+	}
+	return server
+}
+
 func validateDecideRequest(req *dto.PolicyDecideRequest) string {
 	switch {
 	case req.Action == "":
@@ -293,6 +320,8 @@ func validateDecideRequest(req *dto.PolicyDecideRequest) string {
 		return "resource.attributes: too many keys"
 	case len(req.Context.Attributes) > maxDecideAttributes:
 		return "context.attributes: too many keys"
+	case req.PEPMode != "" && !validPEPMode(req.PEPMode):
+		return "pep_mode must be off, shadow or enforce"
 	}
 	return ""
 }

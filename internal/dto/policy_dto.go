@@ -76,6 +76,14 @@ type PolicyDecideRequest struct {
 	Action   string              `json:"action"`
 	Resource policy.Resource     `json:"resource"`
 	Context  PolicyDecideContext `json:"context"`
+	// PEPMode is the mode the application's enforcement point applies when it
+	// is stricter than POLICY_MODE (backendkit pep.Config.MinimumMode): off,
+	// shadow or enforce. It never changes the answer; it decides how the
+	// decision is recorded, so a decision the application enforces while the
+	// server is off is still in the decision log. Send it only to a server
+	// whose responses carry pep_mode_accepted: older servers refuse unknown
+	// fields with 400.
+	PEPMode string `json:"pep_mode,omitempty"`
 }
 
 // PolicySubject names the user: either their access token (preferred — it is
@@ -99,4 +107,7 @@ type PolicyDecideContext struct {
 type PolicyDecideResponse struct {
 	policy.Decision
 	Mode string `json:"mode"`
+	// PEPModeAccepted tells the application this server accepts pep_mode in
+	// a decide request (since v1.12.4).
+	PEPModeAccepted bool `json:"pep_mode_accepted,omitempty"`
 }

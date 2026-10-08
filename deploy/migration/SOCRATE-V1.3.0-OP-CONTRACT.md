@@ -78,7 +78,9 @@ Source: `internal/shared/auth/token.go`, `internal/shared/auth/keys*.go`,
   They are kept on refresh. Use `amr` containing `mfa` to require two factors.
 - **`aud` with `AUDIENCE_MODE=dual`** (server-wide, default `off`): the client's
   registered audiences are appended after the `client_id`, so `aud[0]` stays the
-  `client_id`. Verifiers that check membership of their own id keep working.
+  `client_id`. Verifiers that check membership of their own id keep working. This applies to
+  every grant, `client_credentials` included (since v1.13.0; before, service-account tokens
+  carried only the `client_id`).
 - **Access-token lifetime** is the server default unless the client has its own
   `access_token_ttl_seconds`; read `exp`, never assume a fixed TTL.
 - **Custom claims** projected by a client's claim mappings are issued under the
@@ -105,7 +107,7 @@ Source: `handleClientCredentialsGrant` (`internal/service/oauth_service.go`) and
 |---|---|
 | `iss` | the issuer |
 | `sub` | `app:<app_id>`, the numeric id of the calling client |
-| `aud` | `[<calling client_id>]`, **only**. `AUDIENCE_MODE=dual` does not apply to these tokens: the client's registered audiences are not added. |
+| `aud` | `[<calling client_id>]` with `AUDIENCE_MODE=off`. With `dual`, the calling client's registered audiences follow it (deduplicated), so `aud[0]` is always the `client_id`. Before v1.13.0 `dual` did not apply to these tokens. |
 | `scope` | the requested scope, or `api` when none is requested. It must be names from `scopes_supported` (plus the console scopes) and pass the client's `allowed_scopes` under `SCOPE_POLICY_MODE`. |
 | `type` | `access` |
 | `iat`, `nbf`, `exp`, `jti` | always present. `exp` follows the client's `access_token_ttl_seconds`, else the server default (the same value as `expires_in`). |
@@ -118,10 +120,13 @@ Introspection reports the binding as `cnf.jkt`.
 
 **Implications for a resource server**
 
-- The audience a service-account token carries is the **caller's** `client_id`, not the resource
-  server's. A service that accepts calls from other services lists each caller's `client_id` in
-  its audience check (backendkit: `jwtauth.WithAudiences(callerA, callerB, …)`), then
-  distinguishes callers by `aud` or `sub`.
+- With `AUDIENCE_MODE=off`, the audience a service-account token carries is the **caller's**
+  `client_id`, not the resource server's: a service that accepts calls from other services lists
+  each caller's `client_id` in its audience check (backendkit:
+  `jwtauth.WithAudiences(callerA, callerB, …)`). With `dual`, register the resource server's id as
+  an audience of each calling client instead, and check only that id
+  (`jwtauth.WithAudience(resourceID)`). Either way, distinguish callers by `sub` (`app:<id>`) or
+  `aud[0]`.
 - There is no user, so no `role`: authorise service calls on `sub` (`app:<id>`), the audience and
   the custom claims, never on a role check that a missing `role` would silently fail open.
 - `RequireTenant`-style checks see a tenant only through a literal claim mapping (below).

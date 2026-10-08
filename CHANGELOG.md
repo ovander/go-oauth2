@@ -22,6 +22,16 @@ Capabilities**, non-breaking).
   `400`. Every answer now carries `"pep_mode_accepted": true`, so a client sends the field only to
   a server that accepts it; older servers refuse unknown fields.
 
+### Changed
+
+- **`AUDIENCE_MODE=dual` applies to `client_credentials` tokens** (#327). Service-account tokens
+  were always issued with `aud = [client_id]`, even under `dual`, so a resource server that checks
+  its own resource id could not accept them and had to list every calling client instead. They
+  now get the same `aud` as the other grants: the `client_id` first, then the client's registered
+  audiences. With `AUDIENCE_MODE=off` (the default), or a client without registered audiences,
+  nothing changes, and `aud[0]` stays the `client_id` in every case. Only a verifier that requires
+  `aud` to be exactly one value, with `dual` on and audiences registered, sees a difference.
+
 ## [1.12.3] - 2026-10-08
 
 Security patch on the **v1.x** line: `client_credentials` tokens requested with a DPoP proof are

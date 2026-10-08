@@ -20,6 +20,16 @@ Capabilities**, non-breaking).
   IDs are unchanged. It is the same rule as backendkit's `httpware.RequestID`
   (ovander/backendkit#95) (#321).
 
+### Documentation
+
+- **OP contract: the claim set of a `client_credentials` token.** A new section, derived from the
+  token-issuing code, lists exactly what a service-account token carries: `sub=app:<id>`; `aud` =
+  the calling client only (`AUDIENCE_MODE=dual` does not apply); scope defaulting to `api`; custom
+  claims from app and literal sources only, under `CLAIMS_NAMESPACE`. It also lists what it never
+  carries (`role`, `app_roles`, `token_version`, `auth_time`/`amr`/`acr`, `cnf`), what that means
+  for a resource server, and the per-(consumer, tenant) service-account pattern with a literal
+  tenant mapping (#322).
+
 ## [1.12.1] - 2026-10-06
 
 Patch release on the **v1.x** line: documentation only, no code change. The deploy env template,

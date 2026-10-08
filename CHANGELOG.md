@@ -10,6 +10,17 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### CI
+
+- **Perf smoke no longer measures the runner's disk.** With the default `AUDIT_WRITE_MODE=sync`,
+  every token request appends an audit row under one advisory lock and waits for its commit to be
+  flushed to disk. On a runner with a slow disk those waits queued every refresh behind the lock,
+  and refresh p95 swung from tens of milliseconds to nearly a second for identical code (`main`
+  failed three times after #332 while the same code passed on #333's branch). The job now sets
+  `synchronous_commit = off` on its throwaway Postgres: commits stay transactional and Socrate's
+  code path is unchanged, only the disk flush is no longer awaited. The budgets are unchanged, and
+  k6 is pinned (v1.8.1) instead of `@latest`.
+
 ## [1.13.0] - 2026-10-08
 
 Minor release on the **v1.x** line. The decision log can record what an application enforces while

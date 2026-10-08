@@ -163,6 +163,7 @@ type decideResult struct {
 		Obligations []string `json:"obligations"`
 		Mode        string   `json:"mode"`
 		Error       string   `json:"error"`
+		PEPAccepted bool     `json:"pep_mode_accepted"`
 	}
 }
 

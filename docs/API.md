@@ -406,7 +406,7 @@ routes** on the Admin router, which are scoped to that exact app:
     "resource": {"type": "invoice", "id": "inv-9", "attributes": {"amount": 25000}},
     "context": {"ip": "203.0.113.5"} }
   ```
-  → `200 {"allow", "rule", "reason", "obligations", "policy_version", "mode"}`.
+  → `200 {"allow", "rule", "reason", "obligations", "policy_version", "mode", "pep_mode_accepted"}`.
   `subject` is `{"token": …}` (verified like any bearer token; supplies scopes,
   amr, auth_time), `{"user_id": n}`, or omitted for the application itself.
   The subject must be a member of the app (or a global admin): otherwise
@@ -416,7 +416,14 @@ routes** on the Admin router, which are scoped to that exact app:
   reason `subject_locked`. `503 {"error": "policy_unavailable", "mode"}` when
   no policy version can be loaded. Act on `mode`: `off` ignore, `shadow` log,
   `enforce` honour. Send `X-Correlation-ID` to find a denial in the decision
-  log. See `docs/EXTENSIBILITY.md`.
+  log. Optional `"pep_mode"` (`off`, `shadow` or `enforce`, since v1.13.0) is the mode
+  the application's enforcement point applies when it is stricter than
+  `POLICY_MODE` (backendkit `pep.Config.MinimumMode`). It never changes the answer,
+  whose `mode` stays the server's; it makes the decision log record the decision
+  under the stricter mode, so a decision the application enforces while the server
+  is `off` is still logged. Any other value is `400`. Send it only to a server whose
+  answers carry `"pep_mode_accepted": true`: older servers refuse unknown fields.
+  See `docs/EXTENSIBILITY.md`.
 
 `ServiceAccountMiddleware` enforces that the `{app_id}` in the URL matches the
 app encoded in the token, so an app can never act on another app's resources.

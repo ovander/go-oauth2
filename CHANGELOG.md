@@ -10,6 +10,18 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Security
+
+- **`client_credentials` tokens are bound to the DPoP key** (#328). A client registered with
+  `require_dpop` had to present a DPoP proof to obtain a service-account token (P2-5), but the token
+  was issued without `cnf`: the proof was checked and then discarded, so a leaked token was
+  replayable without the key until `exp`. The grant now issues `cnf.jkt` from the verified proof
+  whenever one is sent, like the authorization-code and refresh grants, and introspection reports
+  it. Tokens obtained without a proof are unchanged. The `token_issued` event gains `dpop_bound`.
+  Socrate's own APIs do not check DPoP proofs on use, so service-account calls to Socrate are
+  unaffected; a resource server that enforces DPoP binding now refuses a bound token sent without
+  a matching proof, as intended.
+
 ## [1.12.2] - 2026-10-08
 
 Patch release on the **v1.x** line: incoming `X-Correlation-ID` values are validated (a security

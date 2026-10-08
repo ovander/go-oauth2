@@ -639,6 +639,15 @@ func (ts *TokenService) GenerateInviteToken(email string, appID uint, role strin
 
 // GenerateClientCredentialsToken generates an access token for client credentials grant
 func (ts *TokenService) GenerateClientCredentialsToken(app *model.App, scope string) (string, error) {
+	return ts.GenerateBoundClientCredentialsToken(app, scope, "")
+}
+
+// GenerateBoundClientCredentialsToken is GenerateClientCredentialsToken with the
+// token sender-constrained to a DPoP key: a non-empty jkt (the thumbprint of the
+// verified DPoP proof sent to the token endpoint) is issued as cnf.jkt (RFC 9449
+// / RFC 7800), as the authorization-code and refresh grants already do. An empty
+// jkt yields an unbound token.
+func (ts *TokenService) GenerateBoundClientCredentialsToken(app *model.App, scope, jkt string) (string, error) {
 	now := time.Now()
 
 	claims := AccessTokenClaims{
@@ -656,6 +665,9 @@ func (ts *TokenService) GenerateClientCredentialsToken(app *model.App, scope str
 		// A2: a service-account token has no user, so only the app-scoped and
 		// literal sources resolve — user-sourced mappings yield no claim.
 		Custom: ts.customClaims(nil, app, "", model.ClaimTargetAccess),
+	}
+	if jkt != "" {
+		claims.Cnf = &Confirmation{JKT: jkt}
 	}
 
 	return ts.signToken(claims)

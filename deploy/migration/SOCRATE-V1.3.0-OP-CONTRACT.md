@@ -110,10 +110,11 @@ Source: `handleClientCredentialsGrant` (`internal/service/oauth_service.go`) and
 | `type` | `access` |
 | `iat`, `nbf`, `exp`, `jti` | always present. `exp` follows the client's `access_token_ttl_seconds`, else the server default (the same value as `expires_in`). |
 | Custom claims | the client's claim mappings with an **app or literal source** only (`literal:…`, `app.id`, `app.client_id`), issued under `CLAIMS_NAMESPACE` (e.g. `https://socrate/tenant_id`). User sources (`user.attributes.*`, `user.email`, `user.name`, `user.id`) and `app_role` yield nothing, and are not reported as `custom_claim_missing`. |
-| **Not present** | `role`, `roles`, `app_roles`, `token_version`, `auth_time`, `amr`, `acr`, `email`, `name`, `act`, `cnf` |
+| `cnf` | `{"jkt": <thumbprint>}` when the token request carried a valid DPoP proof (since v1.12.3), so the token is sender-constrained to that key; absent otherwise. A client registered with `require_dpop` must send a proof, so its tokens are always bound. |
+| **Not present** | `role`, `roles`, `app_roles`, `token_version`, `auth_time`, `amr`, `acr`, `email`, `name`, `act` |
 
-The token response has `token_type: "Bearer"`. A client registered with `require_dpop` must
-present a DPoP proof to obtain one, but the issued token carries no `cnf`.
+The token response has `token_type: "Bearer"`, bound or not, as for the other grants.
+Introspection reports the binding as `cnf.jkt`.
 
 **Implications for a resource server**
 

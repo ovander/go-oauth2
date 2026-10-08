@@ -1,4 +1,4 @@
-# Socrate OP contract (v1.3.0, updated for v1.12.2)
+# Socrate OP contract (v1.3.0, updated for v1.12.3)
 
 The values below are the OpenID Provider metadata and token facts for **Socrate**,
 derived directly from the server source (module `github.com/ovander/go-oauth2`).

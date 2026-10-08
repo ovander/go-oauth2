@@ -652,9 +652,11 @@ func (ts *TokenService) GenerateBoundClientCredentialsToken(app *model.App, scop
 
 	claims := AccessTokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    ts.issuer,
-			Subject:   fmt.Sprintf("app:%d", app.ID),
-			Audience:  jwt.ClaimStrings{app.ClientID},
+			Issuer:  ts.issuer,
+			Subject: fmt.Sprintf("app:%d", app.ID),
+			// #327: the same aud as the other grants — the client_id, plus the
+			// client's registered audiences under AUDIENCE_MODE=dual.
+			Audience:  jwt.ClaimStrings(ts.accessAudience(app)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(ts.AccessTokenTTLFor(app))),

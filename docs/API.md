@@ -772,7 +772,7 @@ build of the running binary:
   "commit": "85218d0",
   "branch": "main",
   "build_time": "2026-09-29T09:12:44Z",
-  "go_version": "go1.27.1"
+  "go_version": "go1.27.2"
 }
 ```
 

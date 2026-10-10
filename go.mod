@@ -4,7 +4,7 @@ module github.com/ovander/go-oauth2
 // the language minimum, it sets the GODEBUG defaults, and with no toolchain
 // line it is the toolchain too (GOTOOLCHAIN=auto fetches it). CI checks that
 // it equals the Go CI ran and the Dockerfile's golang image tag.
-go 1.27.1
+go 1.27.2
 
 require (
 	github.com/go-chi/chi/v5 v5.3.2

@@ -725,9 +725,9 @@ VPS_HOST=deploy@vps.example.com oauth2-admin/deploy/scripts/push.sh
 health-checks (`:8081/health`, `:8090/bff/healthz`, `:8080/health`,
 `:8091/bff/healthz`), rolling back on failure.
 
-Build toolchains: Go **1.27.1** everywhere — in every `go.mod` (Socrate:
-`go 1.27.1`; backendkit and both BFFs: `toolchain go1.27.1`) and
-`golang:1.27.1-alpine` in every Dockerfile, with CI failing if they drift — and
+Build toolchains: Go **1.27.2** everywhere — in every `go.mod` (Socrate and both BFFs:
+`go 1.27.2`; backendkit: `toolchain go1.27.2`, with `go 1.26.0` as the importer floor) and
+`golang:1.27.2-alpine` in every Dockerfile, with CI failing if they drift — and
 Node 20. Move the version forward with each Go patch release, in all four
 repositories together, and build govulncheck and golangci-lint with it (a
 scanner built with an older Go refuses the module).

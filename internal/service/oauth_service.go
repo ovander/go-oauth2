@@ -347,8 +347,9 @@ func (s *oauthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, 
 		return "", fmt.Errorf("%w: %v", ErrInvalidRedirectURI, err)
 	}
 
-	// Validate scope
-	if err := validateScope(req.Scope); err != nil {
+	// Validate scope: global scopes, plus the application-defined scopes this
+	// client registers (#336).
+	if err := validateRequestedScope(app, req.Scope); err != nil {
 		return "", fmt.Errorf("invalid scope '%s': %w", req.Scope, err)
 	}
 	// A1: per-client scope policy.
@@ -628,6 +629,12 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 		}
 	}
 
+	// #336: an application-defined scope unregistered since the code was
+	// issued is not granted.
+	if err := checkRegisteredAppScopes(app, authCode.Scope); err != nil {
+		return nil, err
+	}
+
 	// RFC 9449 / EPIC-8: enforce the per-client DPoP requirement.
 	if err := requireDPoP(ctx, app); err != nil {
 		return nil, err
@@ -812,6 +819,11 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 		scopeUID = &u
 	}
 	if err := s.enforceClientScopes(ctx, app, scopeUID, "refresh_token", claims.Scope); err != nil {
+		return nil, err
+	}
+	// #336: an application-defined scope stops being renewable once the client
+	// no longer registers it, whatever SCOPE_POLICY_MODE says.
+	if err := checkRegisteredAppScopes(app, claims.Scope); err != nil {
 		return nil, err
 	}
 
@@ -1011,7 +1023,9 @@ func (s *oauthService) handleClientCredentialsGrant(ctx context.Context, req dto
 	// per-client DPoP requirement; client_credentials skipped both, so a
 	// service account could mint a token with any scope string (including
 	// "admin") and a DPoP-required client could obtain a bearer-only token.
-	if err := validateScope(req.Scope); err != nil {
+	// #336: an application-defined scope is valid only for a client that
+	// registers it in allowed_scopes.
+	if err := validateRequestedScope(app, req.Scope); err != nil {
 		return nil, err
 	}
 	if err := requireDPoP(ctx, app); err != nil {
@@ -1385,11 +1399,12 @@ func isValidResponseType(responseType string) bool {
 	return responseType == "code"
 }
 
-// validateScopeNames checks a list of scope names (an allowed_scopes policy)
-// against the supported set; duplicates are tolerated.
+// validateScopeNames checks a list of scope names (an allowed_scopes policy):
+// each must be a global scope or a well-formed application-defined scope in a
+// non-reserved namespace (#336, see app_scopes.go); duplicates are tolerated.
 func validateScopeNames(scopes []string) error {
 	for _, s := range scopes {
-		if s == "" || !validScopes[s] {
+		if s == "" || (!validScopes[s] && !isAppScope(s)) {
 			return fmt.Errorf("%w: unknown scope '%s'", ErrInvalidScope, s)
 		}
 	}
@@ -1419,20 +1434,6 @@ func (s *oauthService) enforceClientScopes(ctx context.Context, app *model.App, 
 		return nil
 	}
 	return fmt.Errorf("%w: %s (client_id=%s)", ErrScopeNotAllowed, strings.Join(denied, " "), app.ClientID)
-}
-
-func validateScope(scope string) error {
-	if scope == "" {
-		return nil
-	}
-
-	scopes := strings.Split(scope, " ")
-	for _, s := range scopes {
-		if !validScopes[s] {
-			return fmt.Errorf("%w: unknown scope '%s'", ErrInvalidScope, s)
-		}
-	}
-	return nil
 }
 
 // ExchangeToken implements the RFC 8693 token-exchange grant in "shadow" mode:
@@ -1525,6 +1526,12 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 		return fail("denied", derr)
 	}
 	details["granted_scope"] = decision.GrantedScope
+	// #336: an application-defined scope passes to the exchanged token only if
+	// the requesting client registers it too.
+	if err := checkRegisteredAppScopes(app, decision.GrantedScope); err != nil {
+		details["deny_reason"] = err.Error()
+		return fail("denied", err)
+	}
 	if len(decision.Audience) > 0 {
 		details["audience"] = decision.Audience
 	}

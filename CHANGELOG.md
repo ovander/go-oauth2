@@ -10,6 +10,14 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Security
+
+- **Built with Go 1.27.2** (`go 1.27.2`, `golang:1.27.2-alpine`). Go 1.27.2 fixes eight
+  standard-library vulnerabilities, in `net/http` and its HTTP/2 implementation among them (e.g.
+  GO-2026-6603, HTTP/2 memory exhaustion via Trailer headers; GO-2026-6605). The server binary
+  links the standard library, so a Socrate built with 1.27.1 carries them: rebuild and redeploy.
+  No code change.
+
 ### CI
 
 - **Perf smoke no longer measures the runner's disk.** With the default `AUDIT_WRITE_MODE=sync`,

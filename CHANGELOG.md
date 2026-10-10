@@ -10,6 +10,15 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.13.1] - 2026-10-10
+
+Security patch on the **v1.x** line: Socrate is built with Go 1.27.2, which fixes eight
+standard-library vulnerabilities (`net/http` and HTTP/2 among them). No code change, no migration,
+no environment variable, no change of default. **Deploy note:** rebuild and redeploy; a binary built
+with Go 1.27.1 still carries the vulnerabilities. The v1.13.0 note still applies to an upgrade from
+v1.12.x: production runs `AUDIENCE_MODE=dual`, so check any verifier that requires exactly one
+audience (Lakebridge's route groups) before deploying.
+
 ### Security
 
 - **Built with Go 1.27.2** (`go 1.27.2`, `golang:1.27.2-alpine`). Go 1.27.2 fixes eight
@@ -2010,7 +2019,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.13.0...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.13.1...HEAD
+[1.13.1]: https://github.com/ovander/go-oauth2/compare/v1.13.0...v1.13.1
 [1.13.0]: https://github.com/ovander/go-oauth2/compare/v1.12.3...v1.13.0
 [1.12.3]: https://github.com/ovander/go-oauth2/compare/v1.12.2...v1.12.3
 [1.12.2]: https://github.com/ovander/go-oauth2/compare/v1.12.1...v1.12.2

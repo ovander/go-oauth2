@@ -61,7 +61,9 @@ type App struct {
 	// this client may request at /oauth/authorize and at every token grant.
 	// Empty means "every supported scope" so existing registrations keep
 	// working; SCOPE_POLICY_MODE decides whether a violation is ignored (off),
-	// audited (observe) or refused with invalid_scope (enforce).
+	// audited (observe) or refused with invalid_scope (enforce). It also
+	// registers application-defined scopes (#336, "<namespace>:<name>"), which
+	// are valid only for the clients that list them, in every mode.
 	AllowedScopes StringArray `gorm:"type:text[];column:allowed_scopes" json:"allowed_scopes"`
 
 	// ClaimMappings is the per-client custom-claim policy (A2): which
@@ -93,6 +95,18 @@ func (a *App) ScopeAllowed(scope string) bool {
 	if len(a.AllowedScopes) == 0 {
 		return true
 	}
+	for _, s := range a.AllowedScopes {
+		if s == scope {
+			return true
+		}
+	}
+	return false
+}
+
+// RegistersScope reports whether scope is listed, verbatim, in the client's
+// AllowedScopes. Unlike ScopeAllowed, an empty policy registers nothing: an
+// application-defined scope (#336) is valid only for a client that lists it.
+func (a *App) RegistersScope(scope string) bool {
 	for _, s := range a.AllowedScopes {
 		if s == scope {
 			return true

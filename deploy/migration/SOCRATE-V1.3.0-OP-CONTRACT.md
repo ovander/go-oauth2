@@ -108,7 +108,7 @@ Source: `handleClientCredentialsGrant` (`internal/service/oauth_service.go`) and
 | `iss` | the issuer |
 | `sub` | `app:<app_id>`, the numeric id of the calling client |
 | `aud` | `[<calling client_id>]` with `AUDIENCE_MODE=off`. With `dual`, the calling client's registered audiences follow it (deduplicated), so `aud[0]` is always the `client_id`. Before v1.13.0 `dual` did not apply to these tokens. |
-| `scope` | the requested scope, or `api` when none is requested. It must be names from `scopes_supported` (plus the console scopes) and pass the client's `allowed_scopes` under `SCOPE_POLICY_MODE`. |
+| `scope` | the requested scope, or `api` when none is requested. It must be names from `scopes_supported` (plus the console scopes) and pass the client's `allowed_scopes` under `SCOPE_POLICY_MODE`, or application-defined scopes the client registers (below). |
 | `type` | `access` |
 | `iat`, `nbf`, `exp`, `jti` | always present. `exp` follows the client's `access_token_ttl_seconds`, else the server default (the same value as `expires_in`). |
 | Custom claims | the client's claim mappings with an **app or literal source** only (`literal:…`, `app.id`, `app.client_id`), issued under `CLAIMS_NAMESPACE` (e.g. `https://socrate/tenant_id`). User sources (`user.attributes.*`, `user.email`, `user.name`, `user.id`) and `app_role` yield nothing, and are not reported as `custom_claim_missing`. |
@@ -138,12 +138,31 @@ obtains then carries `https://socrate/tenant_id: <tenant uuid>`, which backendki
 `jwtauth.WithTenantClaim("https://socrate/tenant_id")`. The tenant is fixed by registration, so a
 compromised consumer secret reaches one tenant only. Rotate or deactivate the client to revoke it.
 
+## Application-defined scopes
+
+Since #336 (additive; no migration, no environment variable, discovery unchanged). A resource
+server may define its own scope, `<namespace>:<name>` (namespace `[a-z][a-z0-9-]{0,31}`, name
+`[a-z][a-z0-9._-]{0,63}`), for example `swingdrift:worker`. An operator lists it in the
+`allowed_scopes` of each client that may obtain it; a namespace used by a global scope
+(`openid`, `email`, `profile`, `offline_access`, `api`, `admin`, `monitoring`) and `socrate`,
+`oidc`, `oauth`, `oauth2` are reserved and refused at registration.
+
+- It is valid only for a client that registers it, on every grant, whatever `SCOPE_POLICY_MODE`
+  says; any other client gets `invalid_scope`, as for an unknown scope.
+- It is issued unchanged in the access token's space-separated `scope` claim (RFC 9068 §2.2.3)
+  and in introspection. ID-token and userinfo claims are unaffected.
+- It is **not** advertised in `scopes_supported`, which keeps listing the global scopes only.
+- On a `client_credentials` token it sits next to `sub = app:<app_id>` (above): a resource server
+  that requires the scope can keep checking the subject as a second factor.
+- Unregistering it stops the client's refresh tokens and unredeemed codes that carry it
+  (`invalid_scope`); a token exchange keeps it only if the requesting client registers it too.
+
 ## Client-registration implications
 
 - **PKCE S256 is mandatory** for interactive clients (public and confidential).
 - A requested scope outside the client's allowed-scopes policy is rejected with
   `invalid_scope`, so register each client with exactly the scopes it needs from
-  `scopes_supported`.
+  `scopes_supported`, plus any application-defined scope (above) it must obtain.
 - Redirect URIs are matched with scheme/host case-normalized and path/query exact;
   register each one explicitly (no wildcards).
 

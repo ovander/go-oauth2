@@ -137,7 +137,7 @@ What is in the code today (every item below is routed, tested and documented in 
 - Introspection RFC 7662, revocation RFC 7009, end-session
 - Audience binding (`dual` mode), RS256 key rotation with JWKS ring
 - Confidential + public clients, exact redirect URIs, per-client PKCE/DPoP
-- Per-client scope policy (`off/observe/enforce`) and declarative custom claims
+- Per-client scope policy (`off/observe/enforce`), application-defined scopes, and declarative custom claims
 
 </td>
 <td valign="top" width="33%">

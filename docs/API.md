@@ -61,7 +61,32 @@ Supported scopes (`scopes_supported`):
 | `offline_access` | Request a refresh token |
 | `api` | Default scope for `client_credentials` (M2M) tokens |
 
-Unknown scopes are rejected with `invalid scope`.
+The operational consoles also use `admin`, `monitoring:read` and
+`monitoring:write`, which are not advertised. Unknown scopes are rejected with
+`invalid scope`.
+
+**Application-defined scopes (#336).** A resource server can define its own
+scope, such as `swingdrift:worker`, and an operator registers it in the
+`allowed_scopes` of each client that may obtain it (§8.2). The scope is then
+valid for those clients only, on every grant (`authorization_code`,
+`refresh_token`, `client_credentials`, token exchange), and is issued unchanged
+in the access token's space-separated `scope` claim and in introspection. Rules:
+
+- Form `<namespace>:<name>`: namespace `[a-z][a-z0-9-]{0,31}`, name
+  `[a-z][a-z0-9._-]{0,63}` (lower-case ASCII, exactly one colon, at most 97
+  characters).
+- Reserved namespaces, never accepted: the first segment of every global scope
+  (`openid`, `email`, `profile`, `offline_access`, `api`, `admin`,
+  `monitoring`), plus `socrate`, `oidc`, `oauth` and `oauth2`. An app scope can
+  therefore never be, or shadow, a global scope.
+- A client that does not list the scope gets `invalid_scope`, whatever
+  `SCOPE_POLICY_MODE` says; an empty `allowed_scopes` registers none. Removing
+  the scope from a client stops its refresh tokens and pending codes carrying
+  it from being redeemed (`invalid_scope`), and a token exchange keeps it only
+  when the requesting client registers it too.
+- App scopes are per client and are **not** listed in `scopes_supported`. The
+  consent page shows each one verbatim as "Use the application permission
+  `<scope>`".
 
 ### 2.3 Tokens
 
@@ -563,10 +588,15 @@ admin's tokens are revoked (token-version bump) and they must log in again
   identifiers tokens for this client are intended for — the canonical `aud`
   claim (RFC-001). `allowed_scopes` (optional) is the client's scope policy:
   the only scopes it may request at `/oauth/authorize` and at every grant,
-  refresh included; entries must be supported scopes (§2.2) and an empty list
-  means unrestricted. It is applied according to `SCOPE_POLICY_MODE`
-  (`off` default · `observe` audits `scope_denied` · `enforce` answers
-  `invalid_scope`). `claim_mappings` (optional, A2) declares the custom claims
+  refresh included; entries must be supported scopes or well-formed
+  application-defined scopes in a non-reserved namespace (§2.2), otherwise
+  `400 invalid scope`, and an empty list means unrestricted. It is applied
+  according to `SCOPE_POLICY_MODE` (`off` default · `observe` audits
+  `scope_denied` · `enforce` answers `invalid_scope`). An application-defined
+  scope listed here is what makes it valid for this client, in every mode;
+  note that a non-empty list also restricts the client's global scopes once
+  `SCOPE_POLICY_MODE=enforce`, so list the global scopes it needs too (`api`
+  for a `client_credentials` client that sends no `scope`). `claim_mappings` (optional, A2) declares the custom claims
   this client's tokens carry, keyed by the unqualified claim name; each value is
   either a source string or `{"source": …, "target": "access"|"id"|"both"}`
   (default `access`). Sources are a closed set: `user.attributes.<key>`,

@@ -10,14 +10,16 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
-### Changed
+## [1.14.0] - 2026-10-11
 
-- **`client_updated` records a change of `allowed_scopes`**, with its old and new values, like the
-  other security-relevant client fields (redirect URIs, audiences, delegation grants). The scope
-  policy decides which scopes a client can obtain, so a change grants or withdraws a permission;
-  until now an update that changed only `allowed_scopes` left no audit event. No migration, no
-  environment variable, no change of default; the webhook payload of `client_updated` gains the
-  field when it changes.
+Minor release on the **v1.x** line. A resource server can define its own scope (e.g.
+`swingdrift:worker`) and an operator grants it per client in `allowed_scopes`: an
+application-defined scope, `<namespace>:<name>`, valid only for the clients listing it, on every
+grant, and issued in the access token's `scope` claim. A change of `allowed_scopes` is now recorded
+in the `client_updated` security event. No migration, no environment variable, no change of
+default; discovery is unchanged. A token-exchange request refused by the scope policy now answers
+`invalid_scope` instead of `server_error`. **Deploy note:** with the admin console v1.7.0 or later
+an operator can enter an application scope; older consoles refuse it before saving.
 
 ### Added
 
@@ -34,6 +36,15 @@ Capabilities**, non-breaking).
   that carry it. A token-exchange request refused by the scope policy now answers `invalid_scope`
   instead of `server_error`. No migration, no environment variable, no change of default;
   discovery (`scopes_supported`) is unchanged, since app scopes are per client and not advertised.
+
+### Changed
+
+- **`client_updated` records a change of `allowed_scopes`**, with its old and new values, like the
+  other security-relevant client fields (redirect URIs, audiences, delegation grants). The scope
+  policy decides which scopes a client can obtain, so a change grants or withdraws a permission;
+  until now an update that changed only `allowed_scopes` left no audit event. No migration, no
+  environment variable, no change of default; the webhook payload of `client_updated` gains the
+  field when it changes.
 
 ## [1.13.1] - 2026-10-10
 
@@ -2044,7 +2055,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.13.1...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.14.0...HEAD
+[1.14.0]: https://github.com/ovander/go-oauth2/compare/v1.13.1...v1.14.0
 [1.13.1]: https://github.com/ovander/go-oauth2/compare/v1.13.0...v1.13.1
 [1.13.0]: https://github.com/ovander/go-oauth2/compare/v1.12.3...v1.13.0
 [1.12.3]: https://github.com/ovander/go-oauth2/compare/v1.12.2...v1.12.3

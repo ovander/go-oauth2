@@ -13,6 +13,11 @@ grant. Empty = unrestricted. Violations emit a `scope_denied` security event
 (and `socrate_security_events_total{event_type="scope_denied"}`); `enforce`
 answers `invalid_scope`.
 
+`allowed_scopes` also registers **application-defined scopes** (#336), such as
+`swingdrift:worker`: a namespaced scope outside the global list, valid only for
+the clients that list it, in every `SCOPE_POLICY_MODE`, and never advertised in
+`scopes_supported`. Grammar and reserved namespaces: `docs/API.md` §2.2.
+
 ## In-process hooks (A6)
 
 Socrate is a single Go binary; the hook registry in `internal/hooks` lets a

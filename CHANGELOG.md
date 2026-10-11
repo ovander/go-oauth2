@@ -10,6 +10,22 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Added
+
+- **Application-defined scopes** (#336, A1 / P3-8). A client's `allowed_scopes` may now list a
+  namespaced scope of the resource server's own, `<namespace>:<name>` (namespace
+  `[a-z][a-z0-9-]{0,31}`, name `[a-z][a-z0-9._-]{0,63}`), e.g. `swingdrift:worker`. It is valid
+  only for the clients that register it, on every grant (authorization code, refresh,
+  `client_credentials`, token exchange) and whatever `SCOPE_POLICY_MODE` says; any other client
+  still gets `invalid_scope`. It is issued unchanged in the access token's `scope` claim and in
+  introspection, and shown verbatim on the consent page. Namespaces of the global scopes (`openid`,
+  `email`, `profile`, `offline_access`, `api`, `admin`, `monitoring`) and `socrate`, `oidc`,
+  `oauth`, `oauth2` are reserved, so an app scope can never be or shadow a global scope, and a
+  client gains no global scope this way. Unregistering one stops refresh tokens and pending codes
+  that carry it. A token-exchange request refused by the scope policy now answers `invalid_scope`
+  instead of `server_error`. No migration, no environment variable, no change of default;
+  discovery (`scopes_supported`) is unchanged, since app scopes are per client and not advertised.
+
 ## [1.13.1] - 2026-10-10
 
 Security patch on the **v1.x** line: Socrate is built with Go 1.27.2, which fixes eight

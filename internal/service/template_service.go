@@ -231,6 +231,12 @@ func scopeDescriptions(scope string) []string {
 	for _, s := range scopes {
 		if desc, ok := scopeMap[s]; ok {
 			descriptions = append(descriptions, desc)
+		} else if isAppScope(s) {
+			// #336: an application-defined scope has no server-side description;
+			// show it verbatim (the grammar admits only [a-z0-9:._-], and
+			// html/template escapes the value anyway) so the user sees every
+			// application permission they approve.
+			descriptions = append(descriptions, "Use the application permission "+s)
 		}
 	}
 

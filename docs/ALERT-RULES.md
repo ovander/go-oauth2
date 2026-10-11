@@ -20,8 +20,12 @@ The alert system monitors security events in real-time and can trigger notificat
 | POST | `/api/admin/alerts/rules` | Create a new alert rule |
 | PUT | `/api/admin/alerts/rules/:id` | Update an existing rule |
 | DELETE | `/api/admin/alerts/rules/:id` | Delete a rule |
-| GET | `/api/admin/alerts` | List triggered alerts |
+| GET | `/api/admin/alerts/history` | List triggered alerts |
 | POST | `/api/admin/alerts/:id/acknowledge` | Acknowledge an alert |
+
+Creating, updating and deleting a rule require a fresh step-up (`403 elevation_required`
+otherwise, see [`API.md` §8.1](API.md#81-admin-login--post-apiadminlogin-deprecated)) and, with
+`ADMIN_SCOPE_MODE=enforce`, the `monitoring:write` scope; reads need `monitoring:read`.
 
 ## Creating an Alert Rule
 
@@ -357,14 +361,16 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
 ### List Triggered Alerts
 
 ```bash
-curl -X GET "http://localhost:8081/api/admin/alerts?page=1&page_size=20" \
+curl -X GET "http://localhost:8081/api/admin/alerts/history?page=1&page_size=20" \
   -H "Authorization: Bearer <token>"
 ```
 
-### Filter by Severity
+The answer carries `alerts`, `total`, `unacknowledged`, `page` and `page_size` (at most 100).
+
+### Unacknowledged Only
 
 ```bash
-curl -X GET "http://localhost:8081/api/admin/alerts?severity=critical" \
+curl -X GET "http://localhost:8081/api/admin/alerts/history?acknowledged=false" \
   -H "Authorization: Bearer <token>"
 ```
 

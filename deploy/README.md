@@ -69,8 +69,9 @@ sudo chmod 0700 /var/lib/socrate/keys
 > on the VPS — it covers the env, keys, DB backup, Caddy, firewall and post-deploy
 > smoke checks that live only on the box.
 
-**Production path (recommended):** use the umbrella `push.sh` in the
-`oauth2-monitoring` deploy kit — it builds this repo's binary, installs it to
+**Upgrading the suite:** the [release kit](release-kit/README.md) builds one bundle from the
+Socrate, admin and monitoring tags and installs it. **Socrate alone:** use the umbrella `push.sh`
+in the `oauth2-monitoring` deploy kit — it builds this repo's binary, installs it to
 `/usr/local/bin/socrate`, restarts the service, **health-checks** it, and rolls
 back automatically on failure.
 
@@ -95,15 +96,20 @@ sudo systemctl reload caddy
 ```bash
 make docker-build
 docker run -p 8080:8080 -p 127.0.0.1:8081:8081 \
-  --env-file /etc/socrate/socrate.env \
+  --env-file /etc/socrate/socrate.env -e ADMIN_BIND_HOST=0.0.0.0 \
   -v /var/lib/socrate/keys:/var/lib/socrate/keys \
   oauth-server
 ```
 
+Inside the container the admin API must bind `0.0.0.0` (a loopback bind is unreachable through
+the port mapping); the `127.0.0.1:8081` host mapping keeps it off the network.
+
 ## Operations
 
 - **Logs:** `journalctl -u socrate -f`
-- **Migrations:** `make migrate-up` / `migrate-status` (goose), or `AUTO_MIGRATE=true` once.
+- **Migrations:** the numbered migrations (`internal/database/migrate`, `0001`–`0030`) run at
+  every start; `AUTO_MIGRATE=true` once adds GORM's model diffing (first install, schema change).
+  There are no down-migrations: roll back by restoring a database dump.
 - **Key rotation:** keys in `/var/lib/socrate/keys` (the unit makes that path writable).
 - **Health:** `curl http://127.0.0.1:8080/health` and `http://127.0.0.1:8081/health`.
 

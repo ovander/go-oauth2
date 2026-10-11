@@ -6,8 +6,9 @@ It describes every public endpoint, the supported flows, request/response
 shapes, error formats, and copy-paste integration recipes.
 
 > The server implements OAuth 2.0 (RFC 6749), PKCE (RFC 7636), Token
-> Introspection (RFC 7662), Token Revocation (RFC 7009), and OpenID Connect
-> Core / Discovery. RS256 (RSA) is used for all token signing.
+> Introspection (RFC 7662), Token Revocation (RFC 7009), Token Exchange (RFC
+> 8693), DPoP (RFC 9449), the authorization-response `iss` parameter (RFC 9207),
+> and OpenID Connect Core / Discovery. RS256 (RSA) is used for all token signing.
 
 ---
 
@@ -19,18 +20,22 @@ different ports behind different firewall rules.
 | Router | Default port | Audience | Exposure |
 |--------|--------------|----------|----------|
 | **OAuth / Public API** | `8080` | End users, SPAs, mobile apps, app backends | Public internet |
-| **Admin API** | `8081` | Platform operators, app admins, M2M service accounts | Internal / restricted |
+| **Admin API** | `8081` | Platform operators, app admins, M2M service accounts | Loopback only (`ADMIN_BIND_HOST=127.0.0.1`) |
 
 Configure the public base URL via `OAUTH_ISSUER` (e.g. `https://auth.example.com`).
-All examples below use:
+The admin API has no public hostname: its clients (the consoles' BFFs, app
+backends) run on the same host or reach it through a tunnel. All examples below
+use:
 
 ```
 OAUTH  base: https://auth.example.com           (port 8080)
-ADMIN  base: https://auth-admin.example.com      (port 8081)
+ADMIN  base: http://127.0.0.1:8081               (ADMIN_PORT)
 ```
 
-In single-port (development) mode, `NewRouter` mounts the admin router under the
-`/manage` prefix and the OAuth router at `/`.
+The admin router runs on its own port only when `ADMIN_PORT` is set (production
+sets `8081`). When it is empty (the default), the server listens on `PORT` alone
+and `NewRouter` mounts the admin router under the `/manage` prefix and the OAuth
+router at `/`.
 
 ---
 
@@ -308,10 +313,10 @@ is for **public first-party clients** (the admin console, SPAs).
 ### 5.5 Logout — `POST /api/auth/logout`
 Requires `Authorization: Bearer <access_token>`. Increments the user's
 `token_version` (revokes all their tokens). `200`: `{ "message": "Logged out successfully" }`
-When the admin-console refresh cookie channel is enabled (see §5.8), logout also
+When the admin-console refresh cookie channel is enabled (see §5.5.1), logout also
 clears that cookie.
 
-### 5.8 Admin-console refresh cookie (first-party, Tier-0)
+### 5.5.1 Admin-console refresh cookie (first-party, Tier-0)
 When `ADMIN_CONSOLE_CLIENT_ID` is configured, the **first-party admin console**
 (a public, PKCE client) does **not** receive its refresh token in the JSON body.
 Instead, on `authorization_code` login and on every refresh, `/oauth/token` sets
@@ -397,8 +402,13 @@ grant_type=client_credentials
 { "access_token": "eyJ...", "token_type": "Bearer", "expires_in": 900, "scope": "api" }
 ```
 
-The resulting token has `sub = "app:{id}"`. It is used to call **Service Account
-routes** on the Admin router, which are scoped to that exact app:
+The resulting token has `sub = "app:{id}"` and no refresh or ID token. With a
+valid DPoP proof it is bound to that key (`cnf.jkt`, since v1.12.3); under
+`AUDIENCE_MODE=dual` the client's registered audiences follow its `client_id` in
+`aud` (since v1.13.0). The exact claim set is in the
+[OP contract](../deploy/migration/SOCRATE-V1.3.0-OP-CONTRACT.md#client_credentials-tokens-service-accounts).
+It is used to call **Service Account routes** on the Admin router, which are
+scoped to that exact app:
 
 - `POST /api/apps/{app_id}/service/users` — create a user inside the app.
 - `GET /api/apps/{app_id}/service/users/{user_id}` — look up one of the app's
@@ -453,6 +463,31 @@ routes** on the Admin router, which are scoped to that exact app:
 `ServiceAccountMiddleware` enforces that the `{app_id}` in the URL matches the
 app encoded in the token, so an app can never act on another app's resources.
 
+### 6.1 Token exchange (RFC 8693)
+
+`grant_type=urn:ietf:params:oauth:grant-type:token-exchange` at `/oauth/token`,
+with `subject_token` + `subject_token_type`, optionally `actor_token` +
+`actor_token_type` (delegation; without it, impersonation), `audience` /
+`resource`, `scope` and `requested_token_type`. Gated by `TOKEN_EXCHANGE_MODE`
+(`off` default and `shadow` answer `unsupported_grant_type`; only `enforce`
+issues, and only then is the grant advertised in discovery) and per client by
+`allow_token_exchange` / `allow_impersonation` (otherwise `403
+unauthorized_client`). The exchanged access token is downscoped (`invalid_scope`
+beyond the subject's scope), audience-bound (`invalid_target` without a target)
+and carries the actor chain in `act`; an impersonation token lives at most
+`IMPERSONATION_TOKEN_TTL`. `IMPERSONATION_STEPUP_MODE` and
+`DELEGATION_STEPUP_MODE` add freshness / MFA checks (`invalid_grant`).
+
+### 6.2 DPoP (RFC 9449)
+
+With `DPOP_MODE=observe|enforce`, send a `DPoP` proof header (ES256) to
+`/oauth/token`: the issued tokens carry `cnf.jkt` for every grant, discovery
+advertises `dpop_signing_alg_values_supported`, and introspection reports the
+binding. `enforce` rejects a present but invalid proof with `400
+invalid_dpop_proof`; a client registered with `require_dpop` gets no token
+without a valid proof (so it needs DPoP on). The token response keeps
+`token_type: "Bearer"`.
+
 ---
 
 ## 7. OpenID Connect Discovery
@@ -464,7 +499,11 @@ app encoded in the token, so an app can never act on another app's resources.
   scopes, `code_challenge_methods_supported: ["S256"]`, …). `claims_supported`
   lists the assertable claims including `auth_time`, `acr`, `amr`, `act`, and
   `cnf`; `acr_values_supported` advertises `["pwd","mfa"]` (RFC 8176);
-  `authorization_response_iss_parameter_supported: true` (RFC 9207).
+  `prompt_values_supported` `["none","login"]`;
+  `authorization_response_iss_parameter_supported: true` (RFC 9207). Two values
+  depend on configuration: `dpop_signing_alg_values_supported: ["ES256"]` when
+  `DPOP_MODE` is not `off`, and the token-exchange grant in
+  `grant_types_supported` when `TOKEN_EXCHANGE_MODE=enforce`.
 - `GET /.well-known/jwks.json` — RSA public keys (JWKS) for verifying RS256
   tokens. Cache and key off the `kid` header; keys rotate automatically.
 
@@ -547,8 +586,10 @@ public PKCE client auto-registered from `ADMIN_CONSOLE_CLIENT_ID` +
 **Step-up for destructive operations (Tier-0).** The most destructive admin
 routes — **delete OAuth client** (`DELETE /api/admin/apps/{id}`), **rotate client
 secret** (`POST /api/admin/apps/{id}/rotate-secret`), **create/delete superadmin**
-(`POST /api/admin/superadmins`, `DELETE /api/admin/superadmins/{id}`), and **block
-user** (`POST /api/admin/users/{id}/block`) — require a *recent* authentication.
+(`POST /api/admin/superadmins`, `DELETE /api/admin/superadmins/{id}`), **block
+user** (`POST /api/admin/users/{id}/block`), **revoke a user's tokens**, **block /
+unblock an IP**, **create / update / delete an alert rule**, every webhook write
+(§8.3.1) and every policy write (§8.3.2) — require a *recent* authentication.
 If the access token's `auth_time` is older than `ADMIN_ELEVATION_MAX_AGE`
 (default 5 min), they return `403 { "error": "elevation_required" }`. The client
 then calls `POST /api/admin/elevate` (§8.1.2) and retries with the fresh token.
@@ -577,14 +618,17 @@ admin's tokens are revoked (token-version bump) and they must log in again
   ```json
   { "name": "My App", "url": "https://app.example.com",
     "redirect_uris": ["https://app.example.com/callback"],
-    "is_public": false, "require_pkce": true,
+    "is_public": false, "require_pkce": true, "require_dpop": false,
+    "allow_token_exchange": false, "allow_impersonation": false,
     "audiences": ["https://api.example.com"],
     "allowed_scopes": ["openid", "profile", "email"],
     "claim_mappings": { "tier": "user.attributes.tier",
                         "dept": {"source": "user.attributes.dept", "target": "both"} } }
   ```
   Returns `AppWithSecretResponse` including the one-time `client_secret`
-  (empty for public clients). `audiences` (optional) registers the resource
+  (empty for public clients). `require_dpop` makes a DPoP proof mandatory at the
+  token endpoint (§6.2); `allow_token_exchange` / `allow_impersonation` gate
+  RFC 8693 for this client (§6.1). `audiences` (optional) registers the resource
   identifiers tokens for this client are intended for — the canonical `aud`
   claim (RFC-001). `allowed_scopes` (optional) is the client's scope policy:
   the only scopes it may request at `/oauth/authorize` and at every grant,
@@ -629,7 +673,9 @@ admin's tokens are revoked (token-version bump) and they must log in again
 `AppResponse`:
 ```json
 { "id": 1, "name": "My App", "client_id": "...", "active": true,
-  "is_public": false, "require_pkce": true, "url": "https://app.example.com",
+  "is_public": false, "require_pkce": true, "require_dpop": false,
+  "allow_token_exchange": false, "allow_impersonation": false,
+  "url": "https://app.example.com",
   "redirect_uris": ["https://app.example.com/callback"], "owner_id": 5,
   "audiences": [], "allowed_scopes": [], "claim_mappings": {},
   "magic_link_url": "https://app.example.com/auth/magic",
@@ -727,10 +773,15 @@ the current `mode`; `GET /api/admin/security/policy-decisions/summary?since=`
 Neither exposes the rules.
 
 ### 8.4 Other admin areas
-`/api/admin/stats`, `/activity`, `/dashboard/*`, `/superadmins`,
-`/security/*` (events, threats, geo, blocked-ips, ip-reputation),
-`/events/stream`, `/sessions`, `/reports/*`, `/alerts/*`, `/tokens/stats`,
-`/logs` (audit logs, with `/export`), `/settings/*`.
+`/api/admin/profile`, `/stats`, `/activity`, `/dashboard/*`, `/superadmins`,
+`/security/*` (events, threats, geo, audit-integrity, blocked-ips, ip-reputation,
+policy-decisions), `/events/stream` (SSE), `/sessions`, `/reports/*`,
+`/alerts/*` (rules, history, acknowledge; see [`ALERT-RULES.md`](ALERT-RULES.md)),
+`/tokens/stats`, `/logs` (audit logs, with `/export`), `/settings/*`.
+With `ADMIN_SCOPE_MODE=enforce` the monitoring routes also need
+`monitoring:read` (reads) or `monitoring:write` (writes), the others `admin`
+(`403 insufficient_scope`). `GET /metrics` (Prometheus) is served on the admin
+port only, without authentication; see [`OBSERVABILITY.md`](OBSERVABILITY.md).
 
 ### 8.5 App-scoped user management — `/api/apps/{app_id}/users`
 For **app admins** (per-app `admin` role or global admin). CRUD over an app's
@@ -757,10 +808,12 @@ Common codes: `invalid_request`, `invalid_client`, `invalid_grant`,
 |------|---------|
 | `400` | malformed request / validation error |
 | `401` | missing/invalid/expired/revoked token, bad credentials |
-| `403` | account locked, email unverified, insufficient role |
-| `422` | magic link already used |
+| `403` | account locked, email unverified, insufficient role; on the admin API also `elevation_required`, `password_change_required`, `insufficient_scope`, `invalid_audience`, `policy_denied` |
+| `409` | conflict (e.g. a stale policy `base_version`, magic link without `magic_link_url`) |
+| `422` | magic link already used; invalid policy |
 | `429` | rate limited (see `Retry-After`) |
 | `500` | server error (details never leaked to clients) |
+| `503` | `policy_unavailable` (no policy version can be loaded) |
 
 ---
 
@@ -774,14 +827,16 @@ return `401` with `WWW-Authenticate: Bearer realm="oauth2", error="invalid_token
 Login, signup, token, refresh, password-reset, and magic-link endpoints are
 per-IP rate limited. Responses include `X-RateLimit-Limit`,
 `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `Retry-After` on `429`.
-Defaults: login `5/60s`, signup `3/hour`.
+Defaults: login `5/60s` (also POST `/oauth/authorize`, password reset, magic-link
+verify, `/account/security`), signup `3/hour`, token `10/60s` (shared by
+`/oauth/token`, `/oauth/introspect`, `/oauth/revoke` and `/api/auth/refresh`).
 
 ### CORS
 Set `ALLOWED_ORIGINS` to an explicit comma-separated origin list to enable
 credentialed cross-origin requests. A wildcard (`*`) disables credentials (the
 spec forbids combining them). Allowed methods: `GET, POST, PUT, PATCH, DELETE,
-OPTIONS`. Allowed headers include `Authorization`, `Content-Type`,
-`X-Correlation-ID`.
+OPTIONS`. Allowed headers: `Accept`, `Authorization`, `Content-Type`,
+`X-Correlation-ID`, `X-Requested-By`.
 
 ### Correlation IDs
 Send `X-Correlation-ID` to trace a request across logs; it is echoed back in the
@@ -840,12 +895,19 @@ binary, read from the binary itself.
 | POST | `/api/auth/magic-link/verify` | — | Verify magic link |
 | GET | `/api/userinfo` | Bearer | Current user |
 | GET/PUT/PATCH | `/api/profile` | Bearer | Profile self-service |
+| GET/POST | `/api/profile/mfa`, `/api/profile/mfa/{enroll,confirm,disable,recovery-codes}` | Bearer | TOTP self-service |
+| GET/POST | `/auth/{login,signup,forgot-password,reset-password,verify-email,invite}` | — | Hosted pages (HTML) |
+| GET/POST | `/account/security` | — | Hosted MFA page (`ACCOUNT_SECURITY_PAGE=on`) |
+| GET | `/health`, `/health/{liveness,readiness}`, `/version`, `/api/version` | — | Health & build |
 
 **Admin router (8081)**
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| POST | `/api/admin/login` | — | Admin login |
+| POST | `/api/admin/login` | — | Admin login (deprecated) |
+| POST | `/api/admin/{change-password,elevate}` | global admin | Password change, step-up |
+| * | `/api/admin/webhooks/**` | global admin | Outbound webhooks |
+| * | `/api/admin/policy/**` | superadmin | Policy administration |
 | * | `/api/admin/apps/**` | global admin | App management |
 | * | `/api/admin/users/**` | global admin | User management |
 | * | `/api/admin/{dashboard,security,alerts,reports,logs,…}` | global admin | Ops |
@@ -856,5 +918,6 @@ binary, read from the binary itself.
 | PATCH | `/api/apps/{app_id}/service/users/{user_id}` | service account | M2M member profile update |
 | POST | `/api/apps/{app_id}/service/magic-link` | service account | M2M magic link |
 | POST | `/api/apps/{app_id}/service/policy/decide` | service account | A4 policy decision for the app's user |
+| GET | `/metrics`, `/health`, `/version` | — | Prometheus, health & build |
 </content>
 </invoke>

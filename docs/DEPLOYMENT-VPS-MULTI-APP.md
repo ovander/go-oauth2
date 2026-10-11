@@ -106,8 +106,8 @@ app.
    sudo ufw allow 22/tcp && sudo ufw allow 80/tcp && sudo ufw allow 443/tcp
    sudo ufw enable
    ```
-3. **Packages.** `caddy`, `postgresql` (15+), `rsync`. No Go or Node on the
-   VPS — everything is built on a workstation and shipped as artifacts.
+3. **Packages.** `caddy`, `postgresql-16` (PostgreSQL 16 is the only supported version), `rsync`.
+   No Go or Node on the VPS — everything is built on a workstation and shipped as artifacts.
 4. **Secrets, generated up front** (never reused between services):
    ```bash
    openssl rand -hex 32   # SECRET_KEY_BASE (Socrate)
@@ -710,7 +710,10 @@ Conventions that keep the invariants of §1:
 
 ### 8.1 Deploy
 
-Build on the workstation, ship artifacts, install and restart remotely:
+Build on the workstation, ship artifacts, install and restart remotely. To upgrade Socrate and
+both consoles together from their tags, use the
+[release kit](../deploy/release-kit/README.md) instead (one bundle, one installer, a generated
+runbook). Per repository:
 
 ```bash
 # Socrate + monitoring (needs the go-oauth2 checkout next to the repo, or GO_OAUTH2_DIR)

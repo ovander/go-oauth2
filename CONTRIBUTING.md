@@ -8,8 +8,8 @@ under the project's licence, [Apache-2.0](LICENSE).
 
 ## Development setup
 
-Requirements: Go (the `toolchain` line in `go.mod` downloads the exact version, 1.27.2) and
-PostgreSQL 16.
+Requirements: Go 1.27.2 (the `go` line in `go.mod`; with `GOTOOLCHAIN=auto` an older `go`
+command downloads it) and PostgreSQL 16.
 
 ```bash
 git clone https://github.com/ovander/go-oauth2 && cd go-oauth2

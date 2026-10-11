@@ -10,6 +10,14 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.14.2] - 2026-10-11
+
+Patch release on the **v1.x** line: documentation only, no code change. The README, the API
+reference (token exchange, DPoP, conditional discovery values, loopback admin port), the deploy
+and env templates, the OP contract and the VPS runbook catch up with the code; PostgreSQL 16 is
+the only supported version. No migration, no environment variable, no change of default, no
+token-contract change; the binary behaves exactly as v1.14.1.
+
 ### Documentation
 
 - **Docs brought up to date with the code.** README (features: policy decision point, webhooks,
@@ -2080,7 +2088,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.14.1...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.14.2...HEAD
+[1.14.2]: https://github.com/ovander/go-oauth2/compare/v1.14.1...v1.14.2
 [1.14.1]: https://github.com/ovander/go-oauth2/compare/v1.14.0...v1.14.1
 [1.14.0]: https://github.com/ovander/go-oauth2/compare/v1.13.1...v1.14.0
 [1.13.1]: https://github.com/ovander/go-oauth2/compare/v1.13.0...v1.13.1

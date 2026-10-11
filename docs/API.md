@@ -65,7 +65,7 @@ The operational consoles also use `admin`, `monitoring:read` and
 `monitoring:write`, which are not advertised. Unknown scopes are rejected with
 `invalid scope`.
 
-**Application-defined scopes (#336).** A resource server can define its own
+**Application-defined scopes (since v1.14.0, #336).** A resource server can define its own
 scope, such as `swingdrift:worker`, and an operator registers it in the
 `allowed_scopes` of each client that may obtain it (§8.2). The scope is then
 valid for those clients only, on every grant (`authorization_code`,

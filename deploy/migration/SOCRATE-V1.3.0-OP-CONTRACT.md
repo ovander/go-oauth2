@@ -1,4 +1,4 @@
-# Socrate OP contract (v1.3.0, updated for v1.13.0)
+# Socrate OP contract (v1.3.0, updated for v1.14.0)
 
 The values below are the OpenID Provider metadata and token facts for **Socrate**,
 derived directly from the server source (module `github.com/ovander/go-oauth2`).
@@ -140,7 +140,7 @@ compromised consumer secret reaches one tenant only. Rotate or deactivate the cl
 
 ## Application-defined scopes
 
-Since #336 (additive; no migration, no environment variable, discovery unchanged). A resource
+Since v1.14.0 (#336; additive; no migration, no environment variable, discovery unchanged). A resource
 server may define its own scope, `<namespace>:<name>` (namespace `[a-z][a-z0-9-]{0,31}`, name
 `[a-z][a-z0-9._-]{0,63}`), for example `swingdrift:worker`. An operator lists it in the
 `allowed_scopes` of each client that may obtain it; a namespace used by a global scope

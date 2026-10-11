@@ -10,6 +10,22 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Added
+
+- `deploy/release-kit/socrate-vps-prep.sh`: the one-time VPS preparation that
+  `socrate-vps-install.sh` expects, which was missing from the kit, so a fresh host could not
+  follow it. On Ubuntu 22.04/24.04, as root (dry run by default, `--apply` to change): installs
+  PostgreSQL 16 (PGDG on 22.04) and Caddy; creates the `socrate`, `socrate-admin-bff` and
+  `socrate-mon-bff` users, the directories, the `socrate` role and database, and the three env
+  files (ports 8080/8082/8090/8092, secrets generated on the host and never printed, the console
+  clients left as the placeholder the installer replaces when it registers them); writes
+  `/usr/local/sbin/socrate-backup.sh` (the runbook's `done: OK ... migrations=<n>`, with a daily
+  cron) and the Caddy sites in the form `socrate-caddy-update.sh` edits. Idempotent: nothing
+  that exists is overwritten. ufw only with `--firewall`, SSH allowed first. `socrate-release.sh`
+  ships it next to the installer and the runbook gains a "new VPS only" step;
+  `test-vps-prep.sh` runs it in CI against a fake root with stub system commands. No server
+  change, no migration, no environment variable.
+
 ## [1.14.1] - 2026-10-11
 
 Patch release on the **v1.x** line: the `client_updated` security event now records a change of a

@@ -54,18 +54,27 @@ jobs:
       # compiled with anything else, or if the Dockerfile's image has drifted
       # from it — the release image is what actually ships.
       # The release kit runs on the owner's Mac (bash 3.2) and the deploy scripts on the VPS:
-      # catch a syntax error here, not mid-deploy. socrate-release.sh stays ASCII-only.
+      # catch a syntax error here, not mid-deploy. socrate-release.sh and the VPS prep script
+      # (and its test) stay ASCII-only.
       - name: Deploy scripts parse
         run: |
           for f in deploy/release-kit/*.sh deploy/scripts/*.sh; do bash -n "$f" || exit 1; done
-          if LC_ALL=C grep -n '[^[:print:][:space:]]' deploy/release-kit/socrate-release.sh; then
-            echo "::error::deploy/release-kit/socrate-release.sh must stay ASCII-only"; exit 1
-          fi
+          for f in deploy/release-kit/socrate-release.sh deploy/release-kit/socrate-vps-prep.sh deploy/release-kit/test-vps-prep.sh; do
+            if LC_ALL=C grep -n '[^[:print:][:space:]]' "$f"; then
+              echo "::error::$f must stay ASCII-only"; exit 1
+            fi
+          done
 
       # The Caddy updater runs as root against the live sites: exercise it end to end (dry run
       # and --apply) on fixture sites, with stub caddy/systemctl/curl, before it reaches the VPS.
       - name: Caddy updater test
         run: bash deploy/release-kit/test-caddy-update.sh
+
+      # The VPS prep script installs packages and writes env files, the database role and the
+      # Caddy sites: run it against a fake root with stub apt/Postgres/Caddy/systemd, twice (the
+      # second run must change nothing), and hand its sites to the Caddy updater.
+      - name: VPS prep test
+        run: bash deploy/release-kit/test-vps-prep.sh
 
       - name: Toolchain matches go.mod (CI and Dockerfile)
         run: |

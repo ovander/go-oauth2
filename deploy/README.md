@@ -21,6 +21,7 @@ an **env template**, and a **bootstrap** script.
 >
 > **Upgrading a running suite** (Socrate and both consoles together) uses the release kit in
 > [`release-kit/`](release-kit/README.md): one bundle built from the three tags, one installer.
+> A new VPS for that kit is prepared once with `release-kit/socrate-vps-prep.sh`.
 
 ## Where Socrate sits
 

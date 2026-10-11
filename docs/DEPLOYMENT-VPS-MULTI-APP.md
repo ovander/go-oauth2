@@ -97,6 +97,13 @@ app.
 
 ## 2. Prerequisites
 
+> **Release-kit layout.** For the suite installed from a release bundle
+> ([`deploy/release-kit/`](../deploy/release-kit/README.md): admin API on `8082`, admin BFF on
+> `8092`, one Caddy site file per host), `socrate-vps-prep.sh` does steps 2 to 4 below and §3 on
+> a fresh Ubuntu 22.04/24.04 host (PostgreSQL 16, Caddy, users, env files with generated secrets,
+> database, backups, Caddy sites; ufw with `--firewall`), and `socrate-vps-install.sh` then
+> registers the console clients. The manual steps here describe the per-repo kits' layout.
+
 1. **DNS.** An `A`/`AAAA` record per hostname (`auth`, `admin`, `monitoring`,
    one per app) pointing at the VPS. Caddy will not obtain certificates until
    they resolve publicly.
@@ -106,7 +113,7 @@ app.
    sudo ufw allow 22/tcp && sudo ufw allow 80/tcp && sudo ufw allow 443/tcp
    sudo ufw enable
    ```
-3. **Packages.** `caddy`, `postgresql` (15+), `rsync`. No Go or Node on the
+3. **Packages.** `caddy`, `postgresql-16` (16 only), `rsync`. No Go or Node on the
    VPS — everything is built on a workstation and shipped as artifacts.
 4. **Secrets, generated up front** (never reused between services):
    ```bash

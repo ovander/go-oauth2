@@ -40,6 +40,11 @@ trailing slash**. Source: `internal/service/oauth_service.go` (`GetOpenIDConfigu
 | `authorization_response_iss_parameter_supported` | `true` (RFC 9207) |
 | `claims_supported` | `sub, iss, aud, exp, iat, nbf, email, email_verified, name, preferred_username, picture, role, app_roles, token_version, auth_time, acr, amr, act, cnf` |
 
+Two values depend on the server's configuration (source: `cmd/server/bootstrap.go`):
+`dpop_signing_alg_values_supported: ["ES256"]` is advertised only when `DPOP_MODE` is not `off`,
+and `urn:ietf:params:oauth:grant-type:token-exchange` is appended to `grant_types_supported` only
+when `TOKEN_EXCHANGE_MODE=enforce`. Both are off by default.
+
 **Not advertised / not supported:**
 
 - **No `end_session_endpoint`** is advertised. `GET`/`POST {iss}/oauth/logout`

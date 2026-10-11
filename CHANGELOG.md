@@ -26,6 +26,16 @@ Capabilities**, non-breaking).
   `test-vps-prep.sh` runs it in CI against a fake root with stub system commands. No server
   change, no migration, no environment variable.
 
+### Documentation
+
+- **Docs brought up to date with the code.** README (features: policy decision point, webhooks,
+  admin confinement modes, `prompt`, per-client TTL; limitations; backendkit v1.26.1; PostgreSQL 16 only, also in the VPS runbook and test configuration;
+  migrations `0001`–`0030`), `.env.example` (no `JWT_SECRET`; token rate limit, `_MS` windows,
+  `FROM_NAME`, GeoIP, `AUTO_MIGRATE`), the deploy env template (remaining opt-in modes),
+  `docs/API.md` (token exchange, DPoP, conditional discovery values, loopback admin port,
+  endpoint index), the OP contract and its prompt copy, `ALERT-RULES.md` (`/alerts/history`), the
+  deploy README (migrations, container bind), test strategy and runbook. No code change.
+
 ## [1.14.1] - 2026-10-11
 
 Patch release on the **v1.x** line: the `client_updated` security event now records a change of a

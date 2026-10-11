@@ -82,9 +82,9 @@ revocation, audience binding, authN/authZ middleware, security config.
 | **2** | Adversarial suite vs RFC 9700 / ASVS | ✅ done (#151) |
 | **3** | Fuzz targets + seed corpus (parsers) | ✅ done (#153) |
 | **4** | Crypto & key-lifecycle/JWKS verification tests | ✅ done (#155) |
-| **5** | Migration apply test + repository integration (ephemeral Postgres) | planned |
+| **5** | Migration apply test + repository integration (ephemeral Postgres) | ✅ done (v1.3.0: CI Postgres service, `TEST_DATABASE_URL`) |
 | **6** | Mutation testing (gremlins) on Tier A; mutation-score floor (nightly) | planned |
-| **7** | OIDC conformance profile (external/ongoing) | planned |
+| **7** | OIDC conformance profile (external/ongoing) | partial: backendkit's `conformance` suite checks its fixtures nightly against a Socrate built from `main`; the OpenID Foundation profile is planned |
 | **8** | Flip Tier A coverage gate to **blocking** (ratchet) | ✅ done |
 
 The adversarial (Phase 2) and fuzz seed-corpus (Phase 3) suites already run inside

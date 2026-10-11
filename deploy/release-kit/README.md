@@ -52,7 +52,7 @@ From the folder holding the three clones (or symlinks to them), named `go-oauth2
 `oauth2-admin` and `oauth2-monitoring`:
 
 ```bash
-bash go-oauth2/deploy/release-kit/socrate-release.sh v1.10.0 v1.5.0 v1.0.1
+bash go-oauth2/deploy/release-kit/socrate-release.sh v1.14.1 v1.7.0 v1.2.0
 ```
 
 The arguments are the Socrate, admin console and monitoring console tags. Each must be an

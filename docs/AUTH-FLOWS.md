@@ -31,6 +31,7 @@ This document describes the authentication flows that Socrate provides for clien
 | `/auth/reset-password` | GET/POST | Set new password |
 | `/auth/verify-email` | GET | Verify email address |
 | `/auth/invite` | GET/POST | Accept invitation |
+| `/account/security` | GET/POST | User turns MFA on or off (`ACCOUNT_SECURITY_PAGE=on`) |
 
 ---
 
@@ -432,7 +433,8 @@ This invitation expires in 24 hours.
 
 ## 6. Token Refresh Flow
 
-Access tokens expire after 15 minutes. Apps should refresh them.
+Access tokens expire after 15 minutes by default (a client may have a shorter
+`access_token_ttl_seconds`; read `expires_in`). Apps should refresh them.
 
 ```javascript
 const response = await fetch('https://socrate.example.com/oauth/token', {
@@ -492,7 +494,7 @@ Socrate uses a **two-tier role system**:
 
 | Level | Roles | Purpose |
 |-------|-------|---------|
-| **Socrate Platform** | `superadmin` | Manage Socrate itself (never exposed to apps) |
+| **Socrate Platform** | `admin`, `superadmin` | Manage Socrate itself (global roles) |
 | **App-Scoped** | `admin`, `manager`, `editor`, `viewer`, `user` | User's role within each app |
 
 ### Getting User's Role

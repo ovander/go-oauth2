@@ -283,7 +283,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO oauth;
 ### PostgreSQL Test Configuration
 
 ```ini
-# /etc/postgresql/15/main/postgresql.conf
+# /etc/postgresql/16/main/postgresql.conf
 
 # Memory (for 4GB Raspberry Pi)
 shared_buffers = 512MB
@@ -892,7 +892,7 @@ psql -h 192.168.1.14 -U oauth -d oauth_test -c "SELECT 1"
 systemctl status postgresql
 
 # Check pg_hba.conf allows connection
-cat /etc/postgresql/15/main/pg_hba.conf | grep oauth
+cat /etc/postgresql/16/main/pg_hba.conf | grep oauth
 ```
 
 #### 3. Token Generation Failed

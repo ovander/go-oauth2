@@ -244,7 +244,7 @@ OpenAPI document.
 git clone  →  make run  →  seed a superadmin  →  register a client  →  curl  →  JWT  →  ✅ done
 ```
 
-**Prerequisites:** Go 1.27.2 (`go 1.27.2` in `go.mod`; with `GOTOOLCHAIN=auto` an older `go` command downloads it), PostgreSQL 16,
+**Prerequisites:** Go 1.27.2 (`go 1.27.2` in `go.mod`; with `GOTOOLCHAIN=auto` an older `go` command downloads it), PostgreSQL 16 (the only supported version),
 `make`, `openssl`.
 
 ```bash

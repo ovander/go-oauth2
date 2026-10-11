@@ -22,7 +22,7 @@ Capabilities**, non-breaking).
 ### Documentation
 
 - **Docs brought up to date with the code.** README (features: policy decision point, webhooks,
-  admin confinement modes, `prompt`, per-client TTL; limitations; backendkit v1.26.1; Postgres 16;
+  admin confinement modes, `prompt`, per-client TTL; limitations; backendkit v1.26.1; PostgreSQL 16 only, also in the VPS runbook and test configuration;
   migrations `0001`–`0030`), `.env.example` (no `JWT_SECRET`; token rate limit, `_MS` windows,
   `FROM_NAME`, GeoIP, `AUTO_MIGRATE`), the deploy env template (remaining opt-in modes),
   `docs/API.md` (token exchange, DPoP, conditional discovery values, loopback admin port,

@@ -10,6 +10,12 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.14.1] - 2026-10-11
+
+Patch release on the **v1.x** line: the `client_updated` security event now records a change of a
+client's `claim_mappings`, with the old and new policy, like `allowed_scopes` since v1.14.0. No
+migration, no environment variable, no change of default, no token-contract change.
+
 ### Changed
 
 - **`client_updated` records a change of `claim_mappings`**, with the old and new policy, like
@@ -2064,7 +2070,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.14.0...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.14.1...HEAD
+[1.14.1]: https://github.com/ovander/go-oauth2/compare/v1.14.0...v1.14.1
 [1.14.0]: https://github.com/ovander/go-oauth2/compare/v1.13.1...v1.14.0
 [1.13.1]: https://github.com/ovander/go-oauth2/compare/v1.13.0...v1.13.1
 [1.13.0]: https://github.com/ovander/go-oauth2/compare/v1.12.3...v1.13.0

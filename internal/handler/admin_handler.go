@@ -70,7 +70,8 @@ func (h *AdminHandler) logClientLifecycle(r *http.Request, eventType model.Secur
 
 // appChangeSet compares a client before and after an update and returns the
 // security-relevant fields that changed. For the fields an attacker would
-// target (redirect URIs, active flag, delegation grants, audiences) it also
+// target (redirect URIs, active flag, delegation grants, audiences, allowed
+// scopes) it also
 // records old→new values so the SOC can reason about the change.
 func appChangeSet(before, after *model.App) (changed []string, detail map[string]interface{}) {
 	detail = map[string]interface{}{}
@@ -102,6 +103,12 @@ func appChangeSet(before, after *model.App) (changed []string, detail map[string
 	}
 	if !stringSliceEqual(before.Audiences, after.Audiences) {
 		markVal("audiences", []string(before.Audiences), []string(after.Audiences))
+	}
+	// The scope policy decides which scopes the client can obtain (A1), and an
+	// application-defined scope is valid only for the clients listing it: a
+	// change grants or withdraws a permission.
+	if !stringSliceEqual(before.AllowedScopes, after.AllowedScopes) {
+		markVal("allowed_scopes", []string(before.AllowedScopes), []string(after.AllowedScopes))
 	}
 	// The magic-link page receives single-use login tokens, so a change is as
 	// sensitive as a redirect URI change.

@@ -197,6 +197,50 @@ func TestUpdateApp_EmitsChangeSet(t *testing.T) {
 	}
 }
 
+// A change of the scope policy grants or withdraws permissions, so it is
+// recorded with old→new like the other security-relevant fields.
+func TestUpdateApp_AllowedScopesChangeIsAudited(t *testing.T) {
+	cap := &captureAuditService{}
+	app := &model.App{ID: 9, ClientID: "cid-9", Name: "Svc", OwnerID: uintPtr(1), Active: true,
+		AllowedScopes: model.StringArray{"api"}}
+	apps := &lifecycleAppService{
+		getByID: func(_ context.Context, _ uint) (*model.App, error) { return app, nil },
+		update: func(_ context.Context, _ uint, _ dto.UpdateAppRequest) (*model.App, error) {
+			cp := *app
+			cp.AllowedScopes = model.StringArray{"api", "swingdrift:worker"}
+			return &cp, nil
+		},
+	}
+	h := newLifecycleHandler(apps, cap)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/admin/apps/9",
+		bytes.NewBufferString(`{"allowed_scopes":["api","swingdrift:worker"]}`))
+	req = chiCtxWithID(req.WithContext(adminCtx(1, model.UserRoleSuperadmin)), "9")
+	rr := httptest.NewRecorder()
+	h.UpdateApp(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body %s)", rr.Code, rr.Body.String())
+	}
+	ev := findEvent(cap, model.SecurityEventClientUpdated)
+	if ev == nil {
+		t.Fatal("expected a client_updated event for an allowed_scopes change")
+	}
+	if changed, _ := ev.Details["changed"].([]string); len(changed) != 1 || changed[0] != "allowed_scopes" {
+		t.Errorf("changed = %v, want [allowed_scopes]", ev.Details["changed"])
+	}
+	sc, ok := ev.Details["allowed_scopes"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("allowed_scopes detail missing: %v", ev.Details["allowed_scopes"])
+	}
+	if got := sc["old"].([]string); len(got) != 1 || got[0] != "api" {
+		t.Errorf("allowed_scopes old = %v, want [api]", got)
+	}
+	if got := sc["new"].([]string); len(got) != 2 || got[1] != "swingdrift:worker" {
+		t.Errorf("allowed_scopes new = %v, want [api swingdrift:worker]", got)
+	}
+}
+
 func TestUpdateApp_NoChangeNoEvent(t *testing.T) {
 	cap := &captureAuditService{}
 	app := &model.App{ID: 9, ClientID: "cid-9", Name: "Svc", OwnerID: uintPtr(1), Active: true}

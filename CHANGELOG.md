@@ -10,6 +10,15 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Changed
+
+- **`client_updated` records a change of `allowed_scopes`**, with its old and new values, like the
+  other security-relevant client fields (redirect URIs, audiences, delegation grants). The scope
+  policy decides which scopes a client can obtain, so a change grants or withdraws a permission;
+  until now an update that changed only `allowed_scopes` left no audit event. No migration, no
+  environment variable, no change of default; the webhook payload of `client_updated` gains the
+  field when it changes.
+
 ### Added
 
 - **Application-defined scopes** (#336, A1 / P3-8). A client's `allowed_scopes` may now list a

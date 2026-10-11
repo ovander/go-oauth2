@@ -81,11 +81,11 @@ graph TD
 | Component | Role | Where |
 |---|---|---|
 | **Socrate** | OAuth 2.1/OIDC authorization, tokens, JWKS, hosted login/consent, MFA, invitations, per-app RBAC, admin API, security telemetry, tamper-evident audit | **This repo** |
-| **backendkit** | Shared Go library: `jwtauth` (JWKS-validated bearer middleware), `bff` (server-side sessions, CSRF, fail-closed session→bearer proxy, login binding), `socrate` (API + token client), tiering, logging | [`ovander/backendkit`](https://github.com/ovander/backendkit) `v1.21.0` |
+| **backendkit** | Shared Go library: `jwtauth` (JWKS-validated bearer middleware), `bff` (server-side sessions, CSRF, fail-closed session→bearer proxy, login binding), `socrate` (API + token client), `pep` (enforces Socrate's policy decisions), `conformance` (Socrate-shaped fixtures, checked nightly against a server built from `main`), tiering, logging | [`ovander/backendkit`](https://github.com/ovander/backendkit) `v1.26.1` |
 | **Admin console** | Vue SPA + Go BFF: clients, users, per-app roles, superadmins, step-up for destructive actions | [`ovander/oauth2-admin`](https://github.com/ovander/oauth2-admin) |
 | **Monitoring console** | Vue SPA + Go BFF (optional Postgres sessions): security events, threats, geo analytics, alert rules, blocked IPs, reports, live event stream | [`ovander/oauth2-monitoring`](https://github.com/ovander/oauth2-monitoring) |
 | **Applications** | Domain logic only; embed backendkit; own tenant-scoped data | Separate repos |
-| **Infrastructure** | PostgreSQL + Caddy on one Linux VPS today ([runbook](docs/DEPLOYMENT-VPS-MULTI-APP.md)); KMS/HSM, policy engine, mesh on the roadmap | — |
+| **Infrastructure** | PostgreSQL 16 + Caddy on one Linux VPS today ([runbook](docs/DEPLOYMENT-VPS-MULTI-APP.md)); KMS/HSM, an external policy engine (the PDP runs in-process today) and a mesh on the roadmap | — |
 
 Full target-state spec: [`PLATFORM-REFERENCE-ARCHITECTURE.md`](docs/PLATFORM-REFERENCE-ARCHITECTURE.md).
 
@@ -137,7 +137,8 @@ What is in the code today (every item below is routed, tested and documented in 
 - Introspection RFC 7662, revocation RFC 7009, end-session
 - Audience binding (`dual` mode), RS256 key rotation with JWKS ring
 - Confidential + public clients, exact redirect URIs, per-client PKCE/DPoP
-- Per-client scope policy (`off/observe/enforce`), application-defined scopes, and declarative custom claims
+- `prompt=login`/`none` and `max_age`; per-client access-token lifetime
+- Per-client scope policy (`off/observe/enforce`), application-defined scopes (`<namespace>:<name>`), and declarative custom claims
 
 </td>
 <td valign="top" width="33%">
@@ -164,8 +165,10 @@ What is in the code today (every item below is routed, tested and documented in 
 - Dual-port: public `:8080`, admin API `:8081` on loopback
 - Global-admin gate, superadmin gate, forced password change, admin MFA policy
 - Step-up (fresh `auth_time`) for destructive actions
-- Least-privilege scope gating (`ADMIN_SCOPE_MODE`)
-- Hash-chained, integrity-scanned security audit log; admin action log with CSV export
+- Least-privilege scope gating (`ADMIN_SCOPE_MODE`); admin API confined to console tokens (`ADMIN_API_AUDIENCE_MODE`) and admins to the consoles (`ADMIN_APP_SIGNIN_POLICY`)
+- Policy decision point (`POLICY_MODE` `off/shadow/enforce`): on the admin API, a decide endpoint for applications, and a decision log
+- Outbound webhooks: signed deliveries from a transactional outbox (`WEBHOOKS_MODE`)
+- Hash-chained, integrity-scanned security audit log (sync or batched `AUDIT_WRITE_MODE=async`); admin action log with CSV export
 - Rate limiting, IP blocking, auto-defense (brute-force escalation), trusted-proxy model
 - Security events, threat metrics, GeoIP analytics, sessions, token stats
 - Alert rules + history, security reports (JSON/CSV), live SSE event stream
@@ -176,8 +179,9 @@ What is in the code today (every item below is routed, tested and documented in 
 </tr>
 </table>
 
-> Several controls (DPoP, token exchange, audience binding, refresh-reuse, admin MFA, admin scope
-> gating) ship **default-off** behind `off / observe / enforce` modes, so you adopt them gradually.
+> Several controls (DPoP, token exchange, audience binding, refresh-reuse, scope policy, admin MFA,
+> admin scope gating, admin sign-in and audience confinement, the policy decision point, webhooks)
+> ship **default-off** behind `off / observe / enforce` modes, so you adopt them gradually.
 > See [Maturity](#maturity) for what is on by default and what is not implemented.
 
 ## Security
@@ -221,14 +225,16 @@ a single-instance, production-capable identity server with two operator consoles
 | ✅ Single-VPS production deployment ([runbook](docs/DEPLOYMENT-VPS-MULTI-APP.md), Caddy + Postgres, systemd kits) | ◻️ KMS / HSM key custody |
 | ✅ Four internal security audit passes + a penetration test | ◻️ Service mesh + mTLS / SPIFFE |
 | ✅ CI gates (`-race`, `govulncheck`, lint, coverage ratchet) | ◻️ Tenant RLS + envelope encryption |
-| ✅ Tested (169 test files incl. adversarial + fuzz suites) | ◻️ Federation, AI gateway, passkeys |
+| ✅ Tested (242 test files incl. adversarial + fuzz suites) | ◻️ Federation, AI gateway, passkeys |
 | ✅ MFA, DPoP, token exchange, audit, admin consoles | ◻️ Enforcement-by-default → **v2.0** |
 
-**Honest limitations:** single-instance only (rate-limit, replay and IP-block state is in-process;
-BFF sessions can be in Postgres). Not implemented: Device Flow, CIBA, PAR/JAR, FAPI profiles,
+**Honest limitations:** deployed as a single instance. `STATE_BACKEND=postgres` shares the
+rate-limit counters and the DPoP replay cache and cluster locks run each background job once, but
+auto-defense counters stay per-instance and high availability is not yet a supported deployment
+(BFF sessions can be in Postgres). Not implemented: Device Flow, CIBA, PAR/JAR, FAPI profiles,
 dynamic client registration, back-channel/front-channel logout, persisted consent, federation to
-upstream IdPs (social login, SAML, LDAP), passkeys/WebAuthn, SCIM, outbound webhooks,
-OpenTelemetry tracing, an OpenAPI document.
+upstream IdPs (social login, SAML, LDAP), passkeys/WebAuthn, SCIM, OpenTelemetry tracing, an
+OpenAPI document.
 
 ## Quick start
 
@@ -238,7 +244,7 @@ OpenTelemetry tracing, an OpenAPI document.
 git clone  →  make run  →  seed a superadmin  →  register a client  →  curl  →  JWT  →  ✅ done
 ```
 
-**Prerequisites:** Go 1.27.2 (`go 1.27.2` in `go.mod`; with `GOTOOLCHAIN=auto` an older `go` command downloads it), PostgreSQL 14+,
+**Prerequisites:** Go 1.27.2 (`go 1.27.2` in `go.mod`; with `GOTOOLCHAIN=auto` an older `go` command downloads it), PostgreSQL 16,
 `make`, `openssl`.
 
 ```bash
@@ -270,12 +276,12 @@ internal/
   middleware/   auth, roles, step-up, scope gating, rate-limit, client-IP, DPoP, IP-block, body cap, headers
   service/      business logic (oauth, auth, mfa, magic link, audit, auto-defense, alerts, email)
   shared/auth/  token & crypto core: keys · dpop/ · tokenexchange/ · totp/ · PKCE · CSRF · consent
-  database/migrate/  versioned schema steps applied with AUTO_MIGRATE=true
+  database/migrate/  numbered schema migrations (0001–0030), applied at every start
   model/ repository/ dto/ web/ (hosted pages) …
 pkg/            logger, database
 web/            embedded static assets
 deploy/         VPS kit: env template, release-kit/ (build, verify, install the suite), migration contract
-docs/           architecture, API, deployment runbook, audits, roadmaps
+docs/           architecture, API, deployment runbook, extensibility, observability, tests
 ```
 
 ## See it working
@@ -302,11 +308,12 @@ Discovery is live and standards-compliant:
   "introspection_endpoint": ".../oauth/introspect",
   "revocation_endpoint": ".../oauth/revoke",
   "jwks_uri": ".../.well-known/jwks.json",
-  "grant_types_supported": ["authorization_code", "refresh_token", "client_credentials"],   // + token-exchange when enabled
+  "grant_types_supported": ["authorization_code", "refresh_token", "client_credentials"],   // + token-exchange with TOKEN_EXCHANGE_MODE=enforce
   "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post"],
   "code_challenge_methods_supported": ["S256"],
   "scopes_supported": ["openid", "email", "profile", "offline_access", "api"],
   "acr_values_supported": ["pwd", "mfa"],
+  "prompt_values_supported": ["none", "login"],
   "authorization_response_iss_parameter_supported": true
 }
 ```

@@ -19,6 +19,16 @@ Capabilities**, non-breaking).
   is not a change. No migration, no environment variable, no change of default; the webhook payload
   of `client_updated` gains the field when it changes.
 
+### Documentation
+
+- **Docs brought up to date with the code.** README (features: policy decision point, webhooks,
+  admin confinement modes, `prompt`, per-client TTL; limitations; backendkit v1.26.1; Postgres 16;
+  migrations `0001`–`0030`), `.env.example` (no `JWT_SECRET`; token rate limit, `_MS` windows,
+  `FROM_NAME`, GeoIP, `AUTO_MIGRATE`), the deploy env template (remaining opt-in modes),
+  `docs/API.md` (token exchange, DPoP, conditional discovery values, loopback admin port,
+  endpoint index), the OP contract and its prompt copy, `ALERT-RULES.md` (`/alerts/history`), the
+  deploy README (migrations, container bind), test strategy and runbook. No code change.
+
 ## [1.14.0] - 2026-10-11
 
 Minor release on the **v1.x** line. A resource server can define its own scope (e.g.

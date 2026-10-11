@@ -34,11 +34,12 @@ supported values; fetch it if this environment has network access. **If you cann
 reach the OP (blocked egress), use the confirmed v1.3.0 values below instead of
 marking those checks UNKNOWN** — they are derived from the server source.
 
-CONFIRMED DISCOVERY VALUES (v1.3.0, current as of v1.12.0; `{iss}` = issuer, e.g. `https://socrate.vandermoten.eu`, no trailing slash):
+CONFIRMED DISCOVERY VALUES (v1.3.0, current as of v1.14.0; `{iss}` = issuer, e.g. `https://socrate.vandermoten.eu`, no trailing slash):
 - `authorization_endpoint` = `{iss}/oauth/authorize`, `token_endpoint` = `{iss}/oauth/token`,
   `userinfo_endpoint` = `{iss}/oauth/userinfo`, `revocation_endpoint` = `{iss}/oauth/revoke`,
   `introspection_endpoint` = `{iss}/oauth/introspect`, `jwks_uri` = `{iss}/.well-known/jwks.json`.
-- `grant_types_supported` = authorization_code, refresh_token, client_credentials.
+- `grant_types_supported` = authorization_code, refresh_token, client_credentials (plus the
+  RFC 8693 token-exchange grant only when the server enables it).
 - `response_types_supported` = code only. `code_challenge_methods_supported` = S256 only.
 - `token_endpoint_auth_methods_supported` = client_secret_basic, client_secret_post.
 - `scopes_supported` = openid, email, profile, offline_access, api.
@@ -48,6 +49,10 @@ CONFIRMED DISCOVERY VALUES (v1.3.0, current as of v1.12.0; `{iss}` = issuer, e.g
   registered redirect URI of an identified client; to end a session, revoke the refresh token.
 - `sub` = the user's numeric id as a decimal string (`app:<id>` for client_credentials).
 - `aud[0]` = the client's `client_id`. Refresh tokens are issued without needing `offline_access`.
+  With `AUDIENCE_MODE=dual` the client's registered audiences follow it, on every grant
+  (`client_credentials` included since v1.13.0).
+- A client may also be granted application-defined scopes `<namespace>:<name>` (v1.14.0) in its
+  `allowed_scopes`; they are issued in the access token's `scope` claim, never in `scopes_supported`.
 - `auth_time` = the hosted sign-in time (v1.10.0+), kept on refresh. `amr`/`acr` = `["pwd"]`/`pwd`,
   or `["pwd","otp","mfa"]`/`mfa` after a second factor.
 

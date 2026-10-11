@@ -710,7 +710,10 @@ Conventions that keep the invariants of §1:
 
 ### 8.1 Deploy
 
-Build on the workstation, ship artifacts, install and restart remotely:
+Build on the workstation, ship artifacts, install and restart remotely. To upgrade Socrate and
+both consoles together from their tags, use the
+[release kit](../deploy/release-kit/README.md) instead (one bundle, one installer, a generated
+runbook). Per repository:
 
 ```bash
 # Socrate + monitoring (needs the go-oauth2 checkout next to the repo, or GO_OAUTH2_DIR)

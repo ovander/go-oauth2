@@ -13,8 +13,9 @@
 #                                         MANIFEST and a SHA256SUMS
 #   socrate-vps-install.sh               installer / upgrader (copied from this kit)
 #   socrate-caddy-update.sh              Caddy site updater (copied from this kit)
+#   socrate-vps-prep.sh                  one-time preparation of a new VPS (copied from this kit)
 #   RUNBOOK-<socrate tag>.md             the deploy steps, filled with this build's values
-#   SHA256-<socrate tag>.txt             checksums of the four files above
+#   SHA256-<socrate tag>.txt             checksums of the five files above
 #
 # Needs: git, Go (any version with GOTOOLCHAIN=auto: each build uses the Go its go.mod names,
 # and the script checks it), Node.js >= each console's .nvmrc with npm, tar.
@@ -53,7 +54,7 @@ for d in "$GO_OAUTH2" "$ADMIN" "$MON"; do
     || die "$d is not a git clone: run from the folder holding go-oauth2, oauth2-admin and oauth2-monitoring"
 done
 for c in git go node npm tar; do command -v "$c" >/dev/null 2>&1 || die "missing command: $c"; done
-for f in socrate-vps-install.sh socrate-caddy-update.sh; do [ -f "$KIT_DIR/$f" ] || die "$KIT_DIR/$f missing"; done
+for f in socrate-vps-install.sh socrate-caddy-update.sh socrate-vps-prep.sh; do [ -f "$KIT_DIR/$f" ] || die "$KIT_DIR/$f missing"; done
 
 if [ "${FETCH:-0}" = 1 ]; then
   for d in "$GO_OAUTH2" "$ADMIN" "$MON"; do git -C "$d" fetch --quiet --tags origin; done
@@ -201,7 +202,7 @@ EOF
 mkdir -p "$OUT"
 tar -czf "$OUT/${BUNDLE_NAME}.tar.gz" -C "$WORK" "$BUNDLE_NAME"
 if tar -tzf "$OUT/${BUNDLE_NAME}.tar.gz" | grep -q '/\._'; then die "the archive contains macOS ._ files"; fi
-cp "$KIT_DIR/socrate-vps-install.sh" "$KIT_DIR/socrate-caddy-update.sh" "$OUT/"
+cp "$KIT_DIR/socrate-vps-install.sh" "$KIT_DIR/socrate-caddy-update.sh" "$KIT_DIR/socrate-vps-prep.sh" "$OUT/"
 bundle_sha="$($SHA256 "$OUT/${BUNDLE_NAME}.tar.gz" | awk '{print $1}')"
 ok "$OUT/${BUNDLE_NAME}.tar.gz"
 
@@ -212,6 +213,18 @@ cat > "$OUT/RUNBOOK-${SOCRATE_REF}.md" <<EOF
 
 Bundle: \`${BUNDLE_NAME}.tar.gz\`, sha256 \`${bundle_sha}\`
 Socrate ${SOCRATE_REF} (${SOC_COMMIT:0:7}), admin console ${ADMIN_REF} (${ADMIN_COMMIT:0:7}), monitoring console ${MON_REF} (${MON_COMMIT:0:7}), built ${BUILD_TIME}.
+
+## 0. New VPS only (once, before the first install)
+
+${fence}
+rsync -P ${OUT}/socrate-vps-prep.sh ${VPS_SSH}:
+ssh -t ${VPS_SSH} 'sudo bash socrate-vps-prep.sh --acme-email <you@example.com>'           # the plan
+ssh -t ${VPS_SSH} 'sudo bash socrate-vps-prep.sh --acme-email <you@example.com> --apply'   # do it
+${fence}
+
+It installs PostgreSQL 16 and Caddy and writes the env files, the database, the backup script and
+the Caddy sites that the steps below expect (\`--help\` lists the options: host names, SMTP,
+firewall). Skip this section on a host that already runs the suite.
 
 ## 1. Upload (workstation)
 
@@ -251,7 +264,7 @@ ${fence}
 
 Expect \`"version":"${SOCRATE_REF}"\` and \`"commit":"${SOC_COMMIT:0:7}"\`.
 EOF
-(cd "$OUT" && $SHA256 "${BUNDLE_NAME}.tar.gz" socrate-vps-install.sh socrate-caddy-update.sh "RUNBOOK-${SOCRATE_REF}.md" > "SHA256-${SOCRATE_REF}.txt")
+(cd "$OUT" && $SHA256 "${BUNDLE_NAME}.tar.gz" socrate-vps-install.sh socrate-caddy-update.sh socrate-vps-prep.sh "RUNBOOK-${SOCRATE_REF}.md" > "SHA256-${SOCRATE_REF}.txt")
 ok "runbook: $OUT/RUNBOOK-${SOCRATE_REF}.md"
 
 printf '\nReady in %s:\n' "$OUT"

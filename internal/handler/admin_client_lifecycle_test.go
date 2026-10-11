@@ -241,6 +241,72 @@ func TestUpdateApp_AllowedScopesChangeIsAudited(t *testing.T) {
 	}
 }
 
+// A change of the claim mappings alters every token issued afterwards, so it is
+// recorded with old→new; restating a mapping's default target is no change.
+func TestUpdateApp_ClaimMappingsChangeIsAudited(t *testing.T) {
+	cap := &captureAuditService{}
+	app := &model.App{ID: 9, ClientID: "cid-9", Name: "Svc", OwnerID: uintPtr(1), Active: true,
+		ClaimMappings: model.ClaimMappings{"tenant_id": {Source: "user.attributes.tenant"}}}
+	apps := &lifecycleAppService{
+		getByID: func(_ context.Context, _ uint) (*model.App, error) { return app, nil },
+		update: func(_ context.Context, _ uint, _ dto.UpdateAppRequest) (*model.App, error) {
+			cp := *app
+			cp.ClaimMappings = model.ClaimMappings{"tenant_id": {Source: "literal:acme", Target: "both"}}
+			return &cp, nil
+		},
+	}
+	h := newLifecycleHandler(apps, cap)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/admin/apps/9",
+		bytes.NewBufferString(`{"claim_mappings":{"tenant_id":{"source":"literal:acme","target":"both"}}}`))
+	req = chiCtxWithID(req.WithContext(adminCtx(1, model.UserRoleSuperadmin)), "9")
+	rr := httptest.NewRecorder()
+	h.UpdateApp(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body %s)", rr.Code, rr.Body.String())
+	}
+	ev := findEvent(cap, model.SecurityEventClientUpdated)
+	if ev == nil {
+		t.Fatal("expected a client_updated event for a claim_mappings change")
+	}
+	if changed, _ := ev.Details["changed"].([]string); len(changed) != 1 || changed[0] != "claim_mappings" {
+		t.Errorf("changed = %v, want [claim_mappings]", ev.Details["changed"])
+	}
+	cm, ok := ev.Details["claim_mappings"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("claim_mappings detail missing: %v", ev.Details["claim_mappings"])
+	}
+	if got := cm["old"].(map[string]model.ClaimMapping)["tenant_id"].Source; got != "user.attributes.tenant" {
+		t.Errorf("claim_mappings old source = %q, want user.attributes.tenant", got)
+	}
+	if got := cm["new"].(map[string]model.ClaimMapping)["tenant_id"]; got.Source != "literal:acme" || got.Target != "both" {
+		t.Errorf("claim_mappings new = %+v, want literal:acme to both", got)
+	}
+}
+
+func TestClaimMappingsEqual(t *testing.T) {
+	access := model.ClaimMappings{"role": {Source: "app_role", Target: "access"}}
+	cases := []struct {
+		name string
+		a, b model.ClaimMappings
+		want bool
+	}{
+		{"both empty", nil, model.ClaimMappings{}, true},
+		{"default target restated", model.ClaimMappings{"role": {Source: "app_role"}}, access, true},
+		{"source changed", access, model.ClaimMappings{"role": {Source: "user.email", Target: "access"}}, false},
+		{"target changed", access, model.ClaimMappings{"role": {Source: "app_role", Target: "id"}}, false},
+		{"renamed", access, model.ClaimMappings{"roles": {Source: "app_role", Target: "access"}}, false},
+		{"added", access, model.ClaimMappings{"role": {Source: "app_role"}, "tenant": {Source: "literal:x"}}, false},
+		{"cleared", access, model.ClaimMappings{}, false},
+	}
+	for _, c := range cases {
+		if got := claimMappingsEqual(c.a, c.b); got != c.want {
+			t.Errorf("%s: claimMappingsEqual = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
 func TestUpdateApp_NoChangeNoEvent(t *testing.T) {
 	cap := &captureAuditService{}
 	app := &model.App{ID: 9, ClientID: "cid-9", Name: "Svc", OwnerID: uintPtr(1), Active: true}

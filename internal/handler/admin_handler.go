@@ -71,7 +71,7 @@ func (h *AdminHandler) logClientLifecycle(r *http.Request, eventType model.Secur
 // appChangeSet compares a client before and after an update and returns the
 // security-relevant fields that changed. For the fields an attacker would
 // target (redirect URIs, active flag, delegation grants, audiences, allowed
-// scopes) it also
+// scopes, claim mappings) it also
 // records old→new values so the SOC can reason about the change.
 func appChangeSet(before, after *model.App) (changed []string, detail map[string]interface{}) {
 	detail = map[string]interface{}{}
@@ -110,6 +110,12 @@ func appChangeSet(before, after *model.App) (changed []string, detail map[string
 	if !stringSliceEqual(before.AllowedScopes, after.AllowedScopes) {
 		markVal("allowed_scopes", []string(before.AllowedScopes), []string(after.AllowedScopes))
 	}
+	// Claim mappings decide which claims the client's tokens carry, and so what
+	// a resource server reads as a tenant or a role: a change alters every
+	// token issued from then on.
+	if !claimMappingsEqual(before.ClaimMappings, after.ClaimMappings) {
+		markVal("claim_mappings", claimMappingsDetail(before.ClaimMappings), claimMappingsDetail(after.ClaimMappings))
+	}
 	// The magic-link page receives single-use login tokens, so a change is as
 	// sensitive as a redirect URI change.
 	if !stringPtrEqual(before.MagicLinkURL, after.MagicLinkURL) {
@@ -120,6 +126,39 @@ func appChangeSet(before, after *model.App) (changed []string, detail map[string
 		markVal("access_token_ttl_seconds", derefInt(before.AccessTokenTTLSeconds), derefInt(after.AccessTokenTTLSeconds))
 	}
 	return changed, detail
+}
+
+// claimMappingsEqual reports whether two claim-mapping policies issue the
+// same claims: same names, sources and effective targets (an empty target is
+// the access token, as at issuance).
+func claimMappingsEqual(a, b model.ClaimMappings) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for name, ma := range a {
+		mb, ok := b[name]
+		if !ok || ma.Source != mb.Source || effectiveClaimTarget(ma) != effectiveClaimTarget(mb) {
+			return false
+		}
+	}
+	return true
+}
+
+func effectiveClaimTarget(m model.ClaimMapping) string {
+	if m.Target == "" {
+		return model.ClaimTargetAccess
+	}
+	return m.Target
+}
+
+// claimMappingsDetail is a copy of the policy for the audit record, never nil
+// so an empty policy reads as {} rather than null.
+func claimMappingsDetail(m model.ClaimMappings) map[string]model.ClaimMapping {
+	out := make(map[string]model.ClaimMapping, len(m))
+	for name, v := range m {
+		out[name] = v
+	}
+	return out
 }
 
 func stringPtrEqual(a, b *string) bool {

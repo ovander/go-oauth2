@@ -10,6 +10,15 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Changed
+
+- **`client_updated` records a change of `claim_mappings`**, with the old and new policy, like
+  `allowed_scopes` since v1.14.0. Claim mappings decide which claims a client's tokens carry (a
+  tenant, a role), so a change alters every token issued afterwards; until now an update that
+  changed only the mappings left no audit event. Restating a mapping's default target (`access`)
+  is not a change. No migration, no environment variable, no change of default; the webhook payload
+  of `client_updated` gains the field when it changes.
+
 ## [1.14.0] - 2026-10-11
 
 Minor release on the **v1.x** line. A resource server can define its own scope (e.g.

@@ -607,8 +607,8 @@ admin's tokens are revoked (token-version bump) and they must log in again
   `docs/EXTENSIBILITY.md` for the size caps and the full semantics. On update,
   omitting `audiences` / `allowed_scopes` / `claim_mappings` leaves them
   unchanged; a non-null value (including `[]` / `{}`) replaces the set. A
-  change of `audiences` or `allowed_scopes` is audited in `client_updated` with
-  the old and new values.
+  change of `audiences`, `allowed_scopes` or `claim_mappings` is audited in
+  `client_updated` with the old and new values.
   `magic_link_url` (optional) is the app's page that magic-link emails open
   (§5.7): an absolute `https` URL (`http` only for `localhost`), without
   credentials, fragment, or `token` / `client_id` parameter, on the same origin

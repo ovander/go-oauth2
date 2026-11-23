@@ -87,8 +87,8 @@ func TestStepUpMFA_EnabledValidCode(t *testing.T) {
 
 func TestStepUpMFA_EnabledInvalidCode(t *testing.T) {
 	stub := &stubMFAVerifier{verifyErr: ErrMFAInvalidCode}
-	s := &authService{mfa: stub}
 	user := &model.User{ID: 1, MFAEnabled: true}
+	s := lockoutService(stub, newLockoutUserRepo(user))
 	if err := s.stepUpMFA(context.Background(), user, "000000"); !errors.Is(err, ErrMFAInvalidCode) {
 		t.Fatalf("expected ErrMFAInvalidCode, got %v", err)
 	}
@@ -98,8 +98,8 @@ func TestStepUpMFA_EnabledInvalidCode(t *testing.T) {
 // leaks internal decrypt/lookup details to the login response.
 func TestStepUpMFA_NormalizesVerifierError(t *testing.T) {
 	stub := &stubMFAVerifier{verifyErr: errors.New("decrypt boom")}
-	s := &authService{mfa: stub}
 	user := &model.User{ID: 1, MFAEnabled: true}
+	s := lockoutService(stub, newLockoutUserRepo(user))
 	if err := s.stepUpMFA(context.Background(), user, "000000"); !errors.Is(err, ErrMFAInvalidCode) {
 		t.Fatalf("expected ErrMFAInvalidCode, got %v", err)
 	}
@@ -136,8 +136,8 @@ func TestStepUpMFA_ValidTOTPDoesNotRedeem(t *testing.T) {
 // Neither a valid TOTP code nor a valid recovery code -> ErrMFAInvalidCode.
 func TestStepUpMFA_NeitherTOTPNorRecovery(t *testing.T) {
 	stub := &stubMFAVerifier{verifyErr: ErrMFAInvalidCode, redeemOK: false}
-	s := &authService{mfa: stub}
 	user := &model.User{ID: 1, MFAEnabled: true}
+	s := lockoutService(stub, newLockoutUserRepo(user))
 	if err := s.stepUpMFA(context.Background(), user, "nope"); !errors.Is(err, ErrMFAInvalidCode) {
 		t.Fatalf("expected ErrMFAInvalidCode, got %v", err)
 	}

@@ -12,6 +12,19 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **A wrong second-factor code counts toward the account lockout.** On every sign-in path that
+  asks for a TOTP or recovery code after the password (`POST /api/auth/login`, the hosted login
+  form, the hosted account page, `POST /api/admin/login` and `POST /api/admin/elevate`), a wrong
+  code now increments the same per-account failed-attempt counter as a wrong password, and the
+  account is locked for the lockout duration when the counter reaches the limit (an
+  `account_locked` event with reason `mfa_invalid`). A locked account is refused before any code
+  is checked, on `/api/admin/elevate` too, which now answers `403 account is locked` like the
+  login endpoints. A missing code, a valid code and a redeemed recovery code do not count; a
+  complete sign-in still resets the counter. Deploy note: no migration, no environment variable,
+  no change of default (the existing limit and lockout duration apply).
+
+### Security
+
 - **`GET /oauth/authorize` ignores an `Authorization` header.** The endpoint is a browser
   endpoint: it now always answers with the hosted login page, followed by the consent page, and
   no longer treats a bearer access token on the request as a signed-in browser (which skipped the

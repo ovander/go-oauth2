@@ -1009,19 +1009,62 @@ func (s *authService) ValidateInviteToken(ctx context.Context, token string) (*d
 	}, nil
 }
 
-// invitePending reports whether u is an account that is still waiting for an
+// InvitePending reports whether u is an account that is still waiting for an
 // invite to activate it: created by an administrator or an application with a
 // throwaway password (Source "manual" or "invite"), never verified and never
 // signed in. Any other account belongs to someone already, and an invite must
 // not change its password.
-func invitePending(u *model.User) bool {
+func InvitePending(u *model.User) bool {
 	return !u.IsVerified && u.LastLogin == nil && u.ConfirmedAt == nil &&
 		(u.Source == "manual" || u.Source == "invite") && !u.IsGlobalAdmin()
 }
 
+// InviteOwnerApp returns the application whose invite may activate the
+// pending account u, and false when no application may. It is the app
+// recorded when the invite created the account (u.InviteAppID). For an account
+// created before that was recorded (InviteAppID nil), it is the app of the
+// account's oldest role in roles, the one that invited it first; an account
+// with no role has none.
+func InviteOwnerApp(u *model.User, roles []model.UserAppRole) (uint, bool) {
+	if u.InviteAppID != nil {
+		return *u.InviteAppID, true
+	}
+	var oldest *model.UserAppRole
+	for i := range roles {
+		r := &roles[i]
+		if r.UserID != u.ID {
+			continue
+		}
+		if oldest == nil || r.ID < oldest.ID {
+			oldest = r
+		}
+	}
+	if oldest == nil {
+		return 0, false
+	}
+	return oldest.AppID, true
+}
+
+// inviteActivates reports whether an invite for appID may activate the pending
+// account u. It reads u's roles only for an account that does not record the
+// app that created it, and refuses when they cannot be read.
+func (s *authService) inviteActivates(ctx context.Context, u *model.User, appID uint) bool {
+	var roles []model.UserAppRole
+	if u.InviteAppID == nil {
+		var err error
+		if roles, err = s.userAppRoleRepo.FindByUser(ctx, u.ID); err != nil {
+			logger.FromContext(ctx).Warnf("auth: accept invite: read roles of user %d: %v", u.ID, err)
+			return false
+		}
+	}
+	owner, ok := InviteOwnerApp(u, roles)
+	return ok && owner == appID
+}
+
 // AcceptInvite accepts an invite: it creates the account, or activates the one
 // the invite created. It never sets the password of an account already in use
-// (ErrInviteAccountActive).
+// (ErrInviteAccountActive), and an invite only activates a pending account
+// created for the same app (ErrInviteForOtherApp).
 func (s *authService) AcceptInvite(ctx context.Context, token, name, password string) (*dto.LoginResponse, error) {
 	claims, err := s.tokenService.VerifyInviteToken(token)
 	if err != nil {
@@ -1062,6 +1105,7 @@ func (s *authService) AcceptInvite(ctx context.Context, token, name, password st
 	user, err := s.userRepo.FindByEmail(ctx, claims.Email)
 	if err != nil {
 		// Create new user
+		inviteAppID := claims.AppID
 		user = &model.User{
 			Email:          claims.Email,
 			Name:           userName,
@@ -1070,6 +1114,7 @@ func (s *authService) AcceptInvite(ctx context.Context, token, name, password st
 			IsVerified:     true,
 			TokenVersion:   1,
 			Source:         "invite",
+			InviteAppID:    &inviteAppID,
 			ConfirmedAt:    &now,
 			CreatedAt:      now,
 			UpdatedAt:      now,
@@ -1084,8 +1129,19 @@ func (s *authService) AcceptInvite(ctx context.Context, token, name, password st
 		// it to the app admin or service account), so it must never take over
 		// an account that is already in use: only the account the invite
 		// created, still waiting to be activated, gets its password set here.
-		if !invitePending(user) {
+		if !InvitePending(user) {
 			return nil, ErrInviteAccountActive
+		}
+		// A pending account is activated only by an invite of the app that
+		// created it: an app that adds an existing pending account gets the
+		// role, not the right to set its password.
+		if !s.inviteActivates(ctx, user, claims.AppID) {
+			appID := claims.AppID
+			s.logSecurityEvent(ctx, model.SecurityEventInviteAccepted, &user.ID, &appID, false, map[string]interface{}{
+				"email":  user.Email,
+				"reason": "invite_other_app",
+			})
+			return nil, ErrInviteForOtherApp
 		}
 		user.HashedPassword = hashedPassword
 		user.IsVerified = true

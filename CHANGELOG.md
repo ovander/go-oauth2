@@ -10,6 +10,21 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Security
+
+- **An invite only activates a pending account created for the same app.** A pending account now
+  records the app whose invite created it (`users.invite_app_id`, **migration 0031**), and
+  `POST /api/auth/invite` (and the hosted invite page) activates an existing pending account only
+  with an invite of that app; any other invite gets the existing `409` answer for an account that
+  is already in use, and an `invite_accepted` audit event with `success=false` and reason
+  `invite_other_app`. A pending account created before the migration falls back to the app of its
+  oldest role, and one with no role is not activated by an invite. An app adding (through
+  `POST /api/apps/{app_id}/users` or `/service/users`) a pending account created by another app's
+  invite still assigns the role, but receives no `invite_token` and sends no invite email: the
+  person activates the account through their original invite. New addresses, active accounts and
+  an app re-adding its own pending account are unchanged. Deploy note: migration 0031 adds a
+  nullable column and runs on startup; no environment variable, no change of default.
+
 ## [1.14.2] - 2026-10-11
 
 Patch release on the **v1.x** line: documentation and deploy tooling, no server code change. The

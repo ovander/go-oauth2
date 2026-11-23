@@ -354,6 +354,9 @@ Two halves, by design:
 ### 5.8 Invitations
 - `GET /api/auth/invite?token=...` → `{ "valid": true, "email": "...", "app_name": "...", "expires_at": "..." }`
 - `POST /api/auth/invite` → `{ "token": "...", "name": "...", "password": "..." }` to accept and set a password.
+  An invite only activates a pending account created for the same app: for an address whose
+  account is already in use, or is pending activation through another app's invite, it answers
+  `409` (`an account already exists for this email: sign in instead`) and changes nothing.
 
 ### 5.9 Profile (self-service) — requires Bearer token
 - `GET /api/profile` → `UserResponse`
@@ -410,7 +413,8 @@ valid DPoP proof it is bound to that key (`cnf.jkt`, since v1.12.3); under
 It is used to call **Service Account routes** on the Admin router, which are
 scoped to that exact app:
 
-- `POST /api/apps/{app_id}/service/users` — create a user inside the app.
+- `POST /api/apps/{app_id}/service/users` — create a user inside the app, with the
+  same body and `201` response as `POST /api/apps/{app_id}/users` (§8.5).
 - `GET /api/apps/{app_id}/service/users/{user_id}` — look up one of the app's
   members by numeric id (a token's `sub`): `{ "id", "email", "name", "role",
   "is_verified", "invite_sent", "avatar_url", "last_login", "created_at",
@@ -786,6 +790,16 @@ port only, without authentication; see [`OBSERVABILITY.md`](OBSERVABILITY.md).
 ### 8.5 App-scoped user management — `/api/apps/{app_id}/users`
 For **app admins** (per-app `admin` role or global admin). CRUD over an app's
 members, `POST /{user_id}/resend-verification`, `POST /{user_id}/reset-password`.
+
+`POST /api/apps/{app_id}/users` (and the service-account
+`POST /api/apps/{app_id}/service/users`) takes `{ "email", "role", "name"? }`, creates the account
+when the address is new, assigns the role and answers `201`
+`{ "user_id", "role", "email_sent", "invite_token"?, "email_error"? }`. A Socrate admin is refused
+(`403`); a user who already has a role in the app is `409`. `invite_token` is returned, and the
+invite email sent, except when the address belongs to an account pending activation through
+another app's invite: the role is assigned, but `invite_token` is omitted, `email_sent` is
+`false` and no email is sent, since an invite only activates a pending account created for the
+same app; the person activates it through their original invite.
 `GET /api/apps/{app_id}/logs` (app admin only) returns activity logs.
 
 ---

@@ -117,6 +117,7 @@ func (s *userService) Create(ctx context.Context, req dto.CreateUserRequest) (*m
 		IsVerified:     false,
 		TokenVersion:   1,
 		Source:         "manual",
+		InviteAppID:    req.InviteAppID,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}

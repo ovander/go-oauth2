@@ -11,7 +11,7 @@ Enterprise-grade identity for secure multi-tenant SaaS.
 [![CI](https://github.com/ovander/go-oauth2/actions/workflows/ci.yml/badge.svg)](https://github.com/ovander/go-oauth2/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/ovander/go-oauth2/actions/workflows/codeql.yml/badge.svg)](https://github.com/ovander/go-oauth2/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ovander/go-oauth2/badge)](https://scorecard.dev/viewer/?uri=github.com/ovander/go-oauth2)
-[![Go](https://img.shields.io/badge/Go-1.27.2-00ADD8?logo=go&logoColor=white)](go.mod)
+[![Go](https://img.shields.io/badge/Go-1.27.4-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Release](https://img.shields.io/github/v/release/ovander/go-oauth2?sort=semver)](https://github.com/ovander/go-oauth2/releases)
 [![Coverage](https://img.shields.io/badge/Tier_A_coverage-ratchet-success)](docs/TEST-STRATEGY.md)
 [![Go Report Card](https://goreportcard.com/badge/github.com/ovander/go-oauth2)](https://goreportcard.com/report/github.com/ovander/go-oauth2)
@@ -244,7 +244,7 @@ OpenAPI document.
 git clone  →  make run  →  seed a superadmin  →  register a client  →  curl  →  JWT  →  ✅ done
 ```
 
-**Prerequisites:** Go 1.27.2 (`go 1.27.2` in `go.mod`; with `GOTOOLCHAIN=auto` an older `go` command downloads it), PostgreSQL 16 (the only supported version),
+**Prerequisites:** Go 1.27.4 (`go 1.27.4` in `go.mod`; with `GOTOOLCHAIN=auto` an older `go` command downloads it), PostgreSQL 16 (the only supported version),
 `make`, `openssl`.
 
 ```bash

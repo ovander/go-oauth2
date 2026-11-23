@@ -8,7 +8,7 @@ under the project's licence, [Apache-2.0](LICENSE).
 
 ## Development setup
 
-Requirements: Go 1.27.2 (the `go` line in `go.mod`; with `GOTOOLCHAIN=auto` an older `go`
+Requirements: Go 1.27.4 (the `go` line in `go.mod`; with `GOTOOLCHAIN=auto` an older `go`
 command downloads it) and PostgreSQL 16.
 
 ```bash
@@ -38,7 +38,7 @@ Run these before opening a pull request; CI runs the same and all of them are re
 test -z "$(gofmt -l .)"
 go build ./... && go vet ./...
 TEST_DATABASE_URL=postgres://…/socrate_test?sslmode=disable go test -race ./...
-golangci-lint run ./...        # v2.14.0, built with Go 1.27.2
+golangci-lint run ./...        # v2.14.0, built with Go 1.27.4
 govulncheck ./...
 make coverage-gate             # Tier-A coverage ratchet (see docs/TEST-STRATEGY.md)
 ```

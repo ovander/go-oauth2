@@ -57,6 +57,12 @@ type User struct {
 	// "picture" claim at userinfo. Nil when not set.
 	AvatarURL *string `gorm:"column:avatar_url" json:"avatar_url,omitempty"`
 
+	// InviteAppID is the application whose invite created this account, while
+	// it waits to be activated. An invite only activates a pending account
+	// created for the same app. Nil for accounts not created by an app invite,
+	// and for those created before the column existed. Never serialized.
+	InviteAppID *uint `gorm:"column:invite_app_id" json:"-"`
+
 	CreatedAt time.Time `gorm:"column:inserted_at" json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

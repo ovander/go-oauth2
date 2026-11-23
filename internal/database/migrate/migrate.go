@@ -666,6 +666,23 @@ var migrations = []Migration{
 			return db.Exec(`ALTER TABLE policy_decisions ADD COLUMN IF NOT EXISTS obligations TEXT[] NOT NULL DEFAULT '{}'`).Error
 		},
 	},
+	{
+		// The application whose invite created a pending account, so that an
+		// invite only activates a pending account created for the same app.
+		// Nullable: existing accounts keep NULL, and a pending account created
+		// before this column falls back to the app of its oldest role.
+		ID:   "0031",
+		Name: "add_users.invite_app_id",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("users") {
+				return nil
+			}
+			if db.Migrator().HasColumn(&model.User{}, "invite_app_id") {
+				return nil
+			}
+			return db.Exec("ALTER TABLE users ADD COLUMN invite_app_id BIGINT").Error
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

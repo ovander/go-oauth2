@@ -314,3 +314,7 @@ func TestMFA_IsEnabled(t *testing.T) {
 
 // contains is a tiny helper to keep assertions readable.
 func contains(s, sub string) bool { return strings.Contains(s, sub) }
+
+func (*mfaMemUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
+	return false, nil
+}

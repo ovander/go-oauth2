@@ -243,3 +243,7 @@ func TestMED03_DevelopmentEnv_VerifyURL_HasCorrectPrefix(t *testing.T) {
 			resp.VerifyURL, wantPrefix)
 	}
 }
+
+func (*med03UserService) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
+	panic("not implemented")
+}

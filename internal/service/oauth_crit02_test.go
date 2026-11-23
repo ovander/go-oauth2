@@ -416,3 +416,7 @@ func TestHIGH03_RefreshGrant_ConfidentialClient_CorrectSecret_PassesCredentialCh
 		t.Error("ErrInvalidCredentials returned despite correct client_secret on refresh grant")
 	}
 }
+
+func (stubUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
+	return false, nil
+}

@@ -534,3 +534,7 @@ func TestBlockUser_InvalidID(t *testing.T) {
 		t.Errorf("expected 400, got %d", rr.Code)
 	}
 }
+
+func (*adminTestUserService) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
+	panic("not implemented")
+}

@@ -169,3 +169,7 @@ func TestBlock_RegularAdminCanBeBlocked(t *testing.T) {
 		t.Fatal("expected LockAccount to be called for a regular admin")
 	}
 }
+
+func (*memUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
+	return false, nil
+}

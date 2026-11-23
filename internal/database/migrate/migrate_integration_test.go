@@ -198,6 +198,50 @@ func TestMigration0030_PolicyDecisionObligations(t *testing.T) {
 	}
 }
 
+// 0031 adds the nullable users.invite_app_id on a fresh install and on an
+// upgrade from a database that predates it, leaving existing users at NULL.
+func TestMigration0031_UserInviteAppID(t *testing.T) {
+	db := scratchDB(t)
+	// A fresh install creates the tables from the models (AutoMigrate), which
+	// already carry the column; the numbered migrations then run on top.
+	if err := db.AutoMigrate(&model.User{}); err != nil {
+		t.Fatalf("automigrate users: %v", err)
+	}
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	hasColumn := func() bool {
+		var n int64
+		db.Raw(`SELECT count(*) FROM information_schema.columns
+			WHERE table_name = 'users' AND column_name = 'invite_app_id' AND is_nullable = 'YES'`).Scan(&n)
+		return n == 1
+	}
+	if !hasColumn() {
+		t.Fatal("fresh install: users.invite_app_id missing or not nullable")
+	}
+
+	if err := db.Exec("ALTER TABLE users DROP COLUMN invite_app_id").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO users (name, email, hashed_password, source) VALUES ('Pending', 'pending@example.test', 'x', 'manual')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("DELETE FROM schema_migrations WHERE id = '0031'").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("upgrade run: %v", err)
+	}
+	if !hasColumn() {
+		t.Fatal("upgrade: users.invite_app_id not added")
+	}
+	var unset int64
+	db.Raw(`SELECT count(*) FROM users WHERE invite_app_id IS NULL`).Scan(&unset)
+	if unset != 1 {
+		t.Fatalf("the existing user should keep a NULL invite_app_id, got %d matching", unset)
+	}
+}
+
 // scratchDB creates an empty database next to TEST_DATABASE_URL's, for a test
 // that changes the schema, and drops it at the end. It skips when the role
 // may not create databases.

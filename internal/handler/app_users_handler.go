@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -282,16 +284,32 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, "socrate admins and superadmins cannot be assigned to a specific app", http.StatusForbidden)
 		return
 	}
+	// An invite only activates a pending account created for the same app.
+	// For an existing pending account created for another app, the role is
+	// assigned but no invite is issued: the person activates the account
+	// through the invite of the app that created it. Decided before the role
+	// is assigned, so this app's new role never counts as the account's first.
+	issueInvite := true
+	if !isNewUser && service.InvitePending(user) {
+		issueInvite, err = h.pendingAccountInvite(r.Context(), user, appID)
+		if err != nil {
+			logger.Warnf("app users: invite decision for user %d app %d: %v", user.ID, appID, err)
+			writeError(w, "could not assign role", http.StatusInternalServerError)
+			return
+		}
+	}
 	if isNewUser {
 		// Create new user
 		name := req.Name
 		if name == "" {
 			name = req.Email
 		}
+		inviteAppID := appID
 		user, err = h.userService.Create(r.Context(), dto.CreateUserRequest{
-			Email:    req.Email,
-			Name:     name,
-			Password: generateTempPassword(),
+			Email:       req.Email,
+			Name:        name,
+			Password:    generateTempPassword(),
+			InviteAppID: &inviteAppID,
 		})
 		if err != nil {
 			logger.Warnf("app users: create user for app %d: %v", appID, err)
@@ -312,12 +330,81 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate invite token
-	inviteToken, err := h.tokenService.GenerateInviteToken(user.Email, appID, req.Role, adminID)
+	emailSent := false
+	var inviteToken, emailError string
+	if issueInvite {
+		inviteToken, emailSent, emailError, err = h.sendInvite(r, user, appID, req.Role, adminID)
+		if err != nil {
+			logger.Warnf("app users: generate invite token for user %d app %d: %v", user.ID, appID, err)
+			writeError(w, "could not generate invite token", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Log admin action
+	if h.adminLogService != nil {
+		_ = h.adminLogService.LogAction(r.Context(), adminID, &appID, &user.ID, model.AdminActionAddUser, map[string]interface{}{
+			"email":         req.Email,
+			"role":          req.Role,
+			"is_new_user":   isNewUser,
+			"email_sent":    emailSent,
+			"invite_issued": issueInvite,
+		})
+	}
+
+	resp := map[string]interface{}{
+		"user_id":    user.ID,
+		"role":       role.Role,
+		"email_sent": emailSent,
+	}
+	if issueInvite {
+		resp["invite_token"] = inviteToken
+	}
+	if emailError != "" {
+		resp["email_error"] = emailError
+	}
+	w.WriteHeader(http.StatusCreated)
+	writeJSON(w, resp)
+}
+
+// pendingAccountInvite reports whether appID may issue an invite for the
+// existing pending account user: only the app whose invite activates it
+// (service.InviteOwnerApp). An account that no app may activate (no recorded
+// app and no role) is claimed by appID, the first app that adds it; when
+// another app claimed it first, the account is read again and the same rule
+// applies.
+func (h *AppUsersHandler) pendingAccountInvite(ctx context.Context, user *model.User, appID uint) (bool, error) {
+	roles, err := h.userAppRoleService.GetUserRoles(ctx, user.ID)
 	if err != nil {
-		logger.Warnf("app users: generate invite token for user %d app %d: %v", user.ID, appID, err)
-		writeError(w, "could not generate invite token", http.StatusInternalServerError)
-		return
+		return false, fmt.Errorf("read roles: %w", err)
+	}
+	owner, ok := service.InviteOwnerApp(user, roles)
+	if !ok {
+		claimed, err := h.userService.ClaimInviteApp(ctx, user.ID, appID)
+		if err != nil {
+			return false, fmt.Errorf("claim invite app: %w", err)
+		}
+		if claimed {
+			return true, nil
+		}
+		current, err := h.userService.GetByID(ctx, user.ID)
+		if err != nil {
+			return false, fmt.Errorf("re-read user: %w", err)
+		}
+		owner, ok = service.InviteOwnerApp(current, roles)
+	}
+	return ok && owner == appID, nil
+}
+
+// sendInvite generates the invite token for user in appID, emails the invite
+// link when an email service is configured and records that it was sent. It
+// returns the token, whether the email was delivered and, when it was not, a
+// message safe to return to the caller. Only a token error is an error: a
+// failed email leaves the token valid.
+func (h *AppUsersHandler) sendInvite(r *http.Request, user *model.User, appID uint, role string, adminID uint) (inviteToken string, emailSent bool, emailError string, err error) {
+	inviteToken, err = h.tokenService.GenerateInviteToken(user.Email, appID, role, adminID)
+	if err != nil {
+		return "", false, "", err
 	}
 
 	// Get app name for email
@@ -329,8 +416,6 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send invitation email
-	emailSent := false
-	var emailError string
 	if h.emailService != nil {
 		inviteURL := h.tokenService.GetIssuer() + "/auth/invite?token=" + inviteToken
 		if err := h.emailService.SendInviteEmail(user.Email, appName, inviteURL); err != nil {
@@ -357,28 +442,7 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	if emailSent {
 		_ = h.userAppRoleService.SetInviteSent(r.Context(), user.ID, appID)
 	}
-
-	// Log admin action
-	if h.adminLogService != nil {
-		_ = h.adminLogService.LogAction(r.Context(), adminID, &appID, &user.ID, model.AdminActionAddUser, map[string]interface{}{
-			"email":       req.Email,
-			"role":        req.Role,
-			"is_new_user": isNewUser,
-			"email_sent":  emailSent,
-		})
-	}
-
-	resp := map[string]interface{}{
-		"user_id":      user.ID,
-		"invite_token": inviteToken,
-		"role":         role.Role,
-		"email_sent":   emailSent,
-	}
-	if emailError != "" {
-		resp["email_error"] = emailError
-	}
-	w.WriteHeader(http.StatusCreated)
-	writeJSON(w, resp)
+	return inviteToken, emailSent, emailError, nil
 }
 
 // PUT /api/apps/:app_id/users/:user_id

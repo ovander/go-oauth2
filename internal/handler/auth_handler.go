@@ -380,7 +380,8 @@ func (h *AuthHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 			writeError(w, "token has already been used", http.StatusBadRequest)
 		case errors.Is(err, service.ErrInvalidToken):
 			writeError(w, "invalid or expired token", http.StatusBadRequest)
-		case errors.Is(err, service.ErrInviteAccountActive):
+		case errors.Is(err, service.ErrInviteAccountActive), errors.Is(err, service.ErrInviteForOtherApp):
+			// The same answer for both: the invite does not activate this account.
 			writeError(w, service.ErrInviteAccountActive.Error(), http.StatusConflict)
 		case errors.Is(err, service.ErrAppNotFound):
 			writeError(w, "unknown application", http.StatusBadRequest)

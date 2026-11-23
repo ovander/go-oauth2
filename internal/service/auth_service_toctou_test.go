@@ -379,8 +379,11 @@ func TestResetPassword_MarkAsUsed_CalledOnce(t *testing.T) {
 func TestAcceptInvite_SecondCall_ErrTokenAlreadyUsed(t *testing.T) {
 	ts := testTokenService(t)
 	tokenRepo := &alreadyUsedTokenRepo{}
+	// The account is looked up before the token is claimed; a new address
+	// would be created only after a successful claim.
+	users := &inviteUserRepo{}
 	svc := service.NewAuthServiceWithUsedTokenRepo(
-		&stubUserRepo{},
+		users,
 		&stubAppRepo{app: &model.App{ID: 1, Name: "Test App", ClientID: "test"}},
 		&nilUserAppRoleRepo{},
 		tokenRepo,
@@ -396,6 +399,9 @@ func TestAcceptInvite_SecondCall_ErrTokenAlreadyUsed(t *testing.T) {
 	_, err = svc.AcceptInvite(context.Background(), tokenStr, "Eve Smith", "Secure@Pass123!")
 	if !errors.Is(err, service.ErrTokenAlreadyUsed) {
 		t.Errorf("AcceptInvite returned %v, want %v", err, service.ErrTokenAlreadyUsed)
+	}
+	if users.creates != 0 || users.updates != 0 {
+		t.Errorf("a used token wrote the account: creates %d, updates %d", users.creates, users.updates)
 	}
 }
 
@@ -456,4 +462,12 @@ func TestVerifyEmail_ConcurrentCalls_OnlyOneSucceeds(t *testing.T) {
 	if alreadyUsedCount != 1 {
 		t.Errorf("expected exactly 1 ErrTokenAlreadyUsed, got %d", alreadyUsedCount)
 	}
+}
+
+func (*stubUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
+	return false, nil
+}
+
+func (*callTrackingUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
+	return false, nil
 }

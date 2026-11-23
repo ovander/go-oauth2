@@ -291,3 +291,7 @@ func TestHIGH04_RefreshGrant_NilUsedRepo_DoesNotPanic(t *testing.T) {
 	// Outcome does not matter — just confirm no panic.
 	svc.handleRefreshTokenGrant(context.Background(), refreshReq(refreshToken), "test-client", "") //nolint:errcheck
 }
+
+func (*high04UserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
+	return false, nil
+}

@@ -13,6 +13,9 @@ type CreateUserRequest struct {
 	Name     string `json:"name"`
 	Password string `json:"password"`
 	Role     string `json:"role,omitempty"`
+	// InviteAppID records the app whose invite creates this account (see
+	// model.User.InviteAppID). Set by the server only, never from a request body.
+	InviteAppID *uint `json:"-"`
 }
 
 type UpdateUserRequest struct {

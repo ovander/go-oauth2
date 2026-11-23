@@ -21,6 +21,10 @@ type UserRepository interface {
 	IncrementFailedLoginAttempts(ctx context.Context, userID uint) error
 	ResetFailedLoginAttempts(ctx context.Context, userID uint) error
 	LockAccount(ctx context.Context, userID uint, until *time.Time) error
+	// ClaimInviteApp records appID as the app whose invite activates the
+	// pending account userID, only if no app is recorded yet. It reports
+	// whether it did (false: another app is already recorded).
+	ClaimInviteApp(ctx context.Context, userID, appID uint) (bool, error)
 }
 
 type userRepository struct {
@@ -118,4 +122,14 @@ func (r *userRepository) LockAccount(ctx context.Context, userID uint, until *ti
 	return r.db.WithContext(ctx).Model(&model.User{}).
 		Where("id = ?", userID).
 		Update("locked_until", until).Error
+}
+
+func (r *userRepository) ClaimInviteApp(ctx context.Context, userID, appID uint) (bool, error) {
+	res := r.db.WithContext(ctx).Model(&model.User{}).
+		Where("id = ? AND invite_app_id IS NULL", userID).
+		Update("invite_app_id", appID)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected == 1, nil
 }

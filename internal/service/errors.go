@@ -49,6 +49,13 @@ var (
 	// their own password (or resets it through their mailbox).
 	ErrInviteAccountActive = errors.New("an account already exists for this email: sign in instead")
 
+	// ErrInviteForOtherApp means an invite was presented for a pending account
+	// that was created for another application. An invite only activates a
+	// pending account created for the same app; the person activates it
+	// through the invite of that app. Handlers answer it exactly as
+	// ErrInviteAccountActive.
+	ErrInviteForOtherApp = errors.New("invite is not for the application that created this account")
+
 	// ErrInvalidAccessTokenTTL rejects a per-client access-token lifetime
 	// outside [MinAccessTokenTTLSeconds, MaxAccessTokenTTLSeconds].
 	ErrInvalidAccessTokenTTL = errors.New("invalid access_token_ttl_seconds: must be between 60 and 86400")

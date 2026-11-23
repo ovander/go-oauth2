@@ -303,7 +303,10 @@ func TestMFA_Verify_RefusesAUsedStep(t *testing.T) {
 		t.Fatalf("later step: %v", err)
 	}
 	// Saving the user (as the login path does) does not move the step back.
-	u, _ := repo.FindByID(context.Background(), 1)
+	u, err := repo.FindByID(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	u.MFALastStep = 0
 	if err := repo.Update(context.Background(), u); err != nil {
 		t.Fatal(err)
@@ -336,7 +339,10 @@ func TestMFA_Verify_StepRecordingRaceAndError(t *testing.T) {
 	repo.advanceErr = nil
 
 	// Another request recorded this step after this one read the user.
-	read, _ := repo.FindByID(context.Background(), 1)
+	read, err := repo.FindByID(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	repo.users[1].MFALastStep = step
 	ms := svc.(*mfaService)
 	if err := ms.acceptTOTP(context.Background(), read, secret, code); !errors.Is(err, ErrMFAInvalidCode) {

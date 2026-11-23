@@ -389,3 +389,7 @@ func TestM1_AdminLogin_UnclassifiedError_NoLeak(t *testing.T) {
 		t.Errorf("error = %q, want static fallback message %q", msg, "login failed")
 	}
 }
+
+func (*m1m2UserService) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
+	panic("not implemented")
+}

@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -289,14 +291,12 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	// is assigned, so this app's new role never counts as the account's first.
 	issueInvite := true
 	if !isNewUser && service.InvitePending(user) {
-		roles, err := h.userAppRoleService.GetUserRoles(r.Context(), user.ID)
+		issueInvite, err = h.pendingAccountInvite(r.Context(), user, appID)
 		if err != nil {
-			logger.Warnf("app users: read roles of user %d for app %d: %v", user.ID, appID, err)
+			logger.Warnf("app users: invite decision for user %d app %d: %v", user.ID, appID, err)
 			writeError(w, "could not assign role", http.StatusInternalServerError)
 			return
 		}
-		owner, ok := service.InviteOwnerApp(user, roles)
-		issueInvite = ok && owner == appID
 	}
 	if isNewUser {
 		// Create new user
@@ -365,6 +365,35 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusCreated)
 	writeJSON(w, resp)
+}
+
+// pendingAccountInvite reports whether appID may issue an invite for the
+// existing pending account user: only the app whose invite activates it
+// (service.InviteOwnerApp). An account that no app may activate (no recorded
+// app and no role) is claimed by appID, the first app that adds it; when
+// another app claimed it first, the account is read again and the same rule
+// applies.
+func (h *AppUsersHandler) pendingAccountInvite(ctx context.Context, user *model.User, appID uint) (bool, error) {
+	roles, err := h.userAppRoleService.GetUserRoles(ctx, user.ID)
+	if err != nil {
+		return false, fmt.Errorf("read roles: %w", err)
+	}
+	owner, ok := service.InviteOwnerApp(user, roles)
+	if !ok {
+		claimed, err := h.userService.ClaimInviteApp(ctx, user.ID, appID)
+		if err != nil {
+			return false, fmt.Errorf("claim invite app: %w", err)
+		}
+		if claimed {
+			return true, nil
+		}
+		current, err := h.userService.GetByID(ctx, user.ID)
+		if err != nil {
+			return false, fmt.Errorf("re-read user: %w", err)
+		}
+		owner, ok = service.InviteOwnerApp(current, roles)
+	}
+	return ok && owner == appID, nil
 }
 
 // sendInvite generates the invite token for user in appID, emails the invite

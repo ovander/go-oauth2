@@ -1047,18 +1047,19 @@ func InviteOwnerApp(u *model.User, roles []model.UserAppRole) (uint, bool) {
 
 // inviteActivates reports whether an invite for appID may activate the pending
 // account u. It reads u's roles only for an account that does not record the
-// app that created it, and refuses when they cannot be read.
-func (s *authService) inviteActivates(ctx context.Context, u *model.User, appID uint) bool {
+// app that created it; when they cannot be read it returns an error, and the
+// caller refuses the invite.
+func (s *authService) inviteActivates(ctx context.Context, u *model.User, appID uint) (bool, error) {
 	var roles []model.UserAppRole
 	if u.InviteAppID == nil {
 		var err error
 		if roles, err = s.userAppRoleRepo.FindByUser(ctx, u.ID); err != nil {
 			logger.FromContext(ctx).Warnf("auth: accept invite: read roles of user %d: %v", u.ID, err)
-			return false
+			return false, fmt.Errorf("failed to read roles: %w", err)
 		}
 	}
 	owner, ok := InviteOwnerApp(u, roles)
-	return ok && owner == appID
+	return ok && owner == appID, nil
 }
 
 // AcceptInvite accepts an invite: it creates the account, or activates the one
@@ -1085,6 +1086,35 @@ func (s *authService) AcceptInvite(ctx context.Context, token, name, password st
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
+	// The account checks come before the token is claimed, so an invite that
+	// is refused (or fails on a read error) stays usable.
+	user, err := s.userRepo.FindByEmail(ctx, claims.Email)
+	existing := err == nil
+	if existing {
+		// An invite token is handed to whoever sent the invite (the API returns
+		// it to the app admin or service account), so it must never change the
+		// password of an account that is already in use: only the account the invite
+		// created, still waiting to be activated, gets its password set here.
+		if !InvitePending(user) {
+			return nil, ErrInviteAccountActive
+		}
+		// A pending account is activated only by an invite of the app that
+		// created it: an app that adds an existing pending account gets the
+		// role, not the right to set its password.
+		activates, err := s.inviteActivates(ctx, user, claims.AppID)
+		if err != nil {
+			return nil, err
+		}
+		if !activates {
+			appID := claims.AppID
+			s.logSecurityEvent(ctx, model.SecurityEventInviteAccepted, &user.ID, &appID, false, map[string]interface{}{
+				"email":  user.Email,
+				"reason": "invite_other_app",
+			})
+			return nil, ErrInviteForOtherApp
+		}
+	}
+
 	// Atomically claim this token before creating/updating the user.
 	if s.usedTokenRepo != nil {
 		if err := s.usedTokenRepo.MarkAsUsed(ctx, claims.ID, claims.Type, 0, claims.ExpiresAt.Time); err != nil {
@@ -1102,8 +1132,7 @@ func (s *authService) AcceptInvite(ctx context.Context, token, name, password st
 		userName = claims.Email
 	}
 
-	user, err := s.userRepo.FindByEmail(ctx, claims.Email)
-	if err != nil {
+	if !existing {
 		// Create new user
 		inviteAppID := claims.AppID
 		user = &model.User{
@@ -1125,24 +1154,6 @@ func (s *authService) AcceptInvite(ctx context.Context, token, name, password st
 		}
 		hooks.RunUserProvisioned(ctx, hooks.UserProvisioned{User: user, Source: "invite"})
 	} else {
-		// An invite token is handed to whoever sent the invite (the API returns
-		// it to the app admin or service account), so it must never take over
-		// an account that is already in use: only the account the invite
-		// created, still waiting to be activated, gets its password set here.
-		if !InvitePending(user) {
-			return nil, ErrInviteAccountActive
-		}
-		// A pending account is activated only by an invite of the app that
-		// created it: an app that adds an existing pending account gets the
-		// role, not the right to set its password.
-		if !s.inviteActivates(ctx, user, claims.AppID) {
-			appID := claims.AppID
-			s.logSecurityEvent(ctx, model.SecurityEventInviteAccepted, &user.ID, &appID, false, map[string]interface{}{
-				"email":  user.Email,
-				"reason": "invite_other_app",
-			})
-			return nil, ErrInviteForOtherApp
-		}
 		user.HashedPassword = hashedPassword
 		user.IsVerified = true
 		user.ConfirmedAt = &now

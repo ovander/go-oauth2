@@ -281,3 +281,7 @@ func TestNEW03_Introspect_JTIBlacklist_IndependentOfVersionCheck(t *testing.T) {
 		t.Error("NEW-03: JTI-blacklisted token returned active:true — JTI check broken by version-check addition")
 	}
 }
+
+func (*new03UserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
+	return false, nil
+}

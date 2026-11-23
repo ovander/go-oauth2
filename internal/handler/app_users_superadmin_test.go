@@ -237,3 +237,7 @@ func TestCreateAppUser_MissingFields(t *testing.T) {
 		t.Errorf("expected 400 for missing fields, got %d", rr.Code)
 	}
 }
+
+func (*appUsersTestUserService) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
+	panic("not implemented")
+}

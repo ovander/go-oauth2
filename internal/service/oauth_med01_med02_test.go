@@ -373,3 +373,7 @@ func TestMED02_TokenGrant_RequirePKCE_RejectsCodeWithoutChallenge(t *testing.T) 
 		t.Errorf("MED-02: expected ErrPKCERequired, got: %v", err)
 	}
 }
+
+func (*trackIncrUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
+	return false, nil
+}

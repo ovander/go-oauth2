@@ -399,3 +399,7 @@ func TestFIND01_OptionalAuth_OneToTwo_NoUserInContext(t *testing.T) {
 		t.Error("FIND-01: revoked token (1→2) must not populate userID in OptionalAuth context")
 	}
 }
+
+func (*find01UserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
+	return false, nil
+}

@@ -71,6 +71,9 @@ func newInviteEnv(t *testing.T) *inviteEnv {
 		t.Fatalf("automigrate: %v", err)
 	}
 	tx := db.Begin()
+	if tx.Error != nil {
+		t.Fatalf("begin: %v", tx.Error)
+	}
 	t.Cleanup(func() { tx.Rollback() })
 
 	km, err := auth.NewKeyManager(t.TempDir())
@@ -104,7 +107,10 @@ func newInviteEnv(t *testing.T) *inviteEnv {
 // service account, and returns the status and decoded body.
 func (e *inviteEnv) add(t *testing.T, caller string, app model.App, email, role string) (int, map[string]any) {
 	t.Helper()
-	body := fmt.Sprintf(`{"email":%q,"role":%q}`, email, role)
+	body, err := json.Marshal(map[string]string{"email": email, "role": role})
+	if err != nil {
+		t.Fatal(err)
+	}
 	path := fmt.Sprintf("/api/apps/%d/users", app.ID)
 	ctx := context.Background()
 	if caller == "service account" {
@@ -117,11 +123,13 @@ func (e *inviteEnv) add(t *testing.T, caller string, app model.App, email, role 
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("app_id", fmt.Sprint(app.ID))
 	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
-	req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(body)).WithContext(ctx)
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body)).WithContext(ctx)
 	rr := httptest.NewRecorder()
 	e.h.CreateUser(rr, req)
 	var out map[string]any
-	_ = json.Unmarshal(rr.Body.Bytes(), &out)
+	if err := json.Unmarshal(rr.Body.Bytes(), &out); err != nil {
+		t.Fatalf("POST %s → %d with a non-JSON body %q: %v", path, rr.Code, rr.Body.String(), err)
+	}
 	return rr.Code, out
 }
 
@@ -282,6 +290,66 @@ func TestIntegration_InviteActivation_LegacyPendingAccount(t *testing.T) {
 	}
 }
 
+// A pending account that no app may activate (no recorded app, no role, e.g.
+// created by an administrator) is claimed by the first app that adds it: that
+// app's invite is issued and activates it; an app adding it afterwards gets
+// the role but no invite.
+func TestIntegration_InviteActivation_UnclaimedPendingAccountIsClaimed(t *testing.T) {
+	for _, caller := range inviteCallers {
+		t.Run(caller, func(t *testing.T) {
+			e := newInviteEnv(t)
+			email := "unclaimed-" + e.tag + "@example.test"
+			u := model.User{Email: email, Name: email, HashedPassword: "throwaway", Source: "manual", Role: model.UserRoleUser}
+			if err := e.tx.Create(&u).Error; err != nil {
+				t.Fatal(err)
+			}
+
+			code, resp := e.add(t, caller, e.appB, email, "user")
+			tokB, _ := resp["invite_token"].(string)
+			if code != http.StatusCreated || tokB == "" || len(e.mail.to) != 1 || e.mail.to[0] != email {
+				t.Fatalf("B adds the unclaimed account: %d %v, emails %v", code, resp, e.mail.to)
+			}
+			if got := e.user(t, email).InviteAppID; got == nil || *got != e.appB.ID {
+				t.Fatalf("invite_app_id = %v, want %d", got, e.appB.ID)
+			}
+
+			code, resp = e.add(t, caller, e.appA, email, "admin")
+			if _, has := resp["invite_token"]; code != http.StatusCreated || has || len(e.mail.to) != 1 {
+				t.Fatalf("A adds B's account: %d %v, emails %v", code, resp, e.mail.to)
+			}
+			if err := e.accept(e.mint(t, email, e.appA, "admin")); !errors.Is(err, service.ErrInviteForOtherApp) {
+				t.Fatalf("A's invite: err = %v, want ErrInviteForOtherApp", err)
+			}
+			if err := e.accept(tokB); err != nil {
+				t.Fatalf("B's invite: %v", err)
+			}
+			if !e.user(t, email).IsVerified {
+				t.Fatal("B's invite did not activate the account")
+			}
+		})
+	}
+}
+
+// ClaimInviteApp sets invite_app_id only while it is NULL.
+func TestIntegration_ClaimInviteApp_OnlyWhenUnset(t *testing.T) {
+	e := newInviteEnv(t)
+	u := model.User{Email: "claim-" + e.tag + "@example.test", Name: "Claim", HashedPassword: "x", Source: "manual", Role: model.UserRoleUser}
+	if err := e.tx.Create(&u).Error; err != nil {
+		t.Fatal(err)
+	}
+	repo := repository.NewUserRepository(e.tx)
+	ctx := context.Background()
+	if ok, err := repo.ClaimInviteApp(ctx, u.ID, e.appB.ID); err != nil || !ok {
+		t.Fatalf("first claim: %v, %v; want true", ok, err)
+	}
+	if ok, err := repo.ClaimInviteApp(ctx, u.ID, e.appA.ID); err != nil || ok {
+		t.Fatalf("second claim: %v, %v; want false", ok, err)
+	}
+	if got := e.user(t, u.Email).InviteAppID; got == nil || *got != e.appB.ID {
+		t.Fatalf("invite_app_id = %v, want %d", got, e.appB.ID)
+	}
+}
+
 // The app that created a pending account can invite it again (after removing
 // it), and the new invite activates it.
 func TestIntegration_InviteActivation_ReinviteBySameApp(t *testing.T) {
@@ -289,16 +357,17 @@ func TestIntegration_InviteActivation_ReinviteBySameApp(t *testing.T) {
 		t.Run(caller, func(t *testing.T) {
 			e := newInviteEnv(t)
 			email := "reinvite-" + e.tag + "@example.test"
-			if code, resp := e.add(t, caller, e.appA, email, "user"); code != http.StatusCreated {
-				t.Fatalf("first invite: %d %v", code, resp)
+			code, resp := e.add(t, caller, e.appA, email, "user")
+			if first, _ := resp["invite_token"].(string); code != http.StatusCreated || first == "" || len(e.mail.to) != 1 || e.mail.to[0] != email {
+				t.Fatalf("first invite: %d %v, emails %v", code, resp, e.mail.to)
 			}
 			u := e.user(t, email)
 			if err := service.NewUserAppRoleService(repository.NewUserAppRoleRepository(e.tx)).RemoveRole(context.Background(), u.ID, e.appA.ID); err != nil {
 				t.Fatal(err)
 			}
-			code, resp := e.add(t, caller, e.appA, email, "editor")
+			code, resp = e.add(t, caller, e.appA, email, "editor")
 			tok, _ := resp["invite_token"].(string)
-			if code != http.StatusCreated || tok == "" || len(e.mail.to) != 2 {
+			if code != http.StatusCreated || tok == "" || len(e.mail.to) != 2 || e.mail.to[1] != email {
 				t.Fatalf("re-invite: %d %v, emails %v", code, resp, e.mail.to)
 			}
 			if err := e.accept(tok); err != nil {
@@ -329,5 +398,48 @@ func TestCreateAppUser_PendingAccountRolesUnreadable_FailsClosed(t *testing.T) {
 	h.CreateUser(rr, appUsersRequest(1, 1, `{"email":"pending@example.test","role":"admin"}`))
 	if rr.Code != http.StatusInternalServerError {
 		t.Fatalf("CreateUser → %d %s, want 500", rr.Code, rr.Body.String())
+	}
+}
+
+// claimRaceUserService loses the claim: another app recorded itself first.
+type claimRaceUserService struct {
+	appUsersTestUserService
+	winner uint
+}
+
+func (s *claimRaceUserService) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
+	return false, nil
+}
+
+func (s *claimRaceUserService) GetByID(_ context.Context, id uint) (*model.User, error) {
+	w := s.winner
+	return &model.User{ID: id, Source: "manual", InviteAppID: &w}, nil
+}
+
+// noRolesUserAppRoleService reports no role; any write panics.
+type noRolesUserAppRoleService struct{ panicUserAppRoleService }
+
+func (noRolesUserAppRoleService) GetUserRoles(_ context.Context, _ uint) ([]model.UserAppRole, error) {
+	return nil, nil
+}
+
+// When another app claims an unclaimed pending account first, the account is
+// read again and only the app that claimed it may issue an invite.
+func TestPendingAccountInvite_LostClaimRereads(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		winner uint
+		want   bool
+	}{
+		{"claimed by another app", 2, false},
+		{"claimed by this app", 1, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := &AppUsersHandler{userService: &claimRaceUserService{winner: tc.winner}, userAppRoleService: &noRolesUserAppRoleService{}}
+			got, err := h.pendingAccountInvite(context.Background(), &model.User{ID: 5, Source: "manual"}, 1)
+			if err != nil || got != tc.want {
+				t.Fatalf("pendingAccountInvite = %v, %v; want %v", got, err, tc.want)
+			}
+		})
 	}
 }

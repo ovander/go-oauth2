@@ -119,8 +119,8 @@ func TestAcceptInvite_NeverResetsAnActiveAccount(t *testing.T) {
 				t.Fatalf("the account was changed: hash %q, updates %d, creates %d",
 					users.user.HashedPassword, users.updates, users.creates)
 			}
-			if len(used.used) != 1 {
-				t.Error("the token was not claimed before the account was looked up")
+			if len(used.used) != 0 {
+				t.Error("a refused invite consumed the token")
 			}
 		})
 	}
@@ -175,7 +175,6 @@ func TestAcceptInvite_OnlyActivatesAPendingAccountOfTheSameApp(t *testing.T) {
 		{"legacy, oldest role in A, invite of B", pending(nil),
 			roles(model.UserAppRole{ID: 9, UserID: 7, AppID: appB}, model.UserAppRole{ID: 3, UserID: 7, AppID: appA}), appB, false},
 		{"legacy, no role, invite of A", pending(nil), roles(), appA, false},
-		{"legacy, roles unreadable, invite of A", pending(nil), &inviteRolesRepo{err: errors.New("db down")}, appA, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			users, used, audit, err := acceptAppInvite(t, tc.user, tc.roles, tc.tokenApp)
@@ -194,8 +193,8 @@ func TestAcceptInvite_OnlyActivatesAPendingAccountOfTheSameApp(t *testing.T) {
 			if users.user.HashedPassword != "throwaway" || users.user.IsVerified || users.updates != 0 || users.creates != 0 {
 				t.Fatalf("the account was changed: %+v, updates %d, creates %d", users.user, users.updates, users.creates)
 			}
-			if len(used.used) != 1 {
-				t.Error("the token was not claimed")
+			if len(used.used) != 0 {
+				t.Error("a refused invite consumed the token")
 			}
 			if len(audit.events) != 1 || audit.events[0].EventType != model.SecurityEventInviteAccepted ||
 				audit.events[0].Success || audit.events[0].Details["reason"] != "invite_other_app" {
@@ -223,5 +222,47 @@ func TestInviteOwnerApp(t *testing.T) {
 	u.InviteAppID = appID(9)
 	if got, ok := service.InviteOwnerApp(u, []model.UserAppRole{{ID: 1, UserID: 7, AppID: 2}}); !ok || got != 9 {
 		t.Errorf("InviteOwnerApp = %d, %v; want the recorded app 9", got, ok)
+	}
+}
+
+// When the roles of a legacy pending account cannot be read, the invite is not
+// accepted, but it is not refused as another app's either: no invite_other_app
+// event, the account and the token are left as they were, and the same invite
+// succeeds once the roles can be read.
+func TestAcceptInvite_RolesUnreadable_FailsClosedWithoutConsumingTheToken(t *testing.T) {
+	ts := testTokenService(t)
+	users := &inviteUserRepo{user: &model.User{ID: 7, Email: "invitee@example.test", HashedPassword: "throwaway", Source: "manual"}}
+	used := &succeedOnceTokenRepo{used: map[string]bool{}}
+	audit := &inviteAuditRepo{}
+	roles := &inviteRolesRepo{err: errors.New("db down")}
+	svc := service.NewAuthServiceFull(users, &stubAppRepo{app: &model.App{ID: 1, Name: "Some App", ClientID: "some"}},
+		roles, used, audit, ts, nil, service.AuthServiceConfig{MaxFailedAttempts: 5})
+	tok, err := ts.GenerateInviteToken("invitee@example.test", 1, "user", 99)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = svc.AcceptInvite(context.Background(), tok, "Invitee", "Invitee@Pass123!")
+	if err == nil || errors.Is(err, service.ErrInviteForOtherApp) || errors.Is(err, service.ErrInviteAccountActive) {
+		t.Fatalf("AcceptInvite err = %v, want an internal error", err)
+	}
+	if users.user.HashedPassword != "throwaway" || users.updates != 0 || users.creates != 0 {
+		t.Fatalf("the account was changed: %+v", users.user)
+	}
+	if len(audit.events) != 0 {
+		t.Fatalf("security events = %+v, want none", audit.events)
+	}
+	if len(used.used) != 0 {
+		t.Fatal("the token was consumed by a failed read")
+	}
+
+	// The store recovers: the oldest role is in app 1, so the same invite activates.
+	roles.err = nil
+	roles.roles = []model.UserAppRole{{ID: 1, UserID: 7, AppID: 1}}
+	if _, err := svc.AcceptInvite(context.Background(), tok, "Invitee", "Invitee@Pass123!"); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if !users.user.IsVerified || users.user.HashedPassword == "throwaway" {
+		t.Fatal("retry did not activate the account")
 	}
 }

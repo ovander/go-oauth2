@@ -544,3 +544,7 @@ func TestHashMagicToken_DifferentInputs(t *testing.T) {
 		t.Error("expected different hashes for different inputs")
 	}
 }
+
+func (*fakeMagicLinkUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
+	return false, nil
+}

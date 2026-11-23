@@ -799,7 +799,9 @@ when the address is new, assigns the role and answers `201`
 invite email sent, except when the address belongs to an account pending activation through
 another app's invite: the role is assigned, but `invite_token` is omitted, `email_sent` is
 `false` and no email is sent, since an invite only activates a pending account created for the
-same app; the person activates it through their original invite.
+same app; the person activates it through their original invite. A pending account that no app
+has invited yet (e.g. created by an administrator, with no role) is claimed by the first app
+that adds it, which receives the invite.
 `GET /api/apps/{app_id}/logs` (app admin only) returns activity logs.
 
 ---

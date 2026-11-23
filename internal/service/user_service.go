@@ -33,6 +33,10 @@ type UserService interface {
 	// until an admin explicitly unlocks the account.  Superadmins cannot be
 	// blocked via this method (use DeleteSuperadmin for that).
 	Block(ctx context.Context, userID uint) error
+	// ClaimInviteApp records appID as the app whose invite activates the
+	// pending account userID, only if no app is recorded yet, and reports
+	// whether it did.
+	ClaimInviteApp(ctx context.Context, userID, appID uint) (bool, error)
 
 	// Superadmin management
 	ListSuperadmins(ctx context.Context) ([]model.User, error)
@@ -84,6 +88,10 @@ func (s *userService) GetByEmail(ctx context.Context, email string) (*model.User
 		return nil, err
 	}
 	return user, nil
+}
+
+func (s *userService) ClaimInviteApp(ctx context.Context, userID, appID uint) (bool, error) {
+	return s.repo.ClaimInviteApp(ctx, userID, appID)
 }
 
 func (s *userService) Create(ctx context.Context, req dto.CreateUserRequest) (*model.User, error) {

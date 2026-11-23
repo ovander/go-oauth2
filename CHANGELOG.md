@@ -10,6 +10,17 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Security
+
+- **`GET /oauth/authorize` ignores an `Authorization` header.** The endpoint is a browser
+  endpoint: it now always answers with the hosted login page, followed by the consent page, and
+  no longer treats a bearer access token on the request as a signed-in browser (which skipped the
+  login page and went straight to consent). `prompt=none` therefore always redirects with
+  `login_required` (a request with a bearer token used to get `consent_required`). Browser flows
+  are unchanged, as browsers do not send an `Authorization` header on a navigation; the consoles,
+  backendkit and the demo app only redirect browsers there. Deploy note: no migration, no
+  environment variable, no change of default.
+
 ## [1.14.3] - 2026-11-23
 
 Security patch release on the **v1.x** line. An invite now only activates a pending account

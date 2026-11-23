@@ -253,8 +253,14 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user is authenticated
+	// Check if user is authenticated. An identity that comes from a bearer
+	// access token (an Authorization header) is not a browser session: the
+	// consent page follows the hosted login form, never a token issued to
+	// some client, so such a request gets the login page.
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
+	if _, fromBearer := r.Context().Value(contextkeys.JWTClaimsKey).(*auth.AccessTokenClaims); fromBearer {
+		ok = false
+	}
 	if promptNone {
 		code := "consent_required"
 		if !ok {
@@ -300,18 +306,7 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.renderConsentPage(w, req, app.Name, userID, csrfToken, bearerAuthnEvidence(r))
-}
-
-// bearerAuthnEvidence is the sign-in evidence of the access token that
-// authenticated this request (OptionalAuthMiddleware): its auth_time, amr and
-// acr. Zero when the request carries no verified token.
-func bearerAuthnEvidence(r *http.Request) auth.AuthnEvidence {
-	claims, ok := r.Context().Value(contextkeys.JWTClaimsKey).(*auth.AccessTokenClaims)
-	if !ok || claims == nil {
-		return auth.AuthnEvidence{}
-	}
-	return auth.AuthnEvidence{AuthTime: claims.AuthTime, AMR: claims.Amr, ACR: claims.Acr}
+	h.renderConsentPage(w, req, app.Name, userID, csrfToken, auth.AuthnEvidence{})
 }
 
 // adminAppSignInRefusedMessage is shown on Socrate's sign-in page when

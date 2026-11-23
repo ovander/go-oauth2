@@ -105,3 +105,23 @@ func TestProvisioningURI_WellFormed(t *testing.T) {
 		}
 	}
 }
+
+// ValidateCodeStep returns the step the code belongs to, wherever it falls in
+// the window, and nothing for a wrong or malformed code.
+func TestValidateCodeStep_ReturnsTheMatchedStep(t *testing.T) {
+	t.Parallel()
+	code := "287082" // step floor(59/30) = 1
+	for _, at := range []int64{30, 59, 89} {
+		if step, ok := ValidateCodeStep(rfcSeed, code, time.Unix(at, 0)); !ok || step != 1 {
+			t.Errorf("T=%d: step %d ok %v, want 1 true", at, step, ok)
+		}
+	}
+	for _, c := range []string{"000000", "12345", ""} {
+		if step, ok := ValidateCodeStep(rfcSeed, c, time.Unix(59, 0)); ok || step != 0 {
+			t.Errorf("code %q: step %d ok %v, want 0 false", c, step, ok)
+		}
+	}
+	if _, ok := ValidateCodeStep("not base32 !!", code, time.Unix(59, 0)); ok {
+		t.Error("bad secret accepted")
+	}
+}

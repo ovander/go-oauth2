@@ -19,6 +19,14 @@ environment variable, no change of default; discovery, claims and token endpoint
 
 ### Security
 
+- **A TOTP code is accepted once.** The time step of the last TOTP code accepted for a user is
+  stored (`users.mfa_last_step`, **migration 0032**), and a code of that step or an earlier one is
+  refused as a wrong code, on sign-in and on enrollment confirmation (so the code that confirmed
+  the enrollment cannot then sign in). The step is recorded with a conditional update, so two
+  requests with the same code cannot both pass, and a full-row save of the user does not move it
+  back. Recovery codes are unchanged (already single-use). Deploy note: migration 0032 adds a
+  `NOT NULL DEFAULT 0` column and runs on startup; no environment variable, no change of default.
+
 - **A wrong second-factor code counts toward the account lockout.** On every sign-in path that
   asks for a TOTP or recovery code after the password (`POST /api/auth/login`, the hosted login
   form, the hosted account page, `POST /api/admin/login` and `POST /api/admin/elevate`), a wrong

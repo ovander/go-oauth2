@@ -148,8 +148,9 @@ func (s *authService) WithMFA(mfa MFAService) AuthService {
 // A wrong code counts as a failed sign-in attempt, on the same per-account
 // counter and lockout as a wrong password (the counter is reset only by a
 // complete sign-in): once it reaches the limit the account is locked and
-// ErrAccountLocked is returned. A locked account is refused before any code is
-// checked.
+// ErrAccountLocked is returned. A failure to check the code (an error other
+// than ErrMFAInvalidCode from the verifier) is refused without counting. A
+// locked account is refused before any code is checked.
 func (s *authService) stepUpMFA(ctx context.Context, user *model.User, code string) error {
 	if s.mfa == nil || !user.MFAEnabled {
 		return nil
@@ -161,7 +162,8 @@ func (s *authService) stepUpMFA(ctx context.Context, user *model.User, code stri
 		return ErrMFARequired
 	}
 	// A valid TOTP code is the common path.
-	if err := s.mfa.Verify(ctx, user.ID, code); err == nil {
+	verifyErr := s.mfa.Verify(ctx, user.ID, code)
+	if verifyErr == nil {
 		return nil
 	}
 	// Otherwise fall back to a one-time recovery code.
@@ -175,6 +177,13 @@ func (s *authService) stepUpMFA(ctx context.Context, user *model.User, code stri
 			"email": user.Email,
 		})
 		return nil
+	}
+	// Count only a code that was checked and is wrong, not a failure to check
+	// it (an unreadable secret, a storage error): that would lock accounts for
+	// an operator problem.
+	if !errors.Is(verifyErr, ErrMFAInvalidCode) {
+		logger.FromContext(ctx).Warnf("auth: TOTP verification error for user %d: %v", user.ID, verifyErr)
+		return ErrMFAInvalidCode
 	}
 	if locked, attempts := s.countFailedAttempt(ctx, user); locked {
 		s.logSecurityEvent(ctx, model.SecurityEventAccountLocked, &user.ID, nil, false, map[string]interface{}{

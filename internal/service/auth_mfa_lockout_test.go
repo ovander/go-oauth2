@@ -38,13 +38,21 @@ func (r *lockoutUserRepo) FindByID(_ context.Context, id uint) (*model.User, err
 }
 
 func (r *lockoutUserRepo) IncrementFailedLoginAttempts(_ context.Context, id uint) error {
-	r.users[id].FailedLoginAttempts++
+	u, ok := r.users[id]
+	if !ok {
+		return errors.New("record not found")
+	}
+	u.FailedLoginAttempts++
 	return nil
 }
 
 func (r *lockoutUserRepo) LockAccount(_ context.Context, id uint, until *time.Time) error {
+	u, ok := r.users[id]
+	if !ok {
+		return errors.New("record not found")
+	}
 	r.locks++
-	r.users[id].LockedUntil = until
+	u.LockedUntil = until
 	return nil
 }
 
@@ -98,19 +106,31 @@ func TestStepUpMFA_CounterIsSharedWithPasswordFailures(t *testing.T) {
 	if err := s.stepUpMFA(context.Background(), user, "000000"); !errors.Is(err, ErrAccountLocked) {
 		t.Fatalf("%v, want ErrAccountLocked (2 password failures + 1 wrong code = limit 3)", err)
 	}
+	if got := repo.users[8]; got.FailedLoginAttempts != 3 || repo.locks != 1 || !got.IsLocked() {
+		t.Fatalf("stored state: counter %d, locks %d, locked %v; want 3, 1, true",
+			got.FailedLoginAttempts, repo.locks, got.IsLocked())
+	}
 }
 
-// Neither a valid code, a missing code, a redeemed recovery code nor a
-// recovery-store error counts as a failed attempt.
+// Neither a valid code, a missing code, a redeemed recovery code, a
+// recovery-store error nor a failure to check the TOTP code counts as a
+// failed attempt (each is still refused when it is not a valid code).
 func TestStepUpMFA_OnlyAWrongCodeCounts(t *testing.T) {
-	for name, stub := range map[string]*stubMFAVerifier{
-		"valid TOTP":     {},
-		"recovery code":  {verifyErr: ErrMFAInvalidCode, redeemOK: true},
-		"recovery error": {verifyErr: ErrMFAInvalidCode, redeemErr: errors.New("db down")},
+	for name, tc := range map[string]struct {
+		stub    *stubMFAVerifier
+		wantErr error
+	}{
+		"valid TOTP":     {&stubMFAVerifier{}, nil},
+		"recovery code":  {&stubMFAVerifier{verifyErr: ErrMFAInvalidCode, redeemOK: true}, nil},
+		"recovery error": {&stubMFAVerifier{verifyErr: ErrMFAInvalidCode, redeemErr: errors.New("db down")}, ErrMFAInvalidCode},
+		"verifier error": {&stubMFAVerifier{verifyErr: errors.New("decrypt failed")}, ErrMFAInvalidCode},
 	} {
 		repo := newLockoutUserRepo(&model.User{ID: 9, MFAEnabled: true})
 		u, _ := repo.FindByID(context.Background(), 9)
-		_ = lockoutService(stub, repo).stepUpMFA(context.Background(), u, "123456")
+		err := lockoutService(tc.stub, repo).stepUpMFA(context.Background(), u, "123456")
+		if (tc.wantErr == nil && err != nil) || (tc.wantErr != nil && !errors.Is(err, tc.wantErr)) {
+			t.Errorf("%s: error %v, want %v", name, err, tc.wantErr)
+		}
 		if got := repo.users[9].FailedLoginAttempts; got != 0 {
 			t.Errorf("%s: counter %d, want 0", name, got)
 		}

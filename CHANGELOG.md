@@ -10,6 +10,11 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Changed
+
+- Tests: the TOTP single-use tests (#374) fail on every database or lookup error instead of
+  ignoring it, and `scratchDB` gets its doc comment back. No runtime change.
+
 ## [1.14.4] - 2026-11-23
 
 Security patch release on the **v1.x** line. `GET /oauth/authorize` is a browser endpoint and now

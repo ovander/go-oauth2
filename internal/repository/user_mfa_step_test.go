@@ -34,6 +34,9 @@ func TestUserRepository_AdvanceMFAStep(t *testing.T) {
 		t.Fatalf("migrate: %v", err)
 	}
 	tx := db.Begin()
+	if tx.Error != nil {
+		t.Fatalf("begin: %v", tx.Error)
+	}
 	t.Cleanup(func() { tx.Rollback() })
 	repo := repository.NewUserRepository(tx)
 	ctx := context.Background()
@@ -53,7 +56,12 @@ func TestUserRepository_AdvanceMFAStep(t *testing.T) {
 	if got := stored(); got != 0 {
 		t.Fatalf("new user: mfa_last_step %d, want 0", got)
 	}
-	stale, _ := repo.FindByID(ctx, u.ID)
+	// Loaded before the steps below, as a login path loads the user before
+	// the MFA check and saves it afterwards.
+	stale, err := repo.FindByID(ctx, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	for _, tc := range []struct {
 		step int64

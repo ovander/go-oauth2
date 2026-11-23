@@ -114,7 +114,7 @@ B="$WORK/$BUNDLE_NAME"
 mkdir -p "$B/bin" "$B/www/admin" "$B/www/monitoring" "$B/systemd" "$B/caddy"
 BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-# go_want SRC -> the Go the module names (toolchain line, else go line), e.g. go1.27.2
+# go_want SRC -> the Go the module names (toolchain line, else go line), e.g. go1.27.4
 go_want() { awk '/^toolchain /{t=$2} /^go /{g="go"$2} END{print (t != "" ? t : g)}' "$1/go.mod"; }
 # go_check BINARY SRC: the binary was built with the Go its go.mod names.
 go_check() {

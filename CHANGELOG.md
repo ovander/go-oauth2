@@ -15,12 +15,12 @@ Capabilities**, non-breaking).
 - Tests: the TOTP single-use tests (#374) fail on every database or lookup error instead of
   ignoring it, and `scratchDB` gets its doc comment back. No runtime change.
 
-## [1.14.4] - 2026-11-23
+## [1.14.5] - 2026-11-23
 
-Security patch release on the **v1.x** line. `GET /oauth/authorize` is a browser endpoint and now
-ignores an `Authorization` header: it always shows the hosted login page, then the consent page,
-and `prompt=none` always answers `login_required`. Browser flows are unchanged. No migration, no
-environment variable, no change of default; discovery, claims and token endpoints are unchanged.
+Security patch release on the **v1.x** line, hardening the second factor. A wrong TOTP or
+recovery code now counts toward the account lockout like a wrong password, and a TOTP code is
+accepted only once (**migration 0032**, a `NOT NULL DEFAULT 0` column added on startup). No
+environment variable, no change of default, no token-contract change.
 
 ### Security
 
@@ -40,8 +40,16 @@ environment variable, no change of default; discovery, claims and token endpoint
   `account_locked` event with reason `mfa_invalid`). A locked account is refused before any code
   is checked, on `/api/admin/elevate` too, which now answers `403 account is locked` like the
   login endpoints. A missing code, a valid code, a redeemed recovery code and a failure to check
-  the code (e.g. a storage error) do not count; a complete sign-in still resets the counter. Deploy note: no migration, no environment variable,
-  no change of default (the existing limit and lockout duration apply).
+  the code (e.g. a storage error) do not count; a complete sign-in still resets the counter.
+  Deploy note: no migration, no environment variable, no change of default (the existing limit
+  and lockout duration apply).
+
+## [1.14.4] - 2026-11-23
+
+Security patch release on the **v1.x** line. `GET /oauth/authorize` is a browser endpoint and now
+ignores an `Authorization` header: it always shows the hosted login page, then the consent page,
+and `prompt=none` always answers `login_required`. Browser flows are unchanged. No migration, no
+environment variable, no change of default; discovery, claims and token endpoints are unchanged.
 
 ### Security
 
@@ -2179,7 +2187,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.14.4...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.14.5...HEAD
+[1.14.5]: https://github.com/ovander/go-oauth2/compare/v1.14.4...v1.14.5
 [1.14.4]: https://github.com/ovander/go-oauth2/compare/v1.14.3...v1.14.4
 [1.14.3]: https://github.com/ovander/go-oauth2/compare/v1.14.2...v1.14.3
 [1.14.2]: https://github.com/ovander/go-oauth2/compare/v1.14.1...v1.14.2

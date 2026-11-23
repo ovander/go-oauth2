@@ -220,9 +220,11 @@ func newOAuthRouter(
 	// OAuth 2.0 Endpoints
 	// ==========================================
 	r.Route("/oauth", func(r chi.Router) {
-		// Authorization endpoint - returns HTML login page or redirects
-		r.With(middleware.OptionalAuthMiddleware(tokenService, userRepo, usedTokenRepo)).
-			Get("/authorize", oauthHandler.Authorize)
+		// Authorization endpoint - returns HTML login page or redirects.
+		// A browser endpoint: the user signs in on the hosted login form,
+		// which leads to the consent page. An Authorization header is not a
+		// browser session, so no bearer middleware runs here.
+		r.Get("/authorize", oauthHandler.Authorize)
 		// H-07 fix: POST /authorize processes credentials; rate-limit it the same
 		// way as the direct login endpoint to prevent credential-stuffing attacks.
 		r.With(middleware.RateLimitMiddleware(config.LoginRateLimiter, config.TrustedProxyCIDRs)).

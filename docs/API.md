@@ -177,10 +177,11 @@ GET https://auth.example.com/oauth/authorize
 | `nonce` | recommended | echoed into the ID token |
 | `code_challenge` / `code_challenge_method` | required for public clients | `S256` |
 | `max_age` | optional | OIDC: forces re-auth if the session is older |
-| `prompt` | optional | OIDC (v1.8.0): `login` always shows the login page, even for a signed-in browser, and sets a new `auth_time` (use it with `max_age` before a sensitive action); `none` never shows a page and redirects with `login_required` or `consent_required` (the consent page is always shown, so `none` cannot succeed); `none` with another value is `invalid_request`. Other values are ignored. |
+| `prompt` | optional | OIDC (v1.8.0): `login` always shows the login page, even for a signed-in browser, and sets a new `auth_time` (use it with `max_age` before a sensitive action); `none` never shows a page and redirects with `login_required` (the login and consent pages are always shown, so `none` cannot succeed; before v1.14.4 a request carrying a bearer access token got `consent_required`); `none` with another value is `invalid_request`. Other values are ignored. |
 
-The server renders a login page (if the user has no session) followed by a
-**consent page**. On approval it redirects to:
+The server renders the hosted **login page** followed by a **consent page**. This is a
+browser endpoint: an `Authorization` header on the request is ignored (since v1.14.4; before,
+a valid bearer access token skipped the login page). On approval it redirects to:
 
 ```
 https://app.example.com/callback?code=AUTH_CODE&state=RANDOM_OPAQUE_VALUE&iss=https%3A%2F%2Fauth.example.com

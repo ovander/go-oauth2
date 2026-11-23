@@ -78,6 +78,8 @@ func (h *AdminAuthHandler) Elevate(w http.ResponseWriter, r *http.Request) {
 			writeError(w, "mfa_required", http.StatusUnauthorized)
 		case errors.Is(err, service.ErrMFAInvalidCode):
 			writeError(w, "invalid mfa code", http.StatusUnauthorized)
+		case errors.Is(err, service.ErrAccountLocked):
+			writeError(w, "account is locked", http.StatusForbidden)
 		default:
 			writeError(w, "elevation failed", http.StatusBadRequest)
 		}

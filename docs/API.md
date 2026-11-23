@@ -298,6 +298,9 @@ application/json`.
 }
 ```
 Errors: `401` invalid credentials, `403` account locked / email not verified.
+A wrong password and a wrong second-factor code (TOTP or recovery code) count on the same
+per-account counter; the account is locked for the lockout duration when it reaches the limit
+(since v1.14.5; before, only a wrong password counted). A complete sign-in resets the counter.
 
 ### 5.4 Refresh — `POST /api/auth/refresh`
 `{ "refresh_token": "eyJ..." }` → new `{ access_token, refresh_token, id_token, token_type, expires_in }`. `401` if invalid/expired. (Rate-limited together with `/oauth/token`.)
@@ -607,7 +610,8 @@ already-authenticated admin re-presents their password (and MFA if enrolled) to
 obtain a **fresh-`auth_time` access token** for destructive operations. Returns
 the same shape as login but **no refresh token** (elevation proves presence; it
 does not start a new session — the existing refresh token / cookie is untouched).
-`401` on bad credentials / `mfa_required` / invalid MFA code; `501` if step-up is
+`401` on bad credentials / `mfa_required` / invalid MFA code; `403` `account is locked`
+(a wrong MFA code counts toward the account lockout, as on login); `501` if step-up is
 not configured.
 
 ### 8.1.1 Change password — `POST /api/admin/change-password`

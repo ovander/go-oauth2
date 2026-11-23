@@ -144,9 +144,18 @@ func (s *authService) WithMFA(mfa MFAService) AuthService {
 // code and retry). The code may be a TOTP code or a one-time recovery code; a
 // value that is neither yields ErrMFAInvalidCode. A redeemed recovery code is
 // consumed and audited.
+//
+// A wrong code counts as a failed sign-in attempt, on the same per-account
+// counter and lockout as a wrong password (the counter is reset only by a
+// complete sign-in): once it reaches the limit the account is locked and
+// ErrAccountLocked is returned. A locked account is refused before any code is
+// checked.
 func (s *authService) stepUpMFA(ctx context.Context, user *model.User, code string) error {
 	if s.mfa == nil || !user.MFAEnabled {
 		return nil
+	}
+	if user.IsLocked() {
+		return fmt.Errorf("%w: try again later", ErrAccountLocked)
 	}
 	if strings.TrimSpace(code) == "" {
 		return ErrMFARequired
@@ -166,6 +175,14 @@ func (s *authService) stepUpMFA(ctx context.Context, user *model.User, code stri
 			"email": user.Email,
 		})
 		return nil
+	}
+	if locked, attempts := s.countFailedAttempt(ctx, user); locked {
+		s.logSecurityEvent(ctx, model.SecurityEventAccountLocked, &user.ID, nil, false, map[string]interface{}{
+			"email":           user.Email,
+			"failed_attempts": attempts,
+			"reason":          "mfa_invalid",
+		})
+		return ErrAccountLocked
 	}
 	return ErrMFAInvalidCode
 }
@@ -559,30 +576,44 @@ func (s *authService) checkPasswordWithLockout(ctx context.Context, user *model.
 	if auth.CheckPassword(password, user.HashedPassword) {
 		return nil
 	}
-	if err := s.userRepo.IncrementFailedLoginAttempts(ctx, user.ID); err != nil {
-		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
-	}
-	if refreshed, err := s.userRepo.FindByID(ctx, user.ID); err == nil && refreshed != nil {
-		user = refreshed
-	}
-	if user.FailedLoginAttempts >= s.maxFailedAttempts {
-		lockUntil := time.Now().Add(s.lockoutDuration)
-		if err := s.userRepo.LockAccount(ctx, user.ID, &lockUntil); err != nil {
-			logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
-		}
+	locked, attempts := s.countFailedAttempt(ctx, user)
+	if locked {
 		// Log account lockout
 		s.logSecurityEvent(ctx, model.SecurityEventAccountLocked, &user.ID, nil, false, map[string]interface{}{
 			"email":           user.Email,
-			"failed_attempts": user.FailedLoginAttempts,
+			"failed_attempts": attempts,
 		})
 		return ErrAccountLocked
 	}
 	// Log failed login attempt
 	s.logSecurityEvent(ctx, model.SecurityEventLoginFailed, &user.ID, nil, false, map[string]interface{}{
 		"email":           user.Email,
-		"failed_attempts": user.FailedLoginAttempts,
+		"failed_attempts": attempts,
 	})
 	return ErrInvalidCredentials
+}
+
+// countFailedAttempt records one failed sign-in attempt (a wrong password or a
+// wrong second-factor code) on the user's counter and locks the account for
+// the lockout duration once the counter reaches the limit. It reports whether
+// the account is now locked and the counter value. Persistence errors are
+// logged and do not stop the caller, which refuses the attempt either way.
+func (s *authService) countFailedAttempt(ctx context.Context, user *model.User) (locked bool, attempts int) {
+	if err := s.userRepo.IncrementFailedLoginAttempts(ctx, user.ID); err != nil {
+		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
+	}
+	attempts = user.FailedLoginAttempts + 1
+	if refreshed, err := s.userRepo.FindByID(ctx, user.ID); err == nil && refreshed != nil {
+		attempts = refreshed.FailedLoginAttempts
+	}
+	if attempts < s.maxFailedAttempts {
+		return false, attempts
+	}
+	lockUntil := time.Now().Add(s.lockoutDuration)
+	if err := s.userRepo.LockAccount(ctx, user.ID, &lockUntil); err != nil {
+		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
+	}
+	return true, attempts
 }
 
 // AuthenticateAccount verifies a user's own credentials for Socrate's hosted

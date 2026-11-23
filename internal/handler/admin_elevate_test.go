@@ -69,6 +69,16 @@ func TestElevate_MFARequired_401(t *testing.T) {
 	}
 }
 
+// Wrong second-factor codes count toward the account lockout; a locked
+// account gets the same 403 answer as on the login endpoints.
+func TestElevate_AccountLocked_403(t *testing.T) {
+	h := newElevateHandler(&fakeReauth{err: service.ErrAccountLocked})
+	rr := postElevate(h, `{"password":"pw","mfa_code":"000000"}`, true)
+	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), "account is locked") {
+		t.Errorf("locked account should get 403 account is locked, got %d %q", rr.Code, rr.Body.String())
+	}
+}
+
 func TestElevate_MissingPassword_400(t *testing.T) {
 	h := newElevateHandler(&fakeReauth{})
 	if rr := postElevate(h, `{}`, true); rr.Code != http.StatusBadRequest {

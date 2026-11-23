@@ -10,6 +10,14 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.14.3] - 2026-11-23
+
+Security patch release on the **v1.x** line. An invite now only activates a pending account
+created for the same app (**migration 0031**, a nullable column added on startup), and the server
+is built with **Go 1.27.4**, which fixes two standard-library vulnerabilities reachable from
+Socrate's code. No environment variable, no change of default, no token-contract change. Upgrade
+by rebuilding and redeploying; the migration runs on startup.
+
 ### Security
 
 - **Built with Go 1.27.4** (`go 1.27.4`, `golang:1.27.4-alpine`). Go 1.27.3 and 1.27.4 fix two
@@ -2127,7 +2135,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.14.2...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.14.3...HEAD
+[1.14.3]: https://github.com/ovander/go-oauth2/compare/v1.14.2...v1.14.3
 [1.14.2]: https://github.com/ovander/go-oauth2/compare/v1.14.1...v1.14.2
 [1.14.1]: https://github.com/ovander/go-oauth2/compare/v1.14.0...v1.14.1
 [1.14.0]: https://github.com/ovander/go-oauth2/compare/v1.13.1...v1.14.0

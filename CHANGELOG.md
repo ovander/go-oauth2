@@ -12,6 +12,12 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **Built with Go 1.27.4** (`go 1.27.4`, `golang:1.27.4-alpine`). Go 1.27.3 and 1.27.4 fix two
+  standard-library vulnerabilities that govulncheck finds reachable from Socrate's code:
+  GO-2026-6859 in `net/http` (fixed in 1.27.4) and GO-2026-6809 in `crypto/x509` (fixed in
+  1.27.3). The server binary links the standard library, so a Socrate built with 1.27.2 carries
+  them: rebuild and redeploy. No code change.
+
 - **An invite only activates a pending account created for the same app.** A pending account now
   records the app whose invite created it (`users.invite_app_id`, **migration 0031**), and
   `POST /api/auth/invite` (and the hosted invite page) activates an existing pending account only

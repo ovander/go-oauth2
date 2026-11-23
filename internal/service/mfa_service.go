@@ -107,8 +107,8 @@ func (s *mfaService) ConfirmEnrollment(ctx context.Context, userID uint, code st
 	if err != nil {
 		return err
 	}
-	if !totp.ValidateCode(secret, code, time.Now()) {
-		return ErrMFAInvalidCode
+	if err := s.acceptTOTP(ctx, user, secret, code); err != nil {
+		return err
 	}
 	user.MFAEnabled = true
 	return s.userRepo.Update(ctx, user)
@@ -126,9 +126,27 @@ func (s *mfaService) Verify(ctx context.Context, userID uint, code string) error
 	if err != nil {
 		return err
 	}
-	if !totp.ValidateCode(secret, code, time.Now()) {
+	return s.acceptTOTP(ctx, user, secret, code)
+}
+
+// acceptTOTP accepts code for user only if it is a valid TOTP code of a time
+// step later than the last one accepted, and records that step. A code of an
+// already-used step (the same code again, or an older one) is ErrMFAInvalidCode;
+// so is a valid code that a concurrent request recorded first. An error
+// recording the step is returned as is (the code is refused).
+func (s *mfaService) acceptTOTP(ctx context.Context, user *model.User, secret, code string) error {
+	step, ok := totp.ValidateCodeStep(secret, code, time.Now())
+	if !ok || int64(step) <= user.MFALastStep {
 		return ErrMFAInvalidCode
 	}
+	advanced, err := s.userRepo.AdvanceMFAStep(ctx, user.ID, int64(step))
+	if err != nil {
+		return fmt.Errorf("mfa: record the accepted code: %w", err)
+	}
+	if !advanced {
+		return ErrMFAInvalidCode
+	}
+	user.MFALastStep = int64(step)
 	return nil
 }
 

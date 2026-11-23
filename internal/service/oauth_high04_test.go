@@ -295,3 +295,6 @@ func TestHIGH04_RefreshGrant_NilUsedRepo_DoesNotPanic(t *testing.T) {
 func (*high04UserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
 	return false, nil
 }
+func (*high04UserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
+	return false, nil
+}

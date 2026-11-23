@@ -173,3 +173,6 @@ func TestBlock_RegularAdminCanBeBlocked(t *testing.T) {
 func (*memUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
 	return false, nil
 }
+func (*memUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
+	return false, nil
+}

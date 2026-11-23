@@ -245,6 +245,47 @@ func TestMigration0031_UserInviteAppID(t *testing.T) {
 // scratchDB creates an empty database next to TEST_DATABASE_URL's, for a test
 // that changes the schema, and drops it at the end. It skips when the role
 // may not create databases.
+func TestMigration0032_UserMFALastStep(t *testing.T) {
+	db := scratchDB(t)
+	if err := db.AutoMigrate(&model.User{}); err != nil {
+		t.Fatalf("automigrate users: %v", err)
+	}
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	hasColumn := func() bool {
+		var n int64
+		db.Raw(`SELECT count(*) FROM information_schema.columns
+			WHERE table_name = 'users' AND column_name = 'mfa_last_step' AND is_nullable = 'NO'
+			AND column_default = '0'`).Scan(&n)
+		return n == 1
+	}
+	if !hasColumn() {
+		t.Fatal("fresh install: users.mfa_last_step missing, nullable or without default 0")
+	}
+
+	if err := db.Exec("ALTER TABLE users DROP COLUMN mfa_last_step").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO users (name, email, hashed_password, source) VALUES ('Existing', 'existing@example.test', 'x', 'manual')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("DELETE FROM schema_migrations WHERE id = '0032'").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("upgrade run: %v", err)
+	}
+	if !hasColumn() {
+		t.Fatal("upgrade: users.mfa_last_step not added")
+	}
+	var zero int64
+	db.Raw(`SELECT count(*) FROM users WHERE mfa_last_step = 0`).Scan(&zero)
+	if zero != 1 {
+		t.Fatalf("the existing user should get mfa_last_step 0, got %d matching", zero)
+	}
+}
+
 func scratchDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	admin := testDB(t)

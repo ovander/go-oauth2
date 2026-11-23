@@ -683,6 +683,21 @@ var migrations = []Migration{
 			return db.Exec("ALTER TABLE users ADD COLUMN invite_app_id BIGINT").Error
 		},
 	},
+	{
+		// 0032: the time step of the last TOTP code accepted per user, so a
+		// code cannot be used twice. 0 (none yet) for existing users.
+		ID:   "0032",
+		Name: "add_users.mfa_last_step",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("users") {
+				return nil
+			}
+			if db.Migrator().HasColumn(&model.User{}, "mfa_last_step") {
+				return nil
+			}
+			return db.Exec("ALTER TABLE users ADD COLUMN mfa_last_step BIGINT NOT NULL DEFAULT 0").Error
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

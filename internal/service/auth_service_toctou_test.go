@@ -471,3 +471,9 @@ func (*stubUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) 
 func (*callTrackingUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
 	return false, nil
 }
+func (*stubUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
+	return false, nil
+}
+func (*callTrackingUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
+	return false, nil
+}

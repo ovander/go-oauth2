@@ -420,3 +420,6 @@ func TestHIGH03_RefreshGrant_ConfidentialClient_CorrectSecret_PassesCredentialCh
 func (stubUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
 	return false, nil
 }
+func (stubUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
+	return false, nil
+}

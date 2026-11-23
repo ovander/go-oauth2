@@ -548,3 +548,6 @@ func TestHashMagicToken_DifferentInputs(t *testing.T) {
 func (*fakeMagicLinkUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
 	return false, nil
 }
+func (*fakeMagicLinkUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
+	return false, nil
+}

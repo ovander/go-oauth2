@@ -285,3 +285,6 @@ func TestNEW03_Introspect_JTIBlacklist_IndependentOfVersionCheck(t *testing.T) {
 func (*new03UserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
 	return false, nil
 }
+func (*new03UserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
+	return false, nil
+}

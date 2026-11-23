@@ -24,8 +24,10 @@ import (
 // mfaMemUserRepo is a minimal in-memory UserRepository that persists Update so
 // the MFA enroll/confirm/verify/disable round-trip can be observed.
 type mfaMemUserRepo struct {
-	users       map[uint]*model.User
-	updateCalls int
+	users        map[uint]*model.User
+	updateCalls  int
+	advanceCalls int
+	advanceErr   error
 }
 
 func newMFAMemUserRepo(us ...*model.User) *mfaMemUserRepo {
@@ -50,8 +52,27 @@ func (r *mfaMemUserRepo) FindByID(_ context.Context, id uint) (*model.User, erro
 func (r *mfaMemUserRepo) Update(_ context.Context, user *model.User) error {
 	r.updateCalls++
 	cp := *user
+	// Like GORM, Save does not write mfa_last_step (read-only column).
+	if old, ok := r.users[user.ID]; ok {
+		cp.MFALastStep = old.MFALastStep
+	}
 	r.users[user.ID] = &cp
 	return nil
+}
+
+// AdvanceMFAStep mirrors the conditional UPDATE: it records step only if it is
+// later than the stored one.
+func (r *mfaMemUserRepo) AdvanceMFAStep(_ context.Context, id uint, step int64) (bool, error) {
+	r.advanceCalls++
+	if r.advanceErr != nil {
+		return false, r.advanceErr
+	}
+	u, ok := r.users[id]
+	if !ok || u.MFALastStep >= step {
+		return false, nil
+	}
+	u.MFALastStep = step
+	return true, nil
 }
 
 // --- stubs for the rest of the interface (not exercised by MFA) ---
@@ -231,11 +252,95 @@ func TestMFA_Verify_EnabledUser(t *testing.T) {
 		t.Fatalf("ConfirmEnrollment: %v", err)
 	}
 
-	if err := svc.Verify(context.Background(), 1, code); err != nil {
+	// The code that confirmed the enrollment cannot sign in: its step is used.
+	if err := svc.Verify(context.Background(), 1, code); !errors.Is(err, ErrMFAInvalidCode) {
+		t.Fatalf("Verify with the enrollment code: %v, want ErrMFAInvalidCode", err)
+	}
+	// The next step's code (within the ±1 step window) signs in.
+	next, err := totp.GenerateCode(secret, time.Now().Add(30*time.Second))
+	if err != nil {
+		t.Fatalf("GenerateCode: %v", err)
+	}
+	if err := svc.Verify(context.Background(), 1, next); err != nil {
 		t.Fatalf("Verify with valid code: %v", err)
 	}
 	if err := svc.Verify(context.Background(), 1, "000000"); !errors.Is(err, ErrMFAInvalidCode) {
 		t.Fatalf("expected ErrMFAInvalidCode for a wrong code, got %v", err)
+	}
+}
+
+// A TOTP code is accepted once: the same code again, or a code of an earlier
+// step, is refused; a later step is accepted.
+func TestMFA_Verify_RefusesAUsedStep(t *testing.T) {
+	repo := newMFAMemUserRepo(&model.User{ID: 1, Email: "alice@example.com"})
+	svc := newTestMFAService(repo)
+	secret, _, err := svc.BeginEnrollment(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	codeAt := func(d time.Duration) string {
+		c, err := totp.GenerateCode(secret, now.Add(d))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	if err := svc.ConfirmEnrollment(context.Background(), 1, codeAt(-30*time.Second)); err != nil {
+		t.Fatalf("ConfirmEnrollment: %v", err)
+	}
+	current := codeAt(0)
+	if err := svc.Verify(context.Background(), 1, current); err != nil {
+		t.Fatalf("first use: %v", err)
+	}
+	if err := svc.Verify(context.Background(), 1, current); !errors.Is(err, ErrMFAInvalidCode) {
+		t.Fatalf("same code again: %v, want ErrMFAInvalidCode", err)
+	}
+	if err := svc.Verify(context.Background(), 1, codeAt(-30*time.Second)); !errors.Is(err, ErrMFAInvalidCode) {
+		t.Fatalf("earlier step: %v, want ErrMFAInvalidCode", err)
+	}
+	if err := svc.Verify(context.Background(), 1, codeAt(30*time.Second)); err != nil {
+		t.Fatalf("later step: %v", err)
+	}
+	// Saving the user (as the login path does) does not move the step back.
+	u, _ := repo.FindByID(context.Background(), 1)
+	u.MFALastStep = 0
+	if err := repo.Update(context.Background(), u); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Verify(context.Background(), 1, codeAt(30*time.Second)); !errors.Is(err, ErrMFAInvalidCode) {
+		t.Fatalf("after a save, the used step was accepted again: %v", err)
+	}
+}
+
+// A code recorded first by a concurrent request is refused; an error recording
+// the step refuses the code with that error (not ErrMFAInvalidCode, so it is
+// not counted as a wrong code).
+func TestMFA_Verify_StepRecordingRaceAndError(t *testing.T) {
+	repo := newMFAMemUserRepo(&model.User{ID: 1, Email: "alice@example.com"})
+	svc := newTestMFAService(repo)
+	secret, _, err := svc.BeginEnrollment(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := repo.users[1]
+	u.MFAEnabled = true
+	code, _ := totp.GenerateCode(secret, time.Now())
+	step := time.Now().Unix() / 30
+
+	u.MFALastStep = 0
+	repo.advanceErr = errors.New("db down")
+	if err := svc.Verify(context.Background(), 1, code); err == nil || errors.Is(err, ErrMFAInvalidCode) {
+		t.Fatalf("recording error: %v, want a non-ErrMFAInvalidCode error", err)
+	}
+	repo.advanceErr = nil
+
+	// Another request recorded this step after this one read the user.
+	read, _ := repo.FindByID(context.Background(), 1)
+	repo.users[1].MFALastStep = step
+	ms := svc.(*mfaService)
+	if err := ms.acceptTOTP(context.Background(), read, secret, code); !errors.Is(err, ErrMFAInvalidCode) {
+		t.Fatalf("concurrent use: %v, want ErrMFAInvalidCode", err)
 	}
 }
 

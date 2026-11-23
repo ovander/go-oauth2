@@ -46,6 +46,12 @@ type User struct {
 	// (auth.EncryptSecret). Empty when MFA is not enrolled. Never serialized.
 	MFASecret  string `gorm:"column:mfa_secret" json:"-"`
 	MFAEnabled bool   `gorm:"column:mfa_enabled;default:false" json:"mfa_enabled"`
+	// MFALastStep is the RFC 6238 time step of the last TOTP code accepted for
+	// this user (migration 0032); a code at or before it is refused, so a code
+	// cannot be used twice. It is read-only for GORM writes (Create, Save):
+	// only UserRepository.AdvanceMFAStep changes it, with a conditional update,
+	// so saving a user loaded before a sign-in cannot move it back.
+	MFALastStep int64 `gorm:"column:mfa_last_step;not null;default:0;<-:false" json:"-"`
 	// Attributes is free-form per-user data an operator attaches to the user
 	// (tier, cost centre, employee number, …). It is never put in a token by
 	// itself: a client must opt in by declaring a claim mapping that names

@@ -301,6 +301,8 @@ Errors: `401` invalid credentials, `403` account locked / email not verified.
 A wrong password and a wrong second-factor code (TOTP or recovery code) count on the same
 per-account counter; the account is locked for the lockout duration when it reaches the limit
 (since v1.14.5; before, only a wrong password counted). A complete sign-in resets the counter.
+A TOTP code is accepted once (since v1.14.5): the same code again, or a code of an earlier
+30-second step, is refused as a wrong code, including the code that confirmed the enrollment.
 
 ### 5.4 Refresh — `POST /api/auth/refresh`
 `{ "refresh_token": "eyJ..." }` → new `{ access_token, refresh_token, id_token, token_type, expires_in }`. `401` if invalid/expired. (Rate-limited together with `/oauth/token`.)

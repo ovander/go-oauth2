@@ -403,3 +403,6 @@ func TestFIND01_OptionalAuth_OneToTwo_NoUserInContext(t *testing.T) {
 func (*find01UserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
 	return false, nil
 }
+func (*find01UserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
+	return false, nil
+}

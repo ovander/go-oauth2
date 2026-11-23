@@ -71,15 +71,27 @@ func ProvisioningURI(secret, account, issuer string) string {
 // accepting the current time step and ±skewSteps adjacent steps. The comparison
 // is constant-time. An unparseable secret or a malformed code returns false.
 func ValidateCode(secret, code string, t time.Time) bool {
+	_, ok := ValidateCodeStep(secret, code, t)
+	return ok
+}
+
+// ValidateCodeStep is ValidateCode that also returns the time step (the RFC
+// 6238 counter) the code matched, so a caller can refuse a code whose step was
+// already used. Every step of the window is compared, in constant time; when
+// more than one matches, the latest is returned. It returns false for an
+// unparseable secret, a malformed code or no match.
+func ValidateCodeStep(secret, code string, t time.Time) (uint64, bool) {
 	key, err := decodeSecret(secret)
 	if err != nil {
-		return false
+		return 0, false
 	}
 	code = strings.TrimSpace(code)
 	if len(code) != digits {
-		return false
+		return 0, false
 	}
 	counter := uint64(t.Unix()) / period
+	var step uint64
+	ok := false
 	for delta := -skewSteps; delta <= skewSteps; delta++ {
 		c := counter
 		if delta < 0 {
@@ -88,10 +100,10 @@ func ValidateCode(secret, code string, t time.Time) bool {
 			c += uint64(delta)
 		}
 		if subtle.ConstantTimeCompare([]byte(hotp(key, c)), []byte(code)) == 1 {
-			return true
+			step, ok = c, true
 		}
 	}
-	return false
+	return step, ok
 }
 
 // GenerateCode returns the TOTP code for secret at time t (the value an

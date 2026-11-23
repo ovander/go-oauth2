@@ -377,3 +377,6 @@ func TestMED02_TokenGrant_RequirePKCE_RejectsCodeWithoutChallenge(t *testing.T) 
 func (*trackIncrUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
 	return false, nil
 }
+func (*trackIncrUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
+	return false, nil
+}

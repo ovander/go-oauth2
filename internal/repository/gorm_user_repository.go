@@ -25,6 +25,10 @@ type UserRepository interface {
 	// pending account userID, only if no app is recorded yet. It reports
 	// whether it did (false: another app is already recorded).
 	ClaimInviteApp(ctx context.Context, userID, appID uint) (bool, error)
+	// AdvanceMFAStep records step as the user's last accepted TOTP time step,
+	// only if it is later than the one recorded. It reports whether it did
+	// (false: that step or a later one was already used).
+	AdvanceMFAStep(ctx context.Context, userID uint, step int64) (bool, error)
 }
 
 type userRepository struct {
@@ -128,6 +132,16 @@ func (r *userRepository) ClaimInviteApp(ctx context.Context, userID, appID uint)
 	res := r.db.WithContext(ctx).Model(&model.User{}).
 		Where("id = ? AND invite_app_id IS NULL", userID).
 		Update("invite_app_id", appID)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected == 1, nil
+}
+
+func (r *userRepository) AdvanceMFAStep(ctx context.Context, userID uint, step int64) (bool, error) {
+	// Raw SQL: the column is read-only for GORM writes (model.User.MFALastStep).
+	res := r.db.WithContext(ctx).Exec(
+		"UPDATE users SET mfa_last_step = ? WHERE id = ? AND mfa_last_step < ?", step, userID, step)
 	if res.Error != nil {
 		return false, res.Error
 	}

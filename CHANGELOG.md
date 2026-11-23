@@ -10,6 +10,13 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.14.4] - 2026-11-23
+
+Security patch release on the **v1.x** line. `GET /oauth/authorize` is a browser endpoint and now
+ignores an `Authorization` header: it always shows the hosted login page, then the consent page,
+and `prompt=none` always answers `login_required`. Browser flows are unchanged. No migration, no
+environment variable, no change of default; discovery, claims and token endpoints are unchanged.
+
 ### Security
 
 - **`GET /oauth/authorize` ignores an `Authorization` header.** The endpoint is a browser
@@ -2146,7 +2153,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.14.3...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.14.4...HEAD
+[1.14.4]: https://github.com/ovander/go-oauth2/compare/v1.14.3...v1.14.4
 [1.14.3]: https://github.com/ovander/go-oauth2/compare/v1.14.2...v1.14.3
 [1.14.2]: https://github.com/ovander/go-oauth2/compare/v1.14.1...v1.14.2
 [1.14.1]: https://github.com/ovander/go-oauth2/compare/v1.14.0...v1.14.1

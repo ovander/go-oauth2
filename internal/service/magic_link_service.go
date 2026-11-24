@@ -62,6 +62,18 @@ type MagicLinkService interface {
 	VerifyMagicLink(ctx context.Context, req dto.MagicLinkVerifyRequest) (*dto.LoginResponse, error)
 }
 
+// ErrMagicLinkSecondFactor: the account has MFA enabled, so a magic link (one
+// factor: possession of the mailbox) cannot sign it in; the user signs in with
+// the password and the second factor instead.
+var ErrMagicLinkSecondFactor = errors.New("account uses a second factor: magic-link sign-in is not available")
+
+// MagicLinkSignInPolicy applies to a magic-link sign-in the admin policies the
+// other sign-in paths apply (ADMIN_MFA_POLICY, ADMIN_APP_SIGNIN_POLICY). The
+// auth service implements it; bootstrap wires it with SetSignInPolicy.
+type MagicLinkSignInPolicy interface {
+	checkMagicLinkSignIn(ctx context.Context, user *model.User, app *model.App) error
+}
+
 type magicLinkService struct {
 	magicLinkRepo   repository.MagicLinkRepository
 	userRepo        repository.UserRepository
@@ -71,7 +83,13 @@ type magicLinkService struct {
 	emailService    EmailService
 	issuer          string
 	environment     string
+	// signInPolicy applies the admin sign-in policies; nil refuses every
+	// Socrate admin (fail closed).
+	signInPolicy MagicLinkSignInPolicy
 }
+
+// SetSignInPolicy wires the admin sign-in policies applied by VerifyMagicLink.
+func (s *magicLinkService) SetSignInPolicy(p MagicLinkSignInPolicy) { s.signInPolicy = p }
 
 // NewMagicLinkService creates a new MagicLinkService.
 // emailService may be nil in tests; in that case the raw token is returned
@@ -251,6 +269,10 @@ func (s *magicLinkService) VerifyMagicLink(ctx context.Context, req dto.MagicLin
 	if record.AppID != app.ID {
 		return nil, fmt.Errorf("%w: token app mismatch", ErrInvalidToken)
 	}
+	// A deactivated client gets no tokens from any sign-in path.
+	if !app.Active {
+		return nil, fmt.Errorf("%w: client_id=%s", ErrAppInactive, app.ClientID)
+	}
 
 	user, err := s.userRepo.FindByID(ctx, record.UserID)
 	if err != nil {
@@ -259,6 +281,23 @@ func (s *magicLinkService) VerifyMagicLink(ctx context.Context, req dto.MagicLin
 
 	if user.IsLocked() {
 		return nil, fmt.Errorf("%w: try again later", ErrAccountLocked)
+	}
+
+	// A magic link proves one factor (the mailbox). An account with MFA
+	// enabled signs in with its password and second factor instead.
+	if user.MFAEnabled {
+		return nil, ErrMagicLinkSecondFactor
+	}
+
+	// Socrate admins: the admin MFA-enrollment and app sign-in policies apply
+	// as on the other sign-in paths. Without the policy wired, refuse.
+	if user.IsGlobalAdmin() {
+		if s.signInPolicy == nil {
+			return nil, ErrAdminAppSignInRefused
+		}
+		if err := s.signInPolicy.checkMagicLinkSignIn(ctx, user, app); err != nil {
+			return nil, err
+		}
 	}
 
 	userAppRole, err := s.userAppRoleRepo.FindByUserAndApp(ctx, user.ID, app.ID)

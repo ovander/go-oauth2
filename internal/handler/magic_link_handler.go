@@ -119,6 +119,12 @@ func (h *MagicLinkHandler) Verify(w http.ResponseWriter, r *http.Request) {
 			writeError(w, "this login link has already been used", http.StatusUnprocessableEntity)
 		case errors.Is(err, service.ErrAccountLocked):
 			writeError(w, "account is locked, please try again later", http.StatusForbidden)
+		case errors.Is(err, service.ErrMagicLinkSecondFactor):
+			writeError(w, "this account uses two-factor authentication: sign in with your password and code", http.StatusForbidden)
+		case errors.Is(err, service.ErrMFAEnrollmentRequired), errors.Is(err, service.ErrAdminAppSignInRefused):
+			writeError(w, "this account cannot sign in with a login link", http.StatusForbidden)
+		case errors.Is(err, service.ErrAppInactive):
+			writeError(w, "this application is deactivated", http.StatusForbidden)
 		default:
 			// Covers expired, not-found, app-mismatch — all map to 401 to
 			// prevent distinguishing between wrong and used/expired tokens.

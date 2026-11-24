@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -319,5 +320,30 @@ func TestMagicLinkHandler_Verify_AccountLocked(t *testing.T) {
 
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("expected 403 for locked account, got %d", rr.Code)
+	}
+}
+
+// The sign-in checks VerifyMagicLink applies (second factor, admin policies,
+// deactivated client) are answered 403 with a static message.
+func TestMagicLinkHandler_Verify_SignInRefusals(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		want string
+	}{
+		{service.ErrMagicLinkSecondFactor, "two-factor"},
+		{service.ErrMFAEnrollmentRequired, "cannot sign in with a login link"},
+		{service.ErrAdminAppSignInRefused, "cannot sign in with a login link"},
+		{fmt.Errorf("%w: client_id=app-1", service.ErrAppInactive), "deactivated"},
+	} {
+		err := tc.err
+		svc := &mockMagicLinkService{
+			verifyFn: func(_ context.Context, _ dto.MagicLinkVerifyRequest) (*dto.LoginResponse, error) {
+				return nil, err
+			},
+		}
+		rr := doVerifyRequest(newMagicLinkHandler(svc).Verify, map[string]string{"token": "t", "client_id": "app-1"})
+		if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), tc.want) {
+			t.Errorf("%v: %d %s, want 403 containing %q", tc.err, rr.Code, rr.Body.String(), tc.want)
+		}
 	}
 }

@@ -22,6 +22,14 @@ Capabilities**, non-breaking).
   no migration; run `observe` and check `service_user_scope` events, which show the apps relying
   on either, before `enforce`.
 
+- **IP blocks and alert-rule changes are audited.** A manual block, an unblock, and creating,
+  changing or deleting an alert rule now record a security event naming the admin:
+  `ip_blocked` and `ip_unblocked` (the block's address, reason, author and dates, read before
+  the row is deleted), `alert_rule_created`, `alert_rule_updated` (values `before` and `after`)
+  and `alert_rule_deleted`. Lifting a block and changing or deleting a rule are `warning`. A
+  webhook URL is recorded as its host only. Unblocking or deleting an unknown id now answers
+  `404` (it answered `204`). Deploy note: no migration, no environment variable.
+
 - **Loopback, the server's own addresses and trusted proxies can no longer be blocked.**
   `POST /api/admin/security/blocked-ips` now refuses (`400`) a loopback or unspecified address,
   one of the server's network addresses or any address in `TRUSTED_PROXIES`, and anything that

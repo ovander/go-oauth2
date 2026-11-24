@@ -32,11 +32,40 @@ func (r *inviteUserRepo) FindByEmail(_ context.Context, email string) (*model.Us
 	return nil, errors.New("record not found")
 }
 
+// Update models the repository: it never writes the password or the token
+// version.
 func (r *inviteUserRepo) Update(_ context.Context, u *model.User) error {
 	r.updates++
 	c := *u
+	if r.user != nil {
+		c.HashedPassword, c.TokenVersion = r.user.HashedPassword, r.user.TokenVersion
+	}
 	r.user = &c
 	return nil
+}
+
+// SetPassword models the repository: the hash, the verification and the
+// token-version bump are one write.
+func (r *inviteUserRepo) SetPassword(_ context.Context, id uint, change repository.PasswordChange) error {
+	if r.user == nil || r.user.ID != id {
+		return errors.New("record not found")
+	}
+	r.updates++
+	r.user.HashedPassword = change.HashedPassword
+	r.user.TokenVersion++
+	if change.ConfirmedAt != nil {
+		r.user.IsVerified = true
+		r.user.ConfirmedAt = change.ConfirmedAt
+	}
+	return nil
+}
+
+func (r *inviteUserRepo) FindByID(_ context.Context, id uint) (*model.User, error) {
+	if r.user == nil || r.user.ID != id {
+		return nil, errors.New("record not found")
+	}
+	c := *r.user
+	return &c, nil
 }
 
 func (r *inviteUserRepo) Create(_ context.Context, u *model.User) error {
@@ -264,5 +293,37 @@ func TestAcceptInvite_RolesUnreadable_FailsClosedWithoutConsumingTheToken(t *tes
 	}
 	if !users.user.IsVerified || users.user.HashedPassword == "throwaway" {
 		t.Fatal("retry did not activate the account")
+	}
+}
+
+// Activating a pending account moves its token version (the password is set
+// with SetPassword); the tokens issued on acceptance carry the new version,
+// so they are valid.
+func TestAcceptInvite_TokensCarryTheNewTokenVersion(t *testing.T) {
+	ts := testTokenService(t)
+	users := &inviteUserRepo{user: &model.User{ID: 7, Email: "invitee@example.test", HashedPassword: "throwaway",
+		Source: "manual", InviteAppID: appID(1), TokenVersion: 4}}
+	svc := service.NewAuthServiceFull(users,
+		&stubAppRepo{app: &model.App{ID: 1, Name: "Some App", ClientID: "some"}},
+		&inviteRolesRepo{}, &succeedOnceTokenRepo{used: map[string]bool{}}, &inviteAuditRepo{}, ts, nil,
+		service.AuthServiceConfig{MaxFailedAttempts: 5})
+	tok, err := ts.GenerateInviteToken("invitee@example.test", 1, "user", 99)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := svc.AcceptInvite(context.Background(), tok, "Invitee", "Invitee@Pass123!")
+	if err != nil {
+		t.Fatalf("AcceptInvite: %v", err)
+	}
+	if users.user.TokenVersion != 5 || users.user.HashedPassword == "throwaway" || !users.user.IsVerified {
+		t.Fatalf("stored account: version %d, password changed %v, verified %v; want 5, true, true",
+			users.user.TokenVersion, users.user.HashedPassword != "throwaway", users.user.IsVerified)
+	}
+	claims, err := ts.VerifyAccessToken(resp.AccessToken)
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if claims.TokenVersion != 5 {
+		t.Fatalf("access token version %d, want 5 (the stored one)", claims.TokenVersion)
 	}
 }

@@ -1177,16 +1177,23 @@ func (s *authService) AcceptInvite(ctx context.Context, token, name, password st
 		}
 		hooks.RunUserProvisioned(ctx, hooks.UserProvisioned{User: user, Source: "invite"})
 	} else {
-		user.HashedPassword = hashedPassword
-		user.IsVerified = true
-		user.ConfirmedAt = &now
-		user.UpdatedAt = now
 		if userName != "" && userName != claims.Email {
 			user.Name = userName
+			user.UpdatedAt = now
+			if err := s.userRepo.Update(ctx, user); err != nil {
+				return nil, fmt.Errorf("failed to update user: %w", err)
+			}
 		}
-
-		if err := s.userRepo.Update(ctx, user); err != nil {
+		// The password and the verification are one write (Update never
+		// writes a password); it also moves the token version, so read the
+		// user back for the tokens issued below.
+		if err := s.userRepo.SetPassword(ctx, user.ID, repository.PasswordChange{
+			HashedPassword: hashedPassword, ConfirmedAt: &now,
+		}); err != nil {
 			return nil, fmt.Errorf("failed to update user: %w", err)
+		}
+		if user, err = s.userRepo.FindByID(ctx, user.ID); err != nil {
+			return nil, fmt.Errorf("failed to reload user: %w", err)
 		}
 	}
 

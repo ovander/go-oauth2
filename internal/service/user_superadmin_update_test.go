@@ -13,8 +13,10 @@ import (
 // superadminRepo keeps users and counts token-version bumps.
 type superadminRepo struct {
 	repository.UserRepository
-	users  map[uint]*model.User
-	bumped int
+	users        map[uint]*model.User
+	bumped       int
+	incrementErr error
+	updateErr    error
 }
 
 func (r *superadminRepo) FindByID(_ context.Context, id uint) (*model.User, error) {
@@ -37,16 +39,25 @@ func (r *superadminRepo) FindByEmail(_ context.Context, email string) (*model.Us
 }
 
 func (r *superadminRepo) Update(_ context.Context, u *model.User) error {
+	if r.updateErr != nil {
+		return r.updateErr
+	}
 	cp := *u
 	r.users[u.ID] = &cp
 	return nil
 }
 
 func (r *superadminRepo) IncrementTokenVersion(_ context.Context, id uint) error {
+	if r.incrementErr != nil {
+		return r.incrementErr
+	}
 	r.bumped++
 	r.users[id].TokenVersion++
 	return nil
 }
+
+// versionOf is the stored token version.
+func (r *superadminRepo) versionOf(id uint) int { return r.users[id].TokenVersion }
 
 func strp(s string) *string { return &s }
 
@@ -71,12 +82,37 @@ func TestUpdateSuperadmin_CredentialChangesRevokeSessions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if repo.bumped != tc.wantBumped {
-				t.Fatalf("token version bumped %d times, want %d", repo.bumped, tc.wantBumped)
+			if got := repo.versionOf(2); got != tc.wantBumped {
+				t.Fatalf("stored token version %d, want %d", got, tc.wantBumped)
 			}
 			if tc.req.Password != nil && u.PasswordChangedAt == nil {
 				t.Error("password_changed_at not set")
 			}
 		})
+	}
+}
+
+// The new credentials and the session revocation are one write: the stored
+// token version moves with the password even if a separate increment would
+// fail, and nothing is stored when the write fails.
+func TestUpdateSuperadmin_RevocationIsPartOfTheSameWrite(t *testing.T) {
+	repo := &superadminRepo{users: map[uint]*model.User{
+		2: {ID: 2, Email: "root@example.com", Role: model.UserRoleSuperadmin, HashedPassword: "old"},
+	}, incrementErr: errors.New("db down")}
+	if _, err := NewUserService(repo).UpdateSuperadmin(context.Background(), 2, dto.UpdateSuperadminRequest{Password: strp("A-new-Passw0rd!x")}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if repo.versionOf(2) != 1 || repo.users[2].HashedPassword == "old" {
+		t.Fatalf("stored version %d, password changed %v; want 1, true", repo.versionOf(2), repo.users[2].HashedPassword != "old")
+	}
+
+	failing := &superadminRepo{users: map[uint]*model.User{
+		2: {ID: 2, Email: "root@example.com", Role: model.UserRoleSuperadmin, HashedPassword: "old"},
+	}, updateErr: errors.New("db down")}
+	if _, err := NewUserService(failing).UpdateSuperadmin(context.Background(), 2, dto.UpdateSuperadminRequest{Password: strp("A-new-Passw0rd!x")}); err == nil {
+		t.Fatal("a failed write must be reported")
+	}
+	if failing.users[2].HashedPassword != "old" || failing.versionOf(2) != 0 {
+		t.Fatal("a failed write must change nothing")
 	}
 }

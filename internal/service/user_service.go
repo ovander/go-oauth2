@@ -471,14 +471,15 @@ func (s *userService) UpdateSuperadmin(ctx context.Context, id uint, req dto.Upd
 	}
 
 	user.UpdatedAt = now
+	if credentialsChanged {
+		// Revoke the existing sessions in the same write as the new
+		// credentials: either both are saved or neither is, so a failure
+		// can never leave new credentials with old sessions still valid.
+		user.TokenVersion++
+	}
 
 	if err := s.repo.Update(ctx, user); err != nil {
 		return nil, err
-	}
-	if credentialsChanged {
-		if err := s.repo.IncrementTokenVersion(ctx, user.ID); err != nil {
-			return nil, fmt.Errorf("failed to revoke the superadmin's sessions: %w", err)
-		}
 	}
 
 	return user, nil

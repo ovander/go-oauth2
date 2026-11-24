@@ -10,6 +10,18 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Security
+
+- **Every password check counts failures and honours the lockout; `/elevate` and
+  `/change-password` are rate-limited.** `POST /api/admin/elevate` (re-authentication) and
+  `POST /api/admin/change-password` used to check the password without counting a wrong one or
+  refusing a locked account; they now go through the same check as sign-in, which also replaces
+  `POST /api/admin/login`'s own copy of the lockout. A locked account gets `403 account is
+  locked` on both; a successful re-authentication or password change resets the counter. Both
+  routes are rate-limited with the login limiter, keyed per admin (the consoles reach them
+  through their BFF, from one address), falling back to the client IP. Deploy note: no
+  migration, no environment variable, no change of default.
+
 ## [1.14.6] - 2026-11-24
 
 Security patch release on the **v1.x** line. The token-exchange grant (only active with the

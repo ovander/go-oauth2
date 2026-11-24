@@ -495,11 +495,15 @@ func newAdminRouter(
 		// change-password endpoint itself is exempt so it stays reachable.
 		r.Use(middleware.RequirePasswordChangeComplete("/change-password"))
 
+		// Both check the admin's password (and /elevate the second factor):
+		// rate-limited per admin, on top of the account lockout.
+		passwordCheck := middleware.UserRateLimitMiddleware(config.LoginRateLimiter, config.TrustedProxyCIDRs)
+
 		// Authenticated password change (satisfies a pending forced change).
-		r.Post("/change-password", adminAuthHandler.ChangePassword)
+		r.With(passwordCheck).Post("/change-password", adminAuthHandler.ChangePassword)
 
 		// Step-up: obtain a fresh-auth_time token for destructive operations.
-		r.Post("/elevate", adminAuthHandler.Elevate)
+		r.With(passwordCheck).Post("/elevate", adminAuthHandler.Elevate)
 
 		// freshAuth gates the most destructive operations on a recent
 		// authentication (Tier-0 step-up). A zero window disables it.

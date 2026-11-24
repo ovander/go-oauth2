@@ -469,7 +469,7 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 		return nil, ErrInvalidCredentials
 	}
 
-	if err := s.checkPasswordWithLockout(ctx, user, req.Password); err != nil {
+	if err := s.checkPasswordWithLockout(ctx, user, req.Password, ""); err != nil {
 		return nil, err
 	}
 
@@ -578,7 +578,7 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 // A wrong password counts as a failed attempt; reaching the limit locks the
 // account. Both are audited. Shared by Login and AuthenticateAccount so every
 // password check on behalf of a user counts towards the same lockout.
-func (s *authService) checkPasswordWithLockout(ctx context.Context, user *model.User, password string) error {
+func (s *authService) checkPasswordWithLockout(ctx context.Context, user *model.User, password, loginType string) error {
 	if user.IsLocked() {
 		return fmt.Errorf("%w: try again later", ErrAccountLocked)
 	}
@@ -586,19 +586,20 @@ func (s *authService) checkPasswordWithLockout(ctx context.Context, user *model.
 		return nil
 	}
 	locked, attempts := s.countFailedAttempt(ctx, user)
+	details := map[string]interface{}{
+		"email":           user.Email,
+		"failed_attempts": attempts,
+	}
+	if loginType != "" {
+		details["login_type"] = loginType
+	}
 	if locked {
 		// Log account lockout
-		s.logSecurityEvent(ctx, model.SecurityEventAccountLocked, &user.ID, nil, false, map[string]interface{}{
-			"email":           user.Email,
-			"failed_attempts": attempts,
-		})
+		s.logSecurityEvent(ctx, model.SecurityEventAccountLocked, &user.ID, nil, false, details)
 		return ErrAccountLocked
 	}
 	// Log failed login attempt
-	s.logSecurityEvent(ctx, model.SecurityEventLoginFailed, &user.ID, nil, false, map[string]interface{}{
-		"email":           user.Email,
-		"failed_attempts": attempts,
-	})
+	s.logSecurityEvent(ctx, model.SecurityEventLoginFailed, &user.ID, nil, false, details)
 	return ErrInvalidCredentials
 }
 
@@ -640,7 +641,7 @@ func (s *authService) AuthenticateAccount(ctx context.Context, email, password, 
 		auth.CheckDummyPassword()
 		return nil, ErrInvalidCredentials
 	}
-	if err := s.checkPasswordWithLockout(ctx, user, password); err != nil {
+	if err := s.checkPasswordWithLockout(ctx, user, password, ""); err != nil {
 		return nil, err
 	}
 	if !user.IsVerified {
@@ -679,33 +680,10 @@ func (s *authService) AdminLogin(ctx context.Context, req dto.AdminLoginRequest)
 		return nil, ErrInvalidCredentials
 	}
 
-	if user.IsLocked() {
-		return nil, fmt.Errorf("%w: try again later", ErrAccountLocked)
-	}
-
-	if !auth.CheckPassword(req.Password, user.HashedPassword) {
-		if err := s.userRepo.IncrementFailedLoginAttempts(ctx, user.ID); err != nil {
-			logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
-		}
-		user, _ = s.userRepo.FindByID(ctx, user.ID)
-		if user.FailedLoginAttempts >= s.maxFailedAttempts {
-			lockUntil := time.Now().Add(s.lockoutDuration)
-			if err := s.userRepo.LockAccount(ctx, user.ID, &lockUntil); err != nil {
-				logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
-			}
-			s.logSecurityEvent(ctx, model.SecurityEventAccountLocked, &user.ID, nil, false, map[string]interface{}{
-				"email":           user.Email,
-				"failed_attempts": user.FailedLoginAttempts,
-				"login_type":      "admin_portal",
-			})
-			return nil, ErrAccountLocked
-		}
-		s.logSecurityEvent(ctx, model.SecurityEventLoginFailed, &user.ID, nil, false, map[string]interface{}{
-			"email":           user.Email,
-			"failed_attempts": user.FailedLoginAttempts,
-			"login_type":      "admin_portal",
-		})
-		return nil, ErrInvalidCredentials
+	// The same password check, failure counting and lockout as every other
+	// sign-in path.
+	if err := s.checkPasswordWithLockout(ctx, user, req.Password, "admin_portal"); err != nil {
+		return nil, err
 	}
 
 	if !user.IsVerified {
@@ -825,18 +803,18 @@ func (s *authService) ReAuthenticate(ctx context.Context, userID uint, password,
 		return nil, fmt.Errorf("%w: user_id=%d", ErrUserNotFound, userID)
 	}
 
-	if !auth.CheckPassword(password, user.HashedPassword) {
-		s.logSecurityEvent(ctx, model.SecurityEventLoginFailed, &user.ID, nil, false, map[string]interface{}{
-			"email":      user.Email,
-			"login_type": "admin_elevate",
-			"reason":     "invalid_password",
-		})
-		return nil, ErrInvalidCredentials
+	// A wrong password counts toward the lockout and a locked account is
+	// refused, as on every sign-in path.
+	if err := s.checkPasswordWithLockout(ctx, user, password, "admin_elevate"); err != nil {
+		return nil, err
 	}
 
 	// MFA step-up, same as interactive login.
 	if err := s.stepUpMFA(ctx, user, mfaCode); err != nil {
 		return nil, err
+	}
+	if err := s.userRepo.ResetFailedLoginAttempts(ctx, user.ID); err != nil {
+		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 
 	now := time.Now()
@@ -977,9 +955,10 @@ func (s *authService) ChangePassword(ctx context.Context, userID uint, currentPa
 		return fmt.Errorf("%w: user_id=%d", ErrUserNotFound, userID)
 	}
 
-	// Verify current password
-	if !auth.CheckPassword(currentPassword, user.HashedPassword) {
-		return ErrInvalidCredentials
+	// Verify the current password: a wrong one counts toward the lockout and
+	// a locked account is refused, as on every sign-in path.
+	if err := s.checkPasswordWithLockout(ctx, user, currentPassword, "change_password"); err != nil {
+		return err
 	}
 
 	// Validate new password
@@ -1010,6 +989,9 @@ func (s *authService) ChangePassword(ctx context.Context, userID uint, currentPa
 	// Invalidate all existing tokens (user must re-login)
 	if err := s.userRepo.IncrementTokenVersion(ctx, user.ID); err != nil {
 		return fmt.Errorf("failed to revoke tokens: %w", err)
+	}
+	if err := s.userRepo.ResetFailedLoginAttempts(ctx, user.ID); err != nil {
+		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 
 	// Log password change

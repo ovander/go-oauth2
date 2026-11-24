@@ -216,7 +216,7 @@ releases. How to report a vulnerability and which versions are supported are in
 
 ## Maturity
 
-Socrate is **v1.14.5** on the v1.x line —
+Socrate is **v1.14.6** on the v1.x line —
 a single-instance, production-capable identity server with two operator consoles.
 
 | ✅ Production ready (today) | ◻️ Roadmap |

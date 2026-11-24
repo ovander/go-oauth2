@@ -12,6 +12,23 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **`REFRESH_REUSE_MODE=enforce` revokes only the reused token's family.** Under `enforce`, a
+  rotated refresh token presented again raised the user's token version (every session, the
+  consoles included) before the client was authenticated, on every replay, and also for a token
+  a logout had revoked; a concurrent replay was neither audited nor revoked. Now:
+  - each refresh token carries a family id (`fam`, kept across rotations; refresh tokens are
+    opaque to clients), and `enforce` revokes that family only: that sign-in's tokens at that
+    client;
+  - reuse is checked after client authentication and the token-version check;
+  - a token revoked by `/oauth/revoke` or a logout is rejected without a reuse signal;
+  - each token signals once;
+  - the concurrent replay is audited (`concurrent: true`) and handled like any other reuse.
+
+  A refresh token issued before this release has no family; under `enforce`, its reuse still
+  revokes all the user's tokens. Audit details gain `revoked` (`family` or `all_user_tokens`).
+  Deploy note: no migration; the records live in `used_tokens`. `off` (the default) is
+  unchanged, except that a replayed token is now rejected after client authentication.
+
 - **An app's service account can be kept away from accounts it did not create.** New
   `SERVICE_USER_SCOPE_MODE` (`off` default, `observe`, `enforce`). Under `enforce`, the service
   API (`/api/apps/{app_id}/service/users`) no longer enrols an existing account in the app unless

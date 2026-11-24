@@ -35,7 +35,9 @@ const (
 	SecurityEventRevokedTokenUsed SecurityEventType = "revoked_token_used"
 	// SecurityEventRefreshTokenReuse: an already-rotated (single-use) refresh
 	// token was presented again — a token-theft signal (OAuth 2.0 Security BCP /
-	// RFC 9700 §4.14.2). In enforce mode the user's token family is revoked.
+	// RFC 9700 §4.14.2). In enforce mode the token's family is revoked
+	// (details "revoked": "family"), or every token of the user for a refresh
+	// token issued before families ("all_user_tokens").
 	SecurityEventRefreshTokenReuse SecurityEventType = "refresh_token_reuse"
 	// SecurityEventClientAuthFailed: a confidential client failed authentication
 	// at the token endpoint (missing or wrong client_secret) — a credential-

@@ -55,6 +55,9 @@ type AuthnEvidence struct {
 	AuthTime int64    `json:"at,omitempty"`
 	AMR      []string `json:"amr,omitempty"`
 	ACR      string   `json:"acr,omitempty"`
+	// Family is the refresh-token family a refresh carries over (#365); empty
+	// starts a new one. It is not part of the consent token.
+	Family string `json:"-"`
 }
 
 // IssueConsentToken returns a short-lived HMAC-signed token that binds

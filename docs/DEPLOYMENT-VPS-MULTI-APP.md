@@ -226,7 +226,7 @@ RATE_LIMIT_TOKEN=60                     # never 0 in production (Validate() warn
 # Token TTLs (defaults shown; shorter access tokens = faster revocation at resource servers)
 ACCESS_TOKEN_TTL=900
 REFRESH_TOKEN_TTL=604800
-REFRESH_REUSE_MODE=enforce              # a replayed refresh token revokes the whole family
+REFRESH_REUSE_MODE=enforce              # a replayed refresh token revokes its family (that sign-in's tokens)
 ```
 
 Optional, per your integration choices: `AUDIENCE_MODE=dual` once apps verify

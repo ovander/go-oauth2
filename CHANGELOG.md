@@ -12,6 +12,19 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **The admin-console refresh cookie is usable only by the console.** When
+  `ADMIN_CONSOLE_CLIENT_ID` enables the refresh-cookie channel, `/oauth/token` read the cookie
+  for any refresh request without a token in the body. `SameSite=Strict` lets a page on another
+  origin of the same site send it, and `ALLOWED_ORIGINS` may grant that origin credentialed
+  CORS, so a script there could refresh as the console and read the tokens. The cookie is now
+  read only for the console's own `client_id`, with an `X-Requested-By` header (the CSRF defence
+  the router comment described but no code checked), and from the origins of
+  `ADMIN_CONSOLE_REDIRECT_URIS` (or without an `Origin` header). In production the cookie is
+  `__Host-refresh_token` on `Path=/`, which a sibling subdomain cannot set or overwrite; the old
+  cookie is expired when the new one is set, and logout clears both. Deploy note: no migration,
+  no new variable; a browser still holding the old cookie signs in once more. The consoles use
+  their backend-for-frontend and do not use this channel.
+
 - **A locked account no longer reveals that it exists.** The password check answered "account
   locked" to any password, before the hash comparison: the answer and its speed told apart an
   existing account from an unknown email. A locked account's password is now checked as any

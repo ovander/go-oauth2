@@ -390,6 +390,9 @@ Then confine the admin API itself to the consoles' tokens with
 admin is accepted, whichever client it was issued to, so an application's
 backend holding such a token could drive the admin API. `observe` first: a
 token from anywhere else than a console is audited as `admin_api_audience`.
+The mode also covers the app-management routes `/api/apps/{app_id}/*`, where a
+token issued to that same app stays accepted (an app backend forwarding its app
+admins' tokens), but another application's token is refused.
 
 ---
 

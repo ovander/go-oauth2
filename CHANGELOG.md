@@ -12,6 +12,17 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **The admin-API audience check covers the app-management routes.** Under
+  `ADMIN_API_AUDIENCE_MODE` `observe` or `enforce`, `/api/apps/{app_id}/*` (app users and app
+  logs) now accepts a token issued to an operator console, to Socrate's admin portal, or to that
+  same app (its backend forwards its app admins' tokens), and reports or refuses
+  (`403 invalid_audience`) a token issued to another application. Before, a global admin's token
+  held by any application's backend managed every app's users there, whatever the mode. The
+  service-account routes `/api/apps/{app_id}/service/*` are unchanged. A mismatch is audited as
+  `admin_api_audience`, as on the admin API. Deploy note: no migration, no new variable or
+  default; with the mode in `observe`, check the audit for `admin_api_audience` events on
+  `/api/apps/` paths before `enforce`.
+
 - **The operator-console clients are protected objects.** Changing, deleting or rotating the
   secret of a client listed in `OPERATOR_CONSOLE_CLIENT_IDS` or `ADMIN_CONSOLE_CLIENT_ID`
   (`PUT`, `DELETE`, `POST …/rotate-secret` on `/api/admin/apps/{id}`) needs a superadmin

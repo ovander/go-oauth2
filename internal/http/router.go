@@ -94,6 +94,10 @@ type RouterConfig struct {
 	// AdminAudience confines /api/admin/* to tokens issued to the operator
 	// consoles (M-03, ADMIN_API_AUDIENCE_MODE). Nil is a pass-through.
 	AdminAudience func(http.Handler) http.Handler
+	// AppAudience applies the same check to /api/apps/{app_id}/*, where a
+	// token issued to that app is accepted too (RequireAppAudience). Nil is a
+	// pass-through.
+	AppAudience func(http.Handler) http.Handler
 	// WebhookHandler serves the A3 webhook subscription and delivery-outbox
 	// admin API. Nil leaves those routes unregistered — carried on the config
 	// rather than as another positional parameter through three router
@@ -739,6 +743,13 @@ func newAdminRouter(
 	// ==========================================
 	r.Route("/api/apps/{app_id}", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo, config.AuthRejectSink))
+		// ADMIN_API_AUDIENCE_MODE: a token issued to another application is
+		// refused here (enforce), before the role gates that let a global
+		// admin through for every app. The /service routes below keep their
+		// own service-account authentication.
+		if config.AppAudience != nil {
+			r.Use(config.AppAudience)
+		}
 		r.Use(middleware.RequireAppAccess(userAppRoleRepo))
 
 		r.Route("/users", func(r chi.Router) {

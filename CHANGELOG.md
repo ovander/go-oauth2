@@ -23,6 +23,13 @@ Capabilities**, non-breaking).
   `enforce` (see `docs/EXTENSIBILITY.md`), or every app-route request is a divergence, and in
   `enforce` a `403`. With `POLICY_MODE=off` (the default) nothing changes.
 
+- **`ADMIN_SCOPE_MODE` is read like the other modes.** The value is now trimmed and
+  case-insensitive, so `Enforce` or `enforce ` turns the scope gate on instead of silently leaving
+  it off. Anything other than `enforce` still means `off`. The startup log's effective
+  configuration now includes `admin_scope_mode`, so the mode in force is visible. Deploy note:
+  none, unless the variable was set with different case or spacing, in which case the gate turns
+  on at the next restart.
+
 - **The privileged scopes can be kept to the clients meant to hold them.** New
   `PRIVILEGED_SCOPE_MODE` (`off` default, `observe`, `enforce`). `admin`, `monitoring:read` and
   `monitoring:write` were requestable by any client at authorize, and with `client_credentials`,

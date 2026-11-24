@@ -12,6 +12,13 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **A revoked service-account token is refused.** The service-account routes
+  (`/api/apps/{app_id}/service/*`) now check a `client_credentials` token's `jti` against the
+  revoked list that `POST /oauth/revoke` writes, as `AuthMiddleware` does for user tokens, and
+  answer `401` for a revoked token (and for one without a `jti`, which could never be revoked).
+  Before, a revoked service token stayed usable until it expired. Deploy note: no migration, no
+  environment variable.
+
 - **The admin-API audience check covers the app-management routes.** Under
   `ADMIN_API_AUDIENCE_MODE` `observe` or `enforce`, `/api/apps/{app_id}/*` (app users and app
   logs) now accepts a token issued to an operator console, to Socrate's admin portal, or to that

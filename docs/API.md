@@ -721,8 +721,11 @@ List/get/delete users, `GET /{id}/apps`, `GET /{id}/sessions`,
 
 - `PUT /{id}/attributes` — replace a user's free-form attributes (A2):
   `{ "attributes": { "tier": "gold", "dept": "engineering" } }` → the updated
-  `UserResponse`. Global admin only, audited (`update_user_attributes`; the
-  audit row records the attribute *names*, never their values). The body
+  `UserResponse`. Global admin only, with fresh step-up (since v1.14.7: policy
+  rules read these attributes). An admin cannot change their own (`400`), and only
+  a superadmin changes a superadmin's (`403`). Audited (`update_user_attributes`;
+  the audit row records the attribute *names* — all of them, and which were
+  `added`, `changed` and `removed` — never their values). The body
   replaces the whole set, so `{}` clears it. At most 32 attributes / 4 KB, names
   ≤ 64 characters — `400` otherwise. Attributes are inert on their own: they
   reach a token only when a client declares a matching `claim_mappings` entry.

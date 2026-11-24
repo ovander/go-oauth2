@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"reflect"
 	"sort"
 	"strconv"
 
@@ -768,6 +769,29 @@ func (h *AdminHandler) UpdateUserAttributes(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Policy rules read these attributes to constrain admins, so an admin
+	// cannot change their own, and only a superadmin changes a superadmin's.
+	if uint(userID) == adminID {
+		// 400, like an admin's own password on PUT /superadmins/{id}: the
+		// route never accepts this request, whoever sends it.
+		writeError(w, "an admin cannot change their own attributes", http.StatusBadRequest)
+		return
+	}
+	target, err := h.userService.GetByID(r.Context(), uint(userID))
+	if err != nil {
+		if errors.Is(err, service.ErrUserNotFound) {
+			writeError(w, "user not found", http.StatusNotFound)
+			return
+		}
+		writeError(w, "failed to load the user", http.StatusInternalServerError)
+		return
+	}
+	if target.Role == model.UserRoleSuperadmin && currentUser.Role != model.UserRoleSuperadmin {
+		writeError(w, "only a superadmin can change a superadmin's attributes", http.StatusForbidden)
+		return
+	}
+	before := target.Attributes
+
 	var body struct {
 		Attributes model.JSONMap `json:"attributes"`
 	}
@@ -800,9 +824,13 @@ func (h *AdminHandler) UpdateUserAttributes(w http.ResponseWriter, r *http.Reque
 			names = append(names, name)
 		}
 		sort.Strings(names)
+		added, changed, removed := attributeChanges(before, user.Attributes)
 		_ = h.adminLogService.LogAction(r.Context(), adminID, nil, &user.ID, model.AdminActionUpdateUserAttributes, map[string]interface{}{
 			"target_email": user.Email,
 			"attributes":   names,
+			"added":        added,
+			"changed":      changed,
+			"removed":      removed,
 		})
 	}
 
@@ -1252,4 +1280,29 @@ func derefString(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// attributeChanges names the attributes added, changed and removed between
+// before and after, each sorted. Values are compared but never returned: the
+// audit log records which attributes changed, not what they hold.
+func attributeChanges(before, after model.JSONMap) (added, changed, removed []string) {
+	added, changed, removed = []string{}, []string{}, []string{}
+	for name, v := range after {
+		old, ok := before[name]
+		switch {
+		case !ok:
+			added = append(added, name)
+		case !reflect.DeepEqual(old, v):
+			changed = append(changed, name)
+		}
+	}
+	for name := range before {
+		if _, ok := after[name]; !ok {
+			removed = append(removed, name)
+		}
+	}
+	sort.Strings(added)
+	sort.Strings(changed)
+	sort.Strings(removed)
+	return added, changed, removed
 }

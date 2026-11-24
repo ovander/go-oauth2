@@ -14,6 +14,7 @@ var StepUpActions = []string{
 	"POST /api/admin/users/{id}/revoke-tokens",
 	"POST /api/admin/users/{id}/block",
 	"DELETE /api/admin/users/{id}",
+	"PUT /api/admin/users/{id}/attributes",
 	"POST /api/admin/webhooks",
 	"POST /api/admin/webhooks/deliveries/{id}/requeue",
 	"PUT /api/admin/webhooks/{id}",

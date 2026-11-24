@@ -362,7 +362,7 @@ func Load() *Config {
 		// Freshness window for admin step-up: the most destructive admin routes
 		// require an authentication (auth_time) no older than this. Default 300s
 		// (5 min); 0 disables the gate.
-		AdminScopeMode:       getEnv("ADMIN_SCOPE_MODE", "off"),
+		AdminScopeMode:       normalizeAdminScopeMode(getEnv("ADMIN_SCOPE_MODE", "off")),
 		AdminElevationMaxAge: time.Duration(getEnvInt("ADMIN_ELEVATION_MAX_AGE", 300)) * time.Second,
 
 		AdminConsoleRedirectURIs:  getEnv("ADMIN_CONSOLE_REDIRECT_URIS", ""),
@@ -608,6 +608,16 @@ func normalizeTokenExchangeMode(v string) string {
 func normalizeAudienceMode(v string) string {
 	if strings.ToLower(strings.TrimSpace(v)) == "dual" {
 		return "dual"
+	}
+	return "off"
+}
+
+// normalizeAdminScopeMode returns "enforce" for that value in any case or
+// spacing, else "off", so " Enforce " turns the gate on as intended and the
+// value the router and the startup log see is the canonical one.
+func normalizeAdminScopeMode(v string) string {
+	if strings.ToLower(strings.TrimSpace(v)) == "enforce" {
+		return "enforce"
 	}
 	return "off"
 }

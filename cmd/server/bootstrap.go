@@ -146,6 +146,7 @@ func LogStartupSummary(cfg *config.Config) {
 		"audience_mode":           cfg.AudienceMode,
 		"admin_mfa_policy":        cfg.AdminMFAPolicy,
 		"admin_app_signin_policy": cfg.AdminAppSignInPolicy,
+		"admin_scope_mode":        cfg.AdminScopeMode,
 		"admin_api_audience_mode": cfg.AdminAPIAudienceMode,
 		"service_user_scope_mode": cfg.ServiceUserScopeMode,
 		"audit_write_mode":        cfg.AuditWriteMode,

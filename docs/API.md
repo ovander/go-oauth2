@@ -702,6 +702,12 @@ login limiter (`429`), as is `/elevate`.
 - `GET /{id}` · `PUT /{id}` · `DELETE /{id}`
 - `POST /{id}/rotate-secret` — issue a new secret (returned once).
 
+An operator-console client (`OPERATOR_CONSOLE_CLIENT_IDS` and
+`ADMIN_CONSOLE_CLIENT_ID`) is protected, since v1.14.7: tokens issued to it reach
+the admin API. `PUT`, `DELETE` and `rotate-secret` on one need a superadmin
+(`403` for any other admin, the attempt audited), and every change, allowed or
+refused, is audited with `console_client: true` at `critical` severity.
+
 `AppResponse`:
 ```json
 { "id": 1, "name": "My App", "client_id": "...", "active": true,

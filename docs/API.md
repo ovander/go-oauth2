@@ -476,6 +476,17 @@ A service-account token revoked through `POST /oauth/revoke` is refused there
 with `401` from then on (since v1.14.7), as a user token is; before, it stayed
 usable until it expired.
 
+**Accounts the app did not create (`SERVICE_USER_SCOPE_MODE`, since v1.14.7).**
+`off` (default) changes nothing. Under `enforce`, `POST …/service/users` for
+an existing account that was neither created for this app (by its invite) nor
+is already a member answers `409 account_exists`: the service API does not
+enrol a person in an app without their consent; an admin adds them, or they
+sign in to the app. `PATCH …/service/users/{user_id}` for a member whose
+account was not created for this app answers `403 profile_not_owned`, since
+the profile is shared by every app. `observe` allows both and audits
+`service_user_scope` (as `enforce` does, with `success: false`). `GET` is
+unchanged: `token_version` lets an app detect revoked user tokens.
+
 ### 6.1 Token exchange (RFC 8693)
 
 `grant_type=urn:ietf:params:oauth:grant-type:token-exchange` at `/oauth/token`,

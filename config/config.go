@@ -123,6 +123,14 @@ type Config struct {
 	// ConsoleClientIDs plus Socrate's own admin-portal audience (the deprecated
 	// password login and /api/admin/elevate). ADMIN_API_AUDIENCE_MODE.
 	AdminAPIAudienceMode string
+	// ServiceUserScopeMode limits what an app's service account
+	// (/api/apps/{app_id}/service/users) may do to an account it did not
+	// create: "off" (default, unchanged), "observe" (allow but audit
+	// service_user_scope), or "enforce" (refuse adding an existing account
+	// that is not already a member, 409, and editing the profile of an
+	// account created for another app or by itself, 403).
+	// SERVICE_USER_SCOPE_MODE.
+	ServiceUserScopeMode string
 	// AuditWriteMode is how security audit rows are written: "sync" (default —
 	// inside the request, as before) or "async" (queued and appended in batches
 	// by a background writer, so a token request no longer waits on the audit
@@ -379,6 +387,7 @@ func Load() *Config {
 		AdminAppSignInPolicy:     normalizeStepUpMode(getEnv("ADMIN_APP_SIGNIN_POLICY", "off")),
 		OperatorConsoleClientIDs: getEnv("OPERATOR_CONSOLE_CLIENT_IDS", ""),
 		AdminAPIAudienceMode:     normalizeStepUpMode(getEnv("ADMIN_API_AUDIENCE_MODE", "off")),
+		ServiceUserScopeMode:     normalizeStepUpMode(getEnv("SERVICE_USER_SCOPE_MODE", "off")),
 		AuditWriteMode:           normalizeAuditWriteMode(getEnv("AUDIT_WRITE_MODE", "sync")),
 		DPoPMode:                 normalizeDPoPMode(getEnv("DPOP_MODE", "off")),
 		TokenExchangeMode:        normalizeTokenExchangeMode(getEnv("TOKEN_EXCHANGE_MODE", "off")),

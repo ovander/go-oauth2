@@ -10,6 +10,7 @@ import (
 
 	"github.com/ovander/go-oauth2/internal/dto"
 	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/service"
 )
 
 // attrUserService serves GetByID from users and records Update.
@@ -48,7 +49,11 @@ func newAttrHandler(t *testing.T) (*AdminHandler, *attrUserService, *recordingAd
 			Attributes: model.JSONMap{"tier": "gold", "region": "eu", "legacy": true}},
 	}}
 	us.adminTestUserService = &adminTestUserService{getByID: func(_ context.Context, id uint) (*model.User, error) {
-		u := *us.users[id]
+		stored, ok := us.users[id]
+		if !ok {
+			return nil, service.ErrUserNotFound
+		}
+		u := *stored
 		return &u, nil
 	}}
 	log := &recordingAdminLog{}
@@ -81,6 +86,10 @@ func TestUpdateUserAttributes_Guards(t *testing.T) {
 	us.updated = false
 	if rr := putAttributes(h, 7, model.UserRoleAdmin, "9", `{"attributes":{"tier":"gold"}}`); rr.Code != http.StatusOK || !us.updated {
 		t.Fatalf("admin on a user: %d %s", rr.Code, rr.Body.String())
+	}
+	us.updated = false
+	if rr := putAttributes(h, 7, model.UserRoleAdmin, "404", `{"attributes":{"tier":"gold"}}`); rr.Code != http.StatusNotFound || us.updated {
+		t.Fatalf("unknown user: %d %s (updated %v), want 404 without update", rr.Code, rr.Body.String(), us.updated)
 	}
 }
 

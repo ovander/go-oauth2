@@ -9,19 +9,38 @@ import (
 	"github.com/ovander/go-oauth2/internal/repository"
 )
 
-// scanRepo is a mock SecurityAuditLogRepository: it serves a fixed set of rows
-// from page 1 (empty thereafter) and captures violation events written via Create.
+// scanRepo is a mock SecurityAuditLogRepository and AuditChainReader: it serves
+// a fixed set of rows, in id order, and captures violation events written via
+// Create.
 type scanRepo struct {
 	repository.SecurityAuditLogRepository
-	rows    []model.SecurityAuditLog
-	created []*model.SecurityAuditLog
+	rows        []model.SecurityAuditLog
+	created     []*model.SecurityAuditLog
+	headProblem string
 }
 
-func (r *scanRepo) FindByDateRange(_ context.Context, _, _ time.Time, page, _ int) ([]model.SecurityAuditLog, int64, error) {
-	if page == 1 {
-		return r.rows, int64(len(r.rows)), nil
+func (r *scanRepo) AuditChainWindow(_ context.Context, _ time.Time) (repository.AuditChainWindow, error) {
+	if len(r.rows) == 0 {
+		return repository.AuditChainWindow{}, nil
 	}
-	return nil, int64(len(r.rows)), nil
+	return repository.AuditChainWindow{FirstID: r.rows[0].ID, LastID: r.rows[len(r.rows)-1].ID}, nil
+}
+
+func (r *scanRepo) AuditChainRows(_ context.Context, afterID, upTo uint, limit int) ([]model.SecurityAuditLog, error) {
+	var out []model.SecurityAuditLog
+	for _, row := range r.rows {
+		if row.ID > afterID && row.ID <= upTo && len(out) < limit {
+			out = append(out, row)
+		}
+	}
+	return out, nil
+}
+
+func (r *scanRepo) AuditChainHeadProblem(context.Context) (uint, string, string, error) {
+	if r.headProblem != "" {
+		return 7, "abc", r.headProblem, nil
+	}
+	return 0, "", "", nil
 }
 
 func (r *scanRepo) Create(_ context.Context, log *model.SecurityAuditLog) error {
@@ -38,7 +57,7 @@ func TestScan_RecordsViolationForTamperedRow(t *testing.T) {
 		{ID: 1, EventType: model.SecurityEventLoginSuccess, RowHash: ""},
 		{ID: 2, EventType: model.SecurityEventLoginFailed, RowHash: "deadbeef"},
 	}}
-	scanner := NewAuditIntegrityScanner(repo, scanSecret)
+	scanner := NewAuditIntegrityScanner(repo, repo, scanSecret)
 
 	checked, violations, err := scanner.Scan(context.Background(), time.Now().Add(-time.Hour))
 	if err != nil {
@@ -65,7 +84,7 @@ func TestScan_RecordsViolationForTamperedRow(t *testing.T) {
 func TestScan_CleanDataset_NoViolations(t *testing.T) {
 	t.Parallel()
 	repo := &scanRepo{rows: []model.SecurityAuditLog{{ID: 1, RowHash: ""}}}
-	scanner := NewAuditIntegrityScanner(repo, scanSecret)
+	scanner := NewAuditIntegrityScanner(repo, repo, scanSecret)
 
 	checked, violations, err := scanner.Scan(context.Background(), time.Now().Add(-time.Hour))
 	if err != nil || checked != 1 || violations != 0 || len(repo.created) != 0 {
@@ -77,10 +96,27 @@ func TestScan_CleanDataset_NoViolations(t *testing.T) {
 func TestScan_EmptySecret_NoOp(t *testing.T) {
 	t.Parallel()
 	repo := &scanRepo{rows: []model.SecurityAuditLog{{ID: 1, RowHash: "x"}}}
-	scanner := NewAuditIntegrityScanner(repo, nil)
+	scanner := NewAuditIntegrityScanner(repo, repo, nil)
 
 	checked, violations, err := scanner.Scan(context.Background(), time.Now().Add(-time.Hour))
 	if checked != 0 || violations != 0 || err != nil {
 		t.Errorf("Scan(no secret) = (%d,%d,%v), want (0,0,nil)", checked, violations, err)
+	}
+}
+
+func TestScan_ReportsTheChainHeadProblem(t *testing.T) {
+	t.Parallel()
+	repo := &scanRepo{headProblem: repository.ChainHeadRowRemoved}
+	scanner := NewAuditIntegrityScanner(repo, repo, scanSecret)
+
+	_, violations, err := scanner.Scan(context.Background(), time.Now().Add(-time.Hour))
+	if err != nil || violations != 1 || len(repo.created) != 1 {
+		t.Fatalf("Scan = (viol=%d, err=%v, created=%d), want one violation", violations, err, len(repo.created))
+	}
+	if got := repo.created[0].Details["chain_head"]; got != repository.ChainHeadRowRemoved {
+		t.Errorf("chain_head = %v, want %s", got, repository.ChainHeadRowRemoved)
+	}
+	if got := repo.created[0].Details["head_row_id"]; got != uint(7) {
+		t.Errorf("head_row_id = %v, want 7", got)
 	}
 }

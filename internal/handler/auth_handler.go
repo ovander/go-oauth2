@@ -63,15 +63,21 @@ func (h *AuthHandler) SetRefreshCookie(enabled, secure bool) {
 // clearRefreshCookie expires the first-party refresh-token cookie. The Name and
 // Path must match how it was set so the browser overwrites the right cookie.
 func (h *AuthHandler) clearRefreshCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     refreshCookieName,
-		Value:    "",
-		Path:     refreshCookiePath,
-		MaxAge:   -1,
-		HttpOnly: true,
-		Secure:   h.refreshCookieSecure,
-		SameSite: http.SameSiteStrictMode,
-	})
+	name, path := refreshCookieNameAndPath(h.refreshCookieSecure)
+	for _, c := range [][2]string{{name, path}, {refreshCookieName, refreshCookiePath}} {
+		http.SetCookie(w, &http.Cookie{
+			Name:     c[0],
+			Value:    "",
+			Path:     c[1],
+			MaxAge:   -1,
+			HttpOnly: true,
+			Secure:   h.refreshCookieSecure,
+			SameSite: http.SameSiteStrictMode,
+		})
+		if name == refreshCookieName {
+			break // the legacy cookie is the only one
+		}
+	}
 }
 
 func NewAuthHandler(authService service.AuthService, userService service.UserService, emailService service.EmailService, environment, issuer string) *AuthHandler {

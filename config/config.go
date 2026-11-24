@@ -188,6 +188,13 @@ type Config struct {
 	// "off" (default — policy stored but not applied), "observe" (audit
 	// scope_denied, still issue), "enforce" (refuse with invalid_scope).
 	ScopePolicyMode string
+	// PrivilegedScopeMode governs who may obtain the privileged scopes
+	// (admin, monitoring:read, monitoring:write), whatever ScopePolicyMode
+	// says: "off" (default, unchanged), "observe" (allow but audit
+	// scope_denied), or "enforce" (only a client that lists the scope in its
+	// allowed_scopes, or an operator console, gets it; others invalid_scope).
+	// PRIVILEGED_SCOPE_MODE.
+	PrivilegedScopeMode string
 	// AudienceMode controls how an access token's `aud` is built from the client
 	// and its registered audiences (RFC-001 / EPIC-7): "off" (default — aud is
 	// the client_id, unchanged) or "dual" (the client's registered audiences are
@@ -361,7 +368,7 @@ func Load() *Config {
 		// Freshness window for admin step-up: the most destructive admin routes
 		// require an authentication (auth_time) no older than this. Default 300s
 		// (5 min); 0 disables the gate.
-		AdminScopeMode:       getEnv("ADMIN_SCOPE_MODE", "off"),
+		AdminScopeMode:       normalizeAdminScopeMode(getEnv("ADMIN_SCOPE_MODE", "off")),
 		AdminElevationMaxAge: time.Duration(getEnvInt("ADMIN_ELEVATION_MAX_AGE", 300)) * time.Second,
 
 		AdminConsoleRedirectURIs:  getEnv("ADMIN_CONSOLE_REDIRECT_URIS", ""),
@@ -404,6 +411,7 @@ func Load() *Config {
 		DelegationStepUpMode:     normalizeStepUpMode(getEnv("DELEGATION_STEPUP_MODE", "off")),
 		RefreshReuseMode:         normalizeStepUpMode(getEnv("REFRESH_REUSE_MODE", "off")),
 		ScopePolicyMode:          normalizeStepUpMode(getEnv("SCOPE_POLICY_MODE", "off")),
+		PrivilegedScopeMode:      normalizeStepUpMode(getEnv("PRIVILEGED_SCOPE_MODE", "off")),
 		AudienceMode:             normalizeAudienceMode(getEnv("AUDIENCE_MODE", "off")),
 		ClaimsNamespace:          getEnv("CLAIMS_NAMESPACE", ""),
 		WebhooksEnabled:          strings.EqualFold(strings.TrimSpace(getEnv("WEBHOOKS_MODE", "off")), "on"),
@@ -607,6 +615,16 @@ func normalizeTokenExchangeMode(v string) string {
 func normalizeAudienceMode(v string) string {
 	if strings.ToLower(strings.TrimSpace(v)) == "dual" {
 		return "dual"
+	}
+	return "off"
+}
+
+// normalizeAdminScopeMode returns "enforce" for that value in any case or
+// spacing, else "off", so " Enforce " turns the gate on as intended and the
+// value the router and the startup log see is the canonical one.
+func normalizeAdminScopeMode(v string) string {
+	if strings.ToLower(strings.TrimSpace(v)) == "enforce" {
+		return "enforce"
 	}
 	return "off"
 }

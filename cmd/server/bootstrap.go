@@ -146,7 +146,9 @@ func LogStartupSummary(cfg *config.Config) {
 		"audience_mode":           cfg.AudienceMode,
 		"admin_mfa_policy":        cfg.AdminMFAPolicy,
 		"admin_app_signin_policy": cfg.AdminAppSignInPolicy,
+		"admin_scope_mode":        cfg.AdminScopeMode,
 		"admin_api_audience_mode": cfg.AdminAPIAudienceMode,
+		"privileged_scope_mode":   cfg.PrivilegedScopeMode,
 		"service_user_scope_mode": cfg.ServiceUserScopeMode,
 		"lockout_source_mode":     cfg.LockoutSourceMode,
 		"audit_write_mode":        cfg.AuditWriteMode,
@@ -428,6 +430,21 @@ func Bootstrap(cfg *config.Config) *App {
 	// SECRET_KEY_BASE (held in config, never in the DB). Empty secret disables it.
 	// B1: every persisted security event is also a Prometheus counter.
 	auditRepoBase := repository.NewSecurityAuditLogRepositoryWithIntegrity(db, []byte(cfg.SecretKeyBase))
+	// #364: the chain head is kept outside the audit table. Anchor it now on
+	// an existing log, so that from here on its disappearance is tampering.
+	auditChain, ok := auditRepoBase.(interface {
+		repository.AuditChainReader
+		repository.AuditChainAnchorer
+	})
+	if !ok {
+		logger.Fatal("bootstrap: the audit repository does not expose the chain head")
+	}
+	anchorCtx, cancelAnchor := context.WithTimeout(context.Background(), 30*time.Second)
+	if err := auditChain.EnsureAuditChainHead(anchorCtx); err != nil {
+		logger.WithFields(logger.Fields{"error": err.Error()}).
+			Error("RFC-007: could not anchor the audit chain head; the next audit write anchors it")
+	}
+	cancelAnchor()
 	// AUDIT_WRITE_MODE=async: a background writer appends the rows in batches,
 	// so a request no longer waits on the audit chain lock and its commit.
 	// Drained last at shutdown (App.Stop).
@@ -483,7 +500,7 @@ func Bootstrap(cfg *config.Config) *App {
 	// by default (AuditIntegrityScanInterval == 0).
 	var auditIntegrityStop func()
 	if cfg.AuditIntegrityScanInterval > 0 {
-		scanner := service.NewAuditIntegrityScanner(securityAuditRepo, []byte(cfg.SecretKeyBase))
+		scanner := service.NewAuditIntegrityScanner(securityAuditRepo, auditChain, []byte(cfg.SecretKeyBase))
 		lookback := cfg.AuditIntegrityScanLookback
 		auditIntegrityStop = cluster.Every(jobDB, cluster.LockAuditScan, "audit_integrity_scan",
 			cfg.AuditIntegrityScanInterval, func(ctx context.Context) error {
@@ -642,6 +659,15 @@ func Bootstrap(cfg *config.Config) *App {
 		}
 		ps.SetAdminAppSignInPolicy(adminAppSignIn)
 	}
+	// PRIVILEGED_SCOPE_MODE: admin and monitoring:* go only to a client that
+	// lists them in allowed_scopes, or to an operator console.
+	if ps, ok := oauthService.(interface {
+		SetPrivilegedScopePolicy(string, []string)
+	}); ok {
+		ps.SetPrivilegedScopePolicy(cfg.PrivilegedScopeMode, cfg.ConsoleClientIDs())
+	} else {
+		logger.Fatalf("bootstrap: %T does not support SetPrivilegedScopePolicy", oauthService)
+	}
 
 	// ==========================================
 	// Template Service
@@ -679,6 +705,7 @@ func Bootstrap(cfg *config.Config) *App {
 	// cleared at logout). Secure in production. Empty client id leaves it off.
 	if cfg.AdminConsoleClientID != "" {
 		oauthHandler.SetRefreshCookie(cfg.AdminConsoleClientID, cfg.RefreshTokenTTL, cfg.IsProduction())
+		oauthHandler.SetRefreshCookieOrigins(splitCSV(cfg.AdminConsoleRedirectURIs))
 		authHandler.SetRefreshCookie(true, cfg.IsProduction())
 	}
 	// Advertise the RFC 8693 token-exchange grant in discovery only when it can

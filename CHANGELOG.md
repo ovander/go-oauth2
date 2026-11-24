@@ -25,6 +25,54 @@ Capabilities**, non-breaking).
   attacker using many addresses gets `MAX_FAILED_ATTEMPTS` tries from each, so keep the per-IP
   rate limits and automatic IP blocking on.
 
+- **The audit chain detects removed or blanked newest rows.** The newest rows could be deleted, or
+  have their hash blanked, without breaking the chain: what remained still linked up, the next
+  row linked to the newest row still carrying a hash, and the scanner skipped rows without one.
+  The chain head (id and hash of the newest row, with an HMAC keyed by `SECRET_KEY_BASE`) is now
+  kept outside the audit table, in `audit_chain_head` (migration 0033), and moved in the
+  transaction of every append. The next row links to the head, so a gap stays visible. The
+  integrity scanner reports a head that is missing, invalid or no longer matches the row it
+  names, and a row without a hash after the chain started. It now reads rows in id order and
+  checks the link between pages. It also logs the head it saw, outside the database. The first
+  anchoring is recorded in the chain (`audit_chain_anchored`), so a head deleted while the
+  server is stopped is reported at the next start instead of being silently recreated. Retention
+  keeps the newest row, which the head names. New violation details: `unstamped_row_id`,
+  `chain_head` (`kind` stays `chain`). Deploy note: migration 0033 (new table); the server
+  anchors the head on the existing log at startup. A database-only attacker who saved an earlier
+  head can still roll the log back to it; the scan log line is the evidence for that case.
+
+- **`ADMIN_SCOPE_MODE` is read like the other modes.** The value is now trimmed and
+  case-insensitive, so `Enforce` or `enforce ` turns the scope gate on instead of silently leaving
+  it off. Anything other than `enforce` still means `off`. The startup log's effective
+  configuration now includes `admin_scope_mode`, so the mode in force is visible. Deploy note:
+  none, unless the variable was set with different case or spacing, in which case the gate turns
+  on at the next restart.
+
+- **The privileged scopes can be kept to the clients meant to hold them.** New
+  `PRIVILEGED_SCOPE_MODE` (`off` default, `observe`, `enforce`). `admin`, `monitoring:read` and
+  `monitoring:write` were requestable by any client at authorize, and with `client_credentials`,
+  unless `SCOPE_POLICY_MODE=enforce` and the client had a non-empty `allowed_scopes`. Under
+  `enforce`, a client gets one only if it lists it in `allowed_scopes` or is an operator console
+  (`OPERATOR_CONSOLE_CLIENT_IDS`, `ADMIN_CONSOLE_CLIENT_ID`), on every grant (authorize, code,
+  refresh, `client_credentials`, token exchange), whatever `SCOPE_POLICY_MODE` says; others get
+  `invalid_scope`. `observe` audits `scope_denied` with `reason: privileged_scope`. The admin API
+  still checks the user's role; this stops a client from obtaining the scope by asking. Deploy
+  note: no migration; run `observe` and check `scope_denied` events before `enforce`, and list
+  the scope in the `allowed_scopes` of any non-console client that needs it.
+
+- **The admin-console refresh cookie is usable only by the console.** When
+  `ADMIN_CONSOLE_CLIENT_ID` enables the refresh-cookie channel, `/oauth/token` read the cookie
+  for any refresh request without a token in the body. `SameSite=Strict` lets a page on another
+  origin of the same site send it, and `ALLOWED_ORIGINS` may grant that origin credentialed
+  CORS, so a script there could refresh as the console and read the tokens. The cookie is now
+  read only for the console's own `client_id`, with an `X-Requested-By` header (the CSRF defence
+  the router comment described but no code checked), and from the origins of
+  `ADMIN_CONSOLE_REDIRECT_URIS` (or without an `Origin` header). In production the cookie is
+  `__Host-refresh_token` on `Path=/`, which a sibling subdomain cannot set or overwrite; the old
+  cookie is expired when the new one is set, and logout clears both. Deploy note: no migration,
+  no new variable; a browser still holding the old cookie signs in once more. The consoles use
+  their backend-for-frontend and do not use this channel.
+
 - **A locked account no longer reveals that it exists.** The password check answered "account
   locked" to any password, before the hash comparison: the answer and its speed told apart an
   existing account from an unknown email. A locked account's password is now checked as any

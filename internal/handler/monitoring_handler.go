@@ -476,7 +476,7 @@ func (h *MonitoringHandler) GetAuditIntegrity(w http.ResponseWriter, r *http.Req
 		if row.Details != nil {
 			if _, ok := row.Details["tampered_row_id"]; ok {
 				kind = "hmac"
-			} else if _, ok := row.Details["chain_break_row_id"]; ok {
+			} else if hasAnyKey(row.Details, "chain_break_row_id", "unstamped_row_id", "chain_head") {
 				kind = "chain"
 			}
 		}
@@ -1875,4 +1875,14 @@ func (h *MonitoringHandler) writeReportCSV(w http.ResponseWriter, data *dto.Secu
 	for _, line := range lines {
 		_, _ = w.Write([]byte(line + "\n"))
 	}
+}
+
+// hasAnyKey reports whether m has at least one of keys.
+func hasAnyKey(m map[string]interface{}, keys ...string) bool {
+	for _, k := range keys {
+		if _, ok := m[k]; ok {
+			return true
+		}
+	}
+	return false
 }

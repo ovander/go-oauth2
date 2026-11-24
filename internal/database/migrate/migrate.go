@@ -699,6 +699,23 @@ var migrations = []Migration{
 		},
 	},
 	{
+		// 0033 (#364): the head of the audit hash chain, kept outside
+		// security_audit_logs: the id and hash of the newest chained row, with
+		// an HMAC. One row (id = 1), written by the audit repository; the
+		// server anchors it at startup on an existing log.
+		ID:   "0033",
+		Name: "create_audit_chain_head",
+		Run: func(db *gorm.DB) error {
+			return db.Exec(`CREATE TABLE IF NOT EXISTS audit_chain_head (
+				id         SMALLINT    PRIMARY KEY CHECK (id = 1),
+				last_id    BIGINT      NOT NULL,
+				last_hash  VARCHAR(64) NOT NULL,
+				mac        VARCHAR(64) NOT NULL,
+				updated_at TIMESTAMPTZ NOT NULL
+			)`).Error
+		},
+	},
+	{
 		// 0034 (#403): failed sign-ins per account and source, for
 		// LOCKOUT_SOURCE_MODE. A row is the count of one source (a client
 		// address or IPv6 /64) on one account, and the lock it may hold.

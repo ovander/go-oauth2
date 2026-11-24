@@ -87,12 +87,58 @@ func TestVerifyAuditChain_PureMutationDoesNotBreakChain(t *testing.T) {
 	}
 }
 
-func TestVerifyAuditChain_SkipsUnstampedRows(t *testing.T) {
-	rows := buildChainedRows(integritySecret, 3)
-	// A pre-integrity row (no RowHash) must not participate or break the chain.
-	rows = append(rows, model.SecurityAuditLog{ID: 99, EventType: model.SecurityEventLogout})
+func TestVerifyAuditChain_SkipsUnstampedRowsBeforeTheChain(t *testing.T) {
+	// Pre-integrity rows (no RowHash) before the first stamped row must not
+	// participate or break the chain.
+	rows := []model.SecurityAuditLog{{ID: 1, EventType: model.SecurityEventLogout}}
+	for _, r := range buildChainedRows(integritySecret, 3) {
+		r.ID += 10
+		rows = append(rows, r)
+	}
 	if broken := VerifyAuditChain(integritySecret, rows); broken != nil {
-		t.Fatalf("unstamped rows must be skipped, got %v", broken)
+		t.Fatalf("unstamped rows before the chain must be skipped, got %v", broken)
+	}
+}
+
+// #364: a row without a hash after the chain started is what blanking its hash
+// produces. It is reported once; the next row's link cannot be checked (the
+// hash it points to is gone) and is not reported a second time.
+func TestVerifyAuditChain_FlagsUnstampedRowsAfterTheChainStarted(t *testing.T) {
+	rows := buildChainedRows(integritySecret, 4)
+	rows[2].RowHash = ""
+	if broken := VerifyAuditChain(integritySecret, rows); len(broken) != 1 || broken[0] != 3 {
+		t.Fatalf("blanked row 3: got %v, want [3]", broken)
+	}
+	// The newest row blanked.
+	rows = buildChainedRows(integritySecret, 3)
+	rows = append(rows, model.SecurityAuditLog{ID: 99, EventType: model.SecurityEventLogout})
+	if broken := VerifyAuditChain(integritySecret, rows); len(broken) != 1 || broken[0] != 99 {
+		t.Fatalf("unstamped newest row: got %v, want [99]", broken)
+	}
+}
+
+// The walker carries the chain across pages: the first row of a page is
+// checked against the last row of the previous one.
+func TestAuditChainWalker_AcrossPages(t *testing.T) {
+	rows := buildChainedRows(integritySecret, 6)
+	rows = append(rows[:2], rows[3:]...) // row 3 deleted
+	w := NewAuditChainWalker(nil, false)
+	var broken []uint
+	for _, page := range [][]model.SecurityAuditLog{rows[:2], rows[2:4], rows[4:]} {
+		for i := range page {
+			if w.Next(&page[i]) != "" {
+				broken = append(broken, page[i].ID)
+			}
+		}
+	}
+	if len(broken) != 1 || broken[0] != 4 {
+		t.Fatalf("deleted row 3, row 4 starts a page: got %v, want [4]", broken)
+	}
+	// Seeded with the row before the window.
+	full := buildChainedRows(integritySecret, 3)
+	w = NewAuditChainWalker(&full[0], true)
+	if got := w.Next(&full[2]); got != ChainBreakLink {
+		t.Fatalf("row 3 after seed row 1: %q, want %q", got, ChainBreakLink)
 	}
 }
 

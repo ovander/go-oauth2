@@ -315,6 +315,30 @@ func scratchDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+func TestMigration0033_AuditChainHead(t *testing.T) {
+	db := scratchDB(t)
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if err := db.Exec(`INSERT INTO audit_chain_head (id, last_id, last_hash, mac, updated_at) VALUES (1, 0, '', 'm', now())`).Error; err != nil {
+		t.Fatalf("fresh install: the head row cannot be written: %v", err)
+	}
+	if err := db.Exec(`INSERT INTO audit_chain_head (id, last_id, last_hash, mac, updated_at) VALUES (2, 0, '', 'm', now())`).Error; err == nil {
+		t.Fatal("a second head row was accepted; the table must hold one row")
+	}
+	// Re-running it on an existing table keeps the head.
+	if err := db.Exec("DELETE FROM schema_migrations WHERE id = '0033'").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("re-run: %v", err)
+	}
+	var n int64
+	if err := db.Raw("SELECT count(*) FROM audit_chain_head").Scan(&n).Error; err != nil || n != 1 {
+		t.Fatalf("head rows after re-run = %d (%v), want 1", n, err)
+	}
+}
+
 func TestMigration0034_LoginSourceFailures(t *testing.T) {
 	db := scratchDB(t)
 	if err := migrate.Run(db); err != nil {

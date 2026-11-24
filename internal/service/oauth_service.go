@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -179,11 +180,74 @@ type oauthService struct {
 	// adminAppSignIn refuses or audits a Socrate admin obtaining tokens for an
 	// application that is not an operator console (ADMIN_APP_SIGNIN_POLICY).
 	adminAppSignIn AdminAppSignInPolicy
+
+	// privilegedScopeMode and privilegedScopeConsoles: see
+	// SetPrivilegedScopePolicy.
+	privilegedScopeMode     string
+	privilegedScopeConsoles map[string]bool
 }
 
 // SetAdminAppSignInPolicy wires ADMIN_APP_SIGNIN_POLICY into code issuance and
 // the refresh grant.
 func (s *oauthService) SetAdminAppSignInPolicy(p AdminAppSignInPolicy) { s.adminAppSignIn = p }
+
+// privilegedScopes reach the admin API (#201). Whoever holds one is limited
+// by the user's role, but a client should not obtain one by just asking.
+var privilegedScopes = map[string]bool{"admin": true, "monitoring:read": true, "monitoring:write": true}
+
+// SetPrivilegedScopePolicy wires PRIVILEGED_SCOPE_MODE: under "observe" or
+// "enforce", a privileged scope requested by a client that neither lists it
+// in its allowed_scopes nor is one of consoleClientIDs (the operator
+// consoles) is audited, and under "enforce" refused.
+func (s *oauthService) SetPrivilegedScopePolicy(mode string, consoleClientIDs []string) {
+	s.privilegedScopeMode = mode
+	s.privilegedScopeConsoles = make(map[string]bool, len(consoleClientIDs))
+	for _, id := range consoleClientIDs {
+		s.privilegedScopeConsoles[id] = true
+	}
+}
+
+// enforcePrivilegedScopes applies PRIVILEGED_SCOPE_MODE to one grant's scope,
+// whatever SCOPE_POLICY_MODE and the client's policy say: an empty
+// allowed_scopes does not grant a privileged scope.
+func (s *oauthService) enforcePrivilegedScopes(ctx context.Context, app *model.App, userID *uint, grant, scope string) error {
+	if s.privilegedScopeMode != scopePolicyModeObserve && s.privilegedScopeMode != "enforce" {
+		return nil
+	}
+	clientID := ""
+	if app != nil {
+		clientID = app.ClientID
+	}
+	var denied []string
+	for _, sc := range strings.Fields(scope) {
+		if !privilegedScopes[sc] || s.privilegedScopeConsoles[clientID] {
+			continue
+		}
+		if app != nil && slices.Contains(app.AllowedScopes, sc) {
+			continue
+		}
+		denied = append(denied, sc)
+	}
+	if len(denied) == 0 {
+		return nil
+	}
+	var appID *uint
+	if app != nil {
+		appID = &app.ID
+	}
+	s.logSecurityEvent(ctx, model.SecurityEventScopeDenied, userID, appID, false, map[string]interface{}{
+		"client_id":     clientID,
+		"grant":         grant,
+		"requested":     scope,
+		"denied_scopes": denied,
+		"reason":        "privileged_scope",
+		"mode":          s.privilegedScopeMode,
+	})
+	if s.privilegedScopeMode == scopePolicyModeObserve {
+		return nil
+	}
+	return fmt.Errorf("%w: %s (client_id=%s)", ErrScopeNotAllowed, strings.Join(denied, " "), clientID)
+}
 
 // checkAdminAppSignIn applies ADMIN_APP_SIGNIN_POLICY to a Socrate admin
 // obtaining tokens for app without a membership: observe audits it, enforce
@@ -1416,6 +1480,9 @@ func validateScopeNames(scopes []string) error {
 // audits and refuses with ErrScopeNotAllowed (an ErrInvalidScope, so handlers
 // map it to invalid_scope). A client with an empty policy is unrestricted.
 func (s *oauthService) enforceClientScopes(ctx context.Context, app *model.App, userID *uint, grant, scope string) error {
+	if err := s.enforcePrivilegedScopes(ctx, app, userID, grant, scope); err != nil {
+		return err
+	}
 	if s.scopePolicyMode == scopePolicyModeOff || app == nil || len(app.AllowedScopes) == 0 {
 		return nil
 	}

@@ -64,16 +64,51 @@ type OAuthHandler struct {
 // silently without the refresh token ever being readable by JavaScript.
 type refreshCookieConfig struct {
 	clientID string // first-party admin-console client_id; empty disables the channel
-	name     string // cookie name (refreshCookieName)
-	path     string // cookie path (refreshCookiePath) — scopes it to the token endpoint
+	name     string // cookie name (see refreshCookieNameAndPath)
+	path     string // cookie path
 	secure   bool   // Secure flag; true in production
 	maxAge   int    // cookie Max-Age in seconds (refresh-token TTL)
+	// origins are the console's own origins (scheme://host of its redirect
+	// URIs). A request carrying an Origin header outside them never has the
+	// cookie read, so a script on another allowed origin of the same site
+	// cannot refresh as the console. See SetRefreshCookieOrigins.
+	origins map[string]bool
 }
 
 const (
+	// refreshCookieName and refreshCookiePath are the cookie without Secure
+	// (local development over http), scoped to the token endpoint; it was the
+	// production cookie too before the __Host- prefix.
 	refreshCookieName = "refresh_token"
 	refreshCookiePath = "/oauth/token"
+	// hostRefreshCookieName is the cookie with Secure: the __Host- prefix makes
+	// the browser refuse it unless it is Secure, host-only (no Domain) and on
+	// Path=/, so a sibling subdomain cannot set or overwrite it.
+	hostRefreshCookieName = "__Host-refresh_token"
 )
+
+// refreshCookieNameAndPath is the cookie's name and path: the __Host- cookie
+// on Path=/ when Secure, the legacy cookie on the token endpoint otherwise.
+func refreshCookieNameAndPath(secure bool) (name, path string) {
+	if secure {
+		return hostRefreshCookieName, "/"
+	}
+	return refreshCookieName, refreshCookiePath
+}
+
+// requestMayUseCookie reports whether the refresh cookie may be read for r:
+// only with an X-Requested-By header (a cross-site page cannot set a custom
+// header without a CORS grant) and, when r has an Origin header, only from
+// one of the console's own origins.
+func (c refreshCookieConfig) requestMayUseCookie(r *http.Request) bool {
+	if r.Header.Get("X-Requested-By") == "" {
+		return false
+	}
+	if origin := r.Header.Get("Origin"); origin != "" && !c.origins[origin] {
+		return false
+	}
+	return true
+}
 
 // enabled reports whether the cookie channel is configured.
 func (c refreshCookieConfig) enabled() bool { return c.clientID != "" }
@@ -107,19 +142,42 @@ func (h *OAuthHandler) SetAutoDefenseService(autoDefense *service.AutoDefenseSer
 // refreshTTL sets the cookie Max-Age; secure sets the Secure flag (true in
 // production). Tier-0 admin session hardening.
 func (h *OAuthHandler) SetRefreshCookie(clientID string, refreshTTL time.Duration, secure bool) {
+	name, path := refreshCookieNameAndPath(secure)
 	h.refreshCookie = refreshCookieConfig{
 		clientID: clientID,
-		name:     refreshCookieName,
-		path:     refreshCookiePath,
+		name:     name,
+		path:     path,
 		secure:   secure,
 		maxAge:   int(refreshTTL.Seconds()),
+		origins:  h.refreshCookie.origins,
 	}
+}
+
+// SetRefreshCookieOrigins sets the console's own origins from its redirect
+// URIs (ADMIN_CONSOLE_REDIRECT_URIS): a request with any other Origin never
+// has the refresh cookie read. With none set, a request with an Origin header
+// never has it read (fail closed).
+func (h *OAuthHandler) SetRefreshCookieOrigins(redirectURIs []string) {
+	origins := map[string]bool{}
+	for _, raw := range redirectURIs {
+		if u, err := url.Parse(strings.TrimSpace(raw)); err == nil && u.Scheme != "" && u.Host != "" {
+			origins[u.Scheme+"://"+u.Host] = true
+		}
+	}
+	h.refreshCookie.origins = origins
 }
 
 // writeRefreshCookie stores the refresh token in an HttpOnly cookie so it is
 // never exposed to JavaScript (XSS-safe). SameSite=Strict and a token-endpoint
 // path minimise where the browser will send it.
 func (h *OAuthHandler) writeRefreshCookie(w http.ResponseWriter, value string) {
+	if h.refreshCookie.name != refreshCookieName {
+		// Expire the cookie the browser may still hold under its old name.
+		http.SetCookie(w, &http.Cookie{
+			Name: refreshCookieName, Value: "", Path: refreshCookiePath, MaxAge: -1,
+			HttpOnly: true, Secure: h.refreshCookie.secure, SameSite: http.SameSiteStrictMode,
+		})
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     h.refreshCookie.name,
 		Value:    value,
@@ -784,7 +842,11 @@ func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 	// refresh token lives in an HttpOnly cookie (never sent in the body). Read
 	// it from the cookie when no explicit refresh_token was supplied so the
 	// existing hardened refresh grant (rotation/replay/DPoP) runs unchanged.
-	if req.GrantType == "refresh_token" && req.RefreshToken == "" && h.refreshCookie.enabled() {
+	// Only for the console's own client, with its X-Requested-By header, and
+	// from its own origins: SameSite=Strict does not stop a page on another
+	// origin of the same site, which ALLOWED_ORIGINS may also grant CORS.
+	if req.GrantType == "refresh_token" && req.RefreshToken == "" &&
+		h.refreshCookie.handles(clientID) && h.refreshCookie.requestMayUseCookie(r) {
 		if ck, cErr := r.Cookie(h.refreshCookie.name); cErr == nil && ck.Value != "" {
 			req.RefreshToken = ck.Value
 		}

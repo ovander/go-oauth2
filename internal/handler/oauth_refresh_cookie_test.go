@@ -28,8 +28,27 @@ func newCookieOAuthHandler(svc *fakeOAuthSvc, clientID string) *OAuthHandler {
 	h := &OAuthHandler{oauthService: svc, appService: okAppSvc{&mockAppService{}}, issuer: "https://auth.example.com"}
 	if clientID != "" {
 		h.SetRefreshCookie(clientID, 7*24*time.Hour, true)
+		h.SetRefreshCookieOrigins([]string{"https://admin.example.com/callback"})
 	}
 	return h
+}
+
+// consoleHeaders are what the console's own refresh request carries.
+var consoleHeaders = map[string]string{"X-Requested-By": "oauth2-admin", "Origin": "https://admin.example.com"}
+
+// postTokenWith is postToken with request headers.
+func postTokenWith(h *OAuthHandler, form string, headers map[string]string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(form))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for k, v := range headers {
+		r.Header.Set(k, v)
+	}
+	for _, c := range cookies {
+		r.AddCookie(c)
+	}
+	rr := httptest.NewRecorder()
+	h.Token(rr, r)
+	return rr
 }
 
 // postToken drives h.Token with a form body and optional cookies.
@@ -71,9 +90,9 @@ func TestRefreshCookie_AdminClient_SetAndStrippedFromBody(t *testing.T) {
 
 	rr := postToken(h, "grant_type=authorization_code&code=abc&code_verifier=v&client_id="+adminClientID)
 
-	ck := findCookie(rr, "refresh_token")
+	ck := findCookie(rr, "__Host-refresh_token")
 	if ck == nil {
-		t.Fatal("expected a refresh_token cookie to be set for the admin client")
+		t.Fatal("expected a __Host-refresh_token cookie to be set for the admin client")
 	}
 	if ck.Value != "rt-new" {
 		t.Errorf("cookie value = %q, want the rotated refresh token", ck.Value)
@@ -81,8 +100,11 @@ func TestRefreshCookie_AdminClient_SetAndStrippedFromBody(t *testing.T) {
 	if !ck.HttpOnly || !ck.Secure || ck.SameSite != http.SameSiteStrictMode {
 		t.Errorf("cookie flags wrong: HttpOnly=%v Secure=%v SameSite=%v", ck.HttpOnly, ck.Secure, ck.SameSite)
 	}
-	if ck.Path != "/oauth/token" {
-		t.Errorf("cookie path = %q, want /oauth/token", ck.Path)
+	if ck.Path != "/" || ck.Domain != "" {
+		t.Errorf("cookie path %q domain %q, want / and none (the __Host- prefix requires both)", ck.Path, ck.Domain)
+	}
+	if old := findCookie(rr, "refresh_token"); old == nil || old.MaxAge >= 0 || old.Path != "/oauth/token" {
+		t.Errorf("the cookie under its old name is not expired: %+v", old)
 	}
 	if ck.MaxAge <= 0 {
 		t.Errorf("cookie Max-Age = %d, want the refresh TTL", ck.MaxAge)
@@ -99,11 +121,53 @@ func TestRefreshCookie_AdminClient_ReadFromCookie(t *testing.T) {
 	svc := &fakeOAuthSvc{tokenResp: &dto.TokenResponse{AccessToken: "at", RefreshToken: "rt-new", TokenType: "Bearer"}}
 	h := newCookieOAuthHandler(svc, adminClientID)
 
-	postToken(h, "grant_type=refresh_token&client_id="+adminClientID,
-		&http.Cookie{Name: "refresh_token", Value: "rt-incoming"})
+	postTokenWith(h, "grant_type=refresh_token&client_id="+adminClientID, consoleHeaders,
+		&http.Cookie{Name: "__Host-refresh_token", Value: "rt-incoming"})
 
 	if svc.gotReq.RefreshToken != "rt-incoming" {
 		t.Errorf("service received refresh_token %q, want the cookie value rt-incoming", svc.gotReq.RefreshToken)
+	}
+}
+
+// The cookie is read only for the console's own client, with its
+// X-Requested-By header, and from its own origin (or no Origin header): a
+// page on another origin of the same site gets the cookie sent
+// (SameSite=Strict) but cannot use it.
+func TestRefreshCookie_ReadOnlyForTheConsoleRequest(t *testing.T) {
+	cookie := &http.Cookie{Name: "__Host-refresh_token", Value: "rt-incoming"}
+	for name, tc := range map[string]struct {
+		clientID string
+		headers  map[string]string
+		want     string
+	}{
+		"console, own origin":      {adminClientID, consoleHeaders, "rt-incoming"},
+		"console, no Origin":       {adminClientID, map[string]string{"X-Requested-By": "oauth2-admin"}, "rt-incoming"},
+		"no X-Requested-By":        {adminClientID, map[string]string{"Origin": "https://admin.example.com"}, ""},
+		"another origin":           {adminClientID, map[string]string{"X-Requested-By": "x", "Origin": "https://app.example.com"}, ""},
+		"another client":           {"some-other-app", consoleHeaders, ""},
+		"origin with another port": {adminClientID, map[string]string{"X-Requested-By": "x", "Origin": "https://admin.example.com:8443"}, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			svc := &fakeOAuthSvc{tokenResp: &dto.TokenResponse{AccessToken: "at", TokenType: "Bearer"}}
+			h := newCookieOAuthHandler(svc, adminClientID)
+			postTokenWith(h, "grant_type=refresh_token&client_id="+tc.clientID, tc.headers, cookie)
+			if svc.gotReq.RefreshToken != tc.want {
+				t.Fatalf("refresh_token read %q, want %q", svc.gotReq.RefreshToken, tc.want)
+			}
+		})
+	}
+}
+
+// Without Secure (local development over http) the cookie keeps its old name
+// and path: browsers refuse a __Host- cookie that is not Secure.
+func TestRefreshCookie_NotSecureKeepsTheLegacyCookie(t *testing.T) {
+	svc := &fakeOAuthSvc{tokenResp: &dto.TokenResponse{AccessToken: "at", RefreshToken: "rt-new", TokenType: "Bearer"}}
+	h := &OAuthHandler{oauthService: svc, appService: okAppSvc{&mockAppService{}}, issuer: "http://localhost:8080"}
+	h.SetRefreshCookie(adminClientID, time.Hour, false)
+	rr := postToken(h, "grant_type=authorization_code&code=abc&code_verifier=v&client_id="+adminClientID)
+	ck := findCookie(rr, "refresh_token")
+	if ck == nil || ck.Value != "rt-new" || ck.Path != "/oauth/token" || findCookie(rr, "__Host-refresh_token") != nil {
+		t.Fatalf("non-Secure cookie: %+v", ck)
 	}
 }
 
@@ -129,7 +193,7 @@ func TestRefreshCookie_NonAdminClient_NoCookie(t *testing.T) {
 
 	rr := postToken(h, "grant_type=authorization_code&code=abc&code_verifier=v&client_id=some-other-app")
 
-	if findCookie(rr, "refresh_token") != nil {
+	if findCookie(rr, "refresh_token") != nil || findCookie(rr, "__Host-refresh_token") != nil {
 		t.Error("non-admin client must not receive a refresh cookie")
 	}
 	if got := decodeToken(t, rr); got.RefreshToken != "rt-new" {
@@ -173,5 +237,10 @@ func TestRefreshCookie_LogoutClearsCookie(t *testing.T) {
 	}
 	if ck.Path != "/oauth/token" {
 		t.Errorf("clearing cookie path = %q, want /oauth/token (must match the set cookie)", ck.Path)
+	}
+	// The __Host- cookie (Secure) is cleared too, on its own path.
+	host := findCookie(rr, "__Host-refresh_token")
+	if host == nil || host.MaxAge >= 0 || host.Path != "/" {
+		t.Errorf("logout must expire the __Host- cookie on Path=/: %+v", host)
 	}
 }

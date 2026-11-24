@@ -256,3 +256,25 @@ func TestExchangeToken_UnregisteredAudienceRefused(t *testing.T) {
 		t.Fatalf("audit %+v, want a denied row", audit.last)
 	}
 }
+
+// actorBelongsToClient on its own: the client's own service-account token or a
+// token issued to it (aud[0] is its client_id) belongs to it; another client's
+// service token or a token issued to another client does not.
+func TestActorBelongsToClient(t *testing.T) {
+	app := &model.App{ID: 7, ClientID: "c"}
+	for _, tc := range []struct {
+		name string
+		tok  exchangeToken
+		want bool
+	}{
+		{"own service token", exchangeToken{sub: "app:7"}, true},
+		{"issued to the client", exchangeToken{sub: "200", aud: []string{"c", "https://api"}}, true},
+		{"another client's service token", exchangeToken{sub: "app:8", aud: []string{"other"}}, false},
+		{"issued to another client", exchangeToken{sub: "200", aud: []string{"other", "c"}}, false},
+		{"no audience", exchangeToken{sub: "200"}, false},
+	} {
+		if got := actorBelongsToClient(tc.tok, app); got != tc.want {
+			t.Errorf("%s: %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

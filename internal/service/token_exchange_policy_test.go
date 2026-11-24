@@ -141,7 +141,7 @@ func TestAuthorizeExchange_AudienceIsRequestedAudiencesAndResources(t *testing.T
 	resourceOnly := delegationReq("read")
 	resourceOnly.Resource = []string{"https://files"}
 	if dec, err := authorizeExchange(app, resourceOnly, "read"); err != nil || len(dec.Audience) != 1 || dec.Audience[0] != "https://files" {
-		t.Fatalf("resource-only: audience %v (%v), want [https://files]", dec, err)
+		t.Fatalf("resource-only: decision %+v (%v), want audience [https://files]", dec, err)
 	}
 }
 

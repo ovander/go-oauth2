@@ -26,6 +26,18 @@ Capabilities**, non-breaking).
   anchors the head on the existing log at startup. A database-only attacker who saved an earlier
   head can still roll the log back to it; the scan log line is the evidence for that case.
 
+- **The privileged scopes can be kept to the clients meant to hold them.** New
+  `PRIVILEGED_SCOPE_MODE` (`off` default, `observe`, `enforce`). `admin`, `monitoring:read` and
+  `monitoring:write` were requestable by any client at authorize, and with `client_credentials`,
+  unless `SCOPE_POLICY_MODE=enforce` and the client had a non-empty `allowed_scopes`. Under
+  `enforce`, a client gets one only if it lists it in `allowed_scopes` or is an operator console
+  (`OPERATOR_CONSOLE_CLIENT_IDS`, `ADMIN_CONSOLE_CLIENT_ID`), on every grant (authorize, code,
+  refresh, `client_credentials`, token exchange), whatever `SCOPE_POLICY_MODE` says; others get
+  `invalid_scope`. `observe` audits `scope_denied` with `reason: privileged_scope`. The admin API
+  still checks the user's role; this stops a client from obtaining the scope by asking. Deploy
+  note: no migration; run `observe` and check `scope_denied` events before `enforce`, and list
+  the scope in the `allowed_scopes` of any non-console client that needs it.
+
 - **The admin-console refresh cookie is usable only by the console.** When
   `ADMIN_CONSOLE_CLIENT_ID` enables the refresh-cookie channel, `/oauth/token` read the cookie
   for any refresh request without a token in the body. `SameSite=Strict` lets a page on another

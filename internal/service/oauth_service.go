@@ -1543,6 +1543,13 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 			details["deny_reason"] = "actor_" + reason
 			return fail("invalid_actor_token", ErrInvalidToken)
 		}
+		// The actor is the party doing the acting, so its token must belong to
+		// the requesting client: issued to it (aud[0] is its client_id) or its
+		// own service-account token (sub "app:<id>").
+		if !actorBelongsToClient(actorTok, app) {
+			details["deny_reason"] = "actor_not_requesting_client"
+			return fail("invalid_actor_token", ErrInvalidToken)
+		}
 		actorSub, actorAmr = actorTok.sub, actorTok.amr
 	}
 
@@ -1679,6 +1686,8 @@ type exchangeToken struct {
 	amr      []string
 	jti      string
 	cnfJKT   string
+	// aud is the token's audience; aud[0] is the client it was issued to.
+	aud []string
 	// versioned: the token carries the user's token version (access and
 	// refresh tokens; an ID token does not).
 	versioned bool
@@ -1696,7 +1705,7 @@ func (s *oauthService) verifyExchangeToken(tokenStr, tokenType string) (exchange
 			return exchangeToken{}, e
 		}
 		t := exchangeToken{sub: c.Subject, scope: c.Scope, version: c.TokenVersion, authTime: c.AuthTime,
-			amr: c.Amr, jti: c.ID, versioned: true}
+			amr: c.Amr, jti: c.ID, versioned: true, aud: c.Audience}
 		if c.Cnf != nil {
 			t.cnfJKT = c.Cnf.JKT
 		}
@@ -1707,7 +1716,7 @@ func (s *oauthService) verifyExchangeToken(tokenStr, tokenType string) (exchange
 			return exchangeToken{}, e
 		}
 		t := exchangeToken{sub: c.Subject, scope: c.Scope, version: c.Ver, authTime: c.AuthTime,
-			jti: c.ID, versioned: true}
+			jti: c.ID, versioned: true, aud: c.Audience}
 		if c.Cnf != nil {
 			t.cnfJKT = c.Cnf.JKT
 		}
@@ -1717,10 +1726,20 @@ func (s *oauthService) verifyExchangeToken(tokenStr, tokenType string) (exchange
 		if e != nil {
 			return exchangeToken{}, e
 		}
-		return exchangeToken{sub: c.Subject, authTime: c.AuthTime, amr: c.Amr, jti: c.ID}, nil
+		return exchangeToken{sub: c.Subject, authTime: c.AuthTime, amr: c.Amr, jti: c.ID, aud: c.Audience}, nil
 	default:
 		return exchangeToken{}, fmt.Errorf("unsupported token type %q", tokenType)
 	}
+}
+
+// actorBelongsToClient reports whether an actor token belongs to the client
+// requesting the exchange: its own service-account token, or a token issued to
+// it (the first audience is its client_id).
+func actorBelongsToClient(t exchangeToken, app *model.App) bool {
+	if t.sub == fmt.Sprintf("app:%d", app.ID) {
+		return true
+	}
+	return len(t.aud) > 0 && t.aud[0] == app.ClientID
 }
 
 // checkExchangeToken applies to a verified subject or actor token the checks

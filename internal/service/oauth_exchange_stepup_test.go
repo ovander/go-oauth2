@@ -15,7 +15,7 @@ import (
 func mintTokenAt(t *testing.T, ts *auth.TokenService, userID uint, scope string, age time.Duration) string {
 	t.Helper()
 	authTime := time.Now().Add(-age).Unix()
-	set, err := ts.GenerateTokenSet(&model.User{ID: userID, TokenVersion: 1}, &model.App{ClientID: "subject-app"}, "user", scope, nil, "", authTime)
+	set, err := ts.GenerateTokenSet(&model.User{ID: userID, TokenVersion: 1}, &model.App{ClientID: "c"}, "user", scope, nil, "", authTime)
 	if err != nil {
 		t.Fatalf("GenerateTokenSet: %v", err)
 	}

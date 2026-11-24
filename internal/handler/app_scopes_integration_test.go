@@ -188,6 +188,7 @@ func TestIntegration_TokenExchange_ClientErrorMapping(t *testing.T) {
 		{service.ErrDPoPRequired, http.StatusBadRequest, `"invalid_dpop_proof"`},
 		{service.ErrExchangeNotAllowed, http.StatusForbidden, `"unauthorized_client"`},
 		{service.ErrInvalidCredentials, http.StatusUnauthorized, `"invalid_client"`},
+		{service.ErrAudienceNotAllowed, http.StatusBadRequest, `"invalid_target"`},
 	} {
 		r := buildOAuthTestRouter(&fakeOAuthSvc{tokenErr: tc.err})
 		body := strings.NewReader("grant_type=urn:ietf:params:oauth:grant-type:token-exchange&subject_token=x&subject_token_type=urn:ietf:params:oauth:token-type:access_token&audience=https://api")

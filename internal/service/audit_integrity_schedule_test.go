@@ -11,7 +11,7 @@ import (
 func TestStartSchedule_RunsAndStops(t *testing.T) {
 	t.Parallel()
 	repo := &scanRepo{rows: []model.SecurityAuditLog{{ID: 1, RowHash: "deadbeef"}}}
-	scanner := NewAuditIntegrityScanner(repo, scanSecret)
+	scanner := NewAuditIntegrityScanner(repo, repo, scanSecret)
 
 	stop := scanner.StartSchedule(20*time.Millisecond, time.Hour)
 	time.Sleep(70 * time.Millisecond) // allow a few scans
@@ -27,7 +27,7 @@ func TestStartSchedule_RunsAndStops(t *testing.T) {
 func TestStartSchedule_ZeroLookbackFallsBack(t *testing.T) {
 	t.Parallel()
 	repo := &scanRepo{rows: []model.SecurityAuditLog{{ID: 1, RowHash: ""}}}
-	scanner := NewAuditIntegrityScanner(repo, scanSecret)
+	scanner := NewAuditIntegrityScanner(repo, repo, scanSecret)
 
 	stop := scanner.StartSchedule(20*time.Millisecond, 0)
 	time.Sleep(40 * time.Millisecond)

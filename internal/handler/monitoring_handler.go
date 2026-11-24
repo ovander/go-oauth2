@@ -478,6 +478,10 @@ func (h *MonitoringHandler) GetAuditIntegrity(w http.ResponseWriter, r *http.Req
 				kind = "hmac"
 			} else if _, ok := row.Details["chain_break_row_id"]; ok {
 				kind = "chain"
+			} else if _, ok := row.Details["unstamped_row_id"]; ok {
+				kind = "chain"
+			} else if _, ok := row.Details["chain_head"]; ok {
+				kind = "chain"
 			}
 		}
 		recent[i] = dto.AuditIntegrityViolation{

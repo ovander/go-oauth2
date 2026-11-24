@@ -25,6 +25,16 @@ Capabilities**, non-breaking).
   no new variable; a browser still holding the old cookie signs in once more. The consoles use
   their backend-for-frontend and do not use this channel.
 
+- **A locked account no longer reveals that it exists.** The password check answered "account
+  locked" to any password, before the hash comparison: the answer and its speed told apart an
+  existing account from an unknown email. A locked account's password is now checked as any
+  other, and only the right password gets `ErrAccountLocked` (`403`), so the owner still learns
+  why they cannot sign in. A wrong one gets `ErrInvalidCredentials` (`401`), as an unknown email
+  does; it is audited as `login_failed` with `account_locked: true` and does not move the counter.
+  This applies to every password check: `/api/auth/login`, the hosted login, admin login,
+  `/elevate` and change-password. Deploy note: no migration, no environment variable; a client that
+  sends a wrong password to a locked account now gets `401`, not `403`.
+
 - **An app's service account can be kept away from accounts it did not create.** New
   `SERVICE_USER_SCOPE_MODE` (`off` default, `observe`, `enforce`). Under `enforce`, the service
   API (`/api/apps/{app_id}/service/users`) no longer enrols an existing account in the app unless

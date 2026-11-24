@@ -34,6 +34,10 @@ type MonitoringHandler struct {
 	// SetAuditScanningEnabled at wiring time; false by default.
 	auditScanningEnabled bool
 
+	// blockGuard refuses addresses that must never be blocked (loopback, the
+	// server's own, TRUSTED_PROXIES). Nil still protects loopback.
+	blockGuard *service.IPBlockGuard
+
 	// securityAudit records block, unblock and alert-rule changes. Nil skips
 	// them (tests); bootstrap always sets it.
 	securityAudit service.SecurityAuditService
@@ -122,6 +126,9 @@ func alertRuleValues(rule *model.AlertRule) map[string]interface{} {
 		"webhook_host": webhookHost(rule.WebhookURL),
 	}
 }
+
+// SetIPBlockGuard sets the addresses BlockIP refuses (see IPBlockGuard).
+func (h *MonitoringHandler) SetIPBlockGuard(g *service.IPBlockGuard) { h.blockGuard = g }
 
 // SetAuditScanningEnabled records whether the background audit-integrity
 // scanner is running, so GetAuditIntegrity does not report "verified" for a log
@@ -811,6 +818,19 @@ func (h *MonitoringHandler) BlockIP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, "ip_address is required", http.StatusBadRequest)
 		return
 	}
+	// Never block loopback, the server's own addresses or a trusted proxy:
+	// that would cut off the consoles and the route that lifts the block.
+	// The canonical form is the one the block list is matched against.
+	canonical, err := h.blockGuard.Check(req.IPAddress)
+	switch {
+	case errors.Is(err, service.ErrInvalidBlockIP):
+		writeError(w, "ip_address is not an IP address", http.StatusBadRequest)
+		return
+	case err != nil:
+		writeError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	req.IPAddress = canonical
 
 	// Check if already blocked
 	exists, _ := h.blockedIPRepo.IsBlocked(ctx, req.IPAddress)

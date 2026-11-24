@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"strings"
@@ -763,6 +764,14 @@ func Bootstrap(cfg *config.Config) *App {
 		securityAuditRepo,
 		service.DefaultAutoDefenseConfig(),
 	)
+	// Neither the automatic defence nor an admin may block loopback, the
+	// server's own addresses or a trusted proxy: that would cut off the
+	// consoles and the route that lifts the block.
+	// An invalid TRUSTED_PROXIES stops the server below (mustParseTrustedProxies).
+	guardProxies, _ := middleware.ParseTrustedProxyCIDRs(cfg.TrustedProxies)
+	ipBlockGuard := service.NewIPBlockGuard(guardProxies, service.LocalAddrs())
+	autoDefense.SetIPBlockGuard(ipBlockGuard)
+	monitoringHandler.SetIPBlockGuard(ipBlockGuard)
 	logger.Debug("✅ Auto-defense system initialized")
 
 	// IP Block Checker (middleware cache)
@@ -770,6 +779,13 @@ func Bootstrap(cfg *config.Config) *App {
 		blockedIPRepo,
 		middleware.DefaultIPBlockCheckerConfig(),
 	)
+	// A block stored for a protected address before such blocks were refused
+	// is not enforced either: it would lock the consoles out of the route
+	// that lifts it.
+	ipBlockChecker.SetExempt(func(ip string) bool {
+		_, err := ipBlockGuard.Check(ip)
+		return errors.Is(err, service.ErrProtectedIP)
+	})
 	logger.Debug("✅ IP block checker initialized")
 
 	// Connect auto-defense to IP block checker for immediate cache invalidation

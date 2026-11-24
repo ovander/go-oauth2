@@ -20,6 +20,16 @@ Capabilities**, non-breaking).
   webhook URL is recorded as its host only. Unblocking or deleting an unknown id now answers
   `404` (it answered `204`). Deploy note: no migration, no environment variable.
 
+- **Loopback, the server's own addresses and trusted proxies can no longer be blocked.**
+  `POST /api/admin/security/blocked-ips` now refuses (`400`) a loopback or unspecified address,
+  one of the server's network addresses or any address in `TRUSTED_PROXIES`, and anything that
+  is not an IP address; it stores an IPv4-mapped address as IPv4, the form the block list is
+  matched against. The automatic defence (failed sign-ins, brute force) skips the same addresses
+  and logs it, and a block already stored for one of them is not enforced. Blocking one of them cut off the consoles, which reach the admin API through a
+  local proxy, and with them the route that lifts the block; behind a proxy missing from
+  `TRUSTED_PROXIES`, every request appears to come from it, so one burst of failed sign-ins
+  locked everyone out. Deploy note: no migration, no environment variable.
+
 - **A DPoP-bound token presented to Socrate's own APIs needs its proof.** Under `DPOP_MODE`
   `observe` or `enforce`, a token carrying `cnf.jkt` sent to `/oauth/userinfo`, `/api/*`, the
   app routes, the service-account routes or the admin API must come with a fresh DPoP proof of the bound key for that request,

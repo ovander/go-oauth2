@@ -298,3 +298,5 @@ func (*high04UserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error
 func (*high04UserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
 	return false, nil
 }
+
+func (*high04UserRepo) UpdateProfile(context.Context, *model.User, bool) error { return nil }

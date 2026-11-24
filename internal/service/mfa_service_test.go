@@ -75,6 +75,8 @@ func (r *mfaMemUserRepo) AdvanceMFAStep(_ context.Context, id uint, step int64) 
 	return true, nil
 }
 
+func (*mfaMemUserRepo) UpdateProfile(context.Context, *model.User, bool) error { return nil }
+
 // --- stubs for the rest of the interface (not exercised by MFA) ---
 
 func (r *mfaMemUserRepo) FindAll(_ context.Context, _, _ int) ([]model.User, int64, error) {

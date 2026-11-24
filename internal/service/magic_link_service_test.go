@@ -552,6 +552,8 @@ func (*fakeMagicLinkUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool
 	return false, nil
 }
 
+func (*fakeMagicLinkUserRepo) UpdateProfile(context.Context, *model.User, bool) error { return nil }
+
 // ---------------------------------------------------------------------------
 // VerifyMagicLink: the checks of the other sign-in paths
 // ---------------------------------------------------------------------------

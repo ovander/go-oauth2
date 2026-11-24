@@ -1164,8 +1164,9 @@ func (h *AdminHandler) UpdateSuperadmin(w http.ResponseWriter, r *http.Request) 
 
 	// Log the action
 	if h.adminLogService != nil {
-		// Which fields the request set, never their values.
-		var changed []string
+		// The target's email identifies the account, as in the other entries;
+		// "changed" lists which fields the request set, never their values.
+		changed := []string{}
 		if req.Name != nil {
 			changed = append(changed, "name")
 		}

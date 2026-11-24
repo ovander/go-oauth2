@@ -471,15 +471,18 @@ func (s *userService) UpdateSuperadmin(ctx context.Context, id uint, req dto.Upd
 	}
 
 	user.UpdatedAt = now
-	if credentialsChanged {
-		// Revoke the existing sessions in the same write as the new
-		// credentials: either both are saved or neither is, so a failure
-		// can never leave new credentials with old sessions still valid.
-		user.TokenVersion++
-	}
 
-	if err := s.repo.Update(ctx, user); err != nil {
+	// Only the edited columns are written, and the sessions are revoked in
+	// the same statement as the new credentials: either both are saved or
+	// neither is, and a concurrent revocation is never overwritten.
+	if err := s.repo.UpdateProfile(ctx, user, credentialsChanged); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrUserNotFound // deleted since it was read
+		}
 		return nil, err
+	}
+	if credentialsChanged {
+		user.TokenVersion++
 	}
 
 	return user, nil

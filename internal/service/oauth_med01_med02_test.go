@@ -380,3 +380,5 @@ func (*trackIncrUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, er
 func (*trackIncrUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
 	return false, nil
 }
+
+func (*trackIncrUserRepo) UpdateProfile(context.Context, *model.User, bool) error { return nil }

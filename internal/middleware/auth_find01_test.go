@@ -406,3 +406,5 @@ func (*find01UserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error
 func (*find01UserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
 	return false, nil
 }
+
+func (*find01UserRepo) UpdateProfile(context.Context, *model.User, bool) error { return nil }

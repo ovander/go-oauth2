@@ -15,7 +15,9 @@ Capabilities**, non-breaking).
 - **Updating a superadmin requires step-up and revokes their sessions on a credential change.**
   `PUT /api/admin/superadmins/{id}` now requires a recent authentication (it joins
   `policy.StepUpActions`). Changing a superadmin's email or password there bumps their token
-  version, so their existing sessions end, and sets `password_changed_at` for a password. An
+  version in the same statement as the new credentials, so their existing sessions end, and sets
+  `password_changed_at` for a password. The update writes only the edited columns, so it cannot
+  undo a concurrent revocation or failed sign-in (new `UserRepository.UpdateProfile`). An
   admin can no longer set their own password through it (`400`): they use
   `POST /api/admin/change-password`, which asks for the current password and applies the
   lockout. The audit entry lists which fields were set (`name`, `email`, `password`), never their

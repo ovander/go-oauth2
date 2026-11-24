@@ -20,7 +20,9 @@ Capabilities**, non-breaking).
   transaction of every append. The next row links to the head, so a gap stays visible. The
   integrity scanner reports a head that is missing, invalid or no longer matches the row it
   names, and a row without a hash after the chain started. It now reads rows in id order and
-  checks the link between pages. It also logs the head it saw, outside the database. Retention
+  checks the link between pages. It also logs the head it saw, outside the database. The first
+  anchoring is recorded in the chain (`audit_chain_anchored`), so a head deleted while the
+  server is stopped is reported at the next start instead of being silently recreated. Retention
   keeps the newest row, which the head names. New violation details: `unstamped_row_id`,
   `chain_head` (`kind` stays `chain`). Deploy note: migration 0033 (new table); the server
   anchors the head on the existing log at startup. A database-only attacker who saved an earlier

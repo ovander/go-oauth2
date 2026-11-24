@@ -70,22 +70,27 @@ func (r *gormSecurityAuditLogRepository) headValid(h *auditChainHead) bool {
 	return hmac.Equal([]byte(h.MAC), []byte(auditChainHeadMAC(r.secret, h.LastID, h.LastHash)))
 }
 
-// hasHeadTable reports, once per repository, whether migration 0033 has
-// created audit_chain_head. Without it the chain is written as before 0033.
+// hasHeadTable reports whether migration 0033 has created audit_chain_head.
+// Without it the chain is written as before 0033. The answer is cached once
+// it has been read; a failed lookup is not cached, so a transient database
+// error does not leave the head unanchored for the life of the process.
 func (r *gormSecurityAuditLogRepository) hasHeadTable(ctx context.Context) bool {
-	r.headOnce.Do(func() {
-		var ok bool
-		if err := r.db.WithContext(ctx).Raw("SELECT to_regclass(?) IS NOT NULL", auditChainHeadTable).Scan(&ok).Error; err != nil {
-			logger.WithFields(logger.Fields{"error": err.Error()}).
-				Error("RFC-007: could not look for the audit_chain_head table; the chain head is not anchored")
-			return
-		}
-		if !ok {
-			logger.Warn("RFC-007: the audit_chain_head table does not exist; the chain head is not anchored (run the migrations)")
-		}
-		r.headTable = ok
-	})
-	return r.headTable
+	r.headMu.Lock()
+	defer r.headMu.Unlock()
+	if r.headChecked {
+		return r.headTable
+	}
+	var ok bool
+	if err := r.db.WithContext(ctx).Raw("SELECT to_regclass(?) IS NOT NULL", auditChainHeadTable).Scan(&ok).Error; err != nil {
+		logger.WithFields(logger.Fields{"error": err.Error()}).
+			Error("RFC-007: could not look for the audit_chain_head table; this append is not anchored")
+		return false
+	}
+	if !ok {
+		logger.Warn("RFC-007: the audit_chain_head table does not exist; the chain head is not anchored (run the migrations)")
+	}
+	r.headChecked, r.headTable = true, ok
+	return ok
 }
 
 // readHead returns the head row, or nil when there is none.
@@ -144,12 +149,32 @@ func (r *gormSecurityAuditLogRepository) chainPredecessor(tx *gorm.DB, useHead b
 		case r.headSeen.Load():
 			// The head existed, so only its deletion explains its absence.
 			problem = ChainHeadMissing
+		default:
+			// This process has not seen a head yet, but the chain records
+			// that one was anchored: it was deleted, perhaps while no server
+			// was running.
+			anchored, err := chainWasAnchored(tx)
+			if err != nil {
+				return "", "", err
+			}
+			if anchored {
+				problem = ChainHeadMissing
+			}
 		}
 	}
 	if tip == nil {
 		return "", problem, nil
 	}
 	return tip.RowHash, problem, nil
+}
+
+// chainWasAnchored reports whether the chain records that its head was
+// anchored (an audit_chain_anchored row).
+func chainWasAnchored(tx *gorm.DB) (bool, error) {
+	var anchored bool
+	err := tx.Raw("SELECT EXISTS (SELECT 1 FROM security_audit_logs WHERE event_type = ? AND row_hash <> '')",
+		model.SecurityEventAuditChainAnchored).Scan(&anchored).Error
+	return anchored, err
 }
 
 // writeHead moves the head to the given row. Called under the chain lock, in
@@ -164,9 +189,11 @@ func (r *gormSecurityAuditLogRepository) writeHead(tx *gorm.DB, lastID uint, las
 
 // AuditChainAnchorer anchors the chain head at startup.
 type AuditChainAnchorer interface {
-	// EnsureAuditChainHead writes the head when there is none (the first
-	// start after migration 0033, or an empty log), at the newest stamped row.
-	// From then on, a head that disappears is reported as tampering.
+	// EnsureAuditChainHead anchors the head when there is none, by appending
+	// an audit_chain_anchored row, which the append links to the newest
+	// stamped row and makes the head. From then on a head that disappears is
+	// tampering: if the chain already holds such a row, the head was deleted,
+	// and the append records the violation in the chain before re-anchoring.
 	EnsureAuditChainHead(ctx context.Context) error
 }
 
@@ -176,33 +203,27 @@ func (r *gormSecurityAuditLogRepository) EnsureAuditChainHead(ctx context.Contex
 	if len(r.secret) == 0 || !r.hasHeadTable(ctx) {
 		return nil
 	}
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", auditChainLockKey).Error; err != nil {
-			return err
-		}
-		head, err := readHead(tx)
-		if err != nil || head != nil {
-			return err
-		}
-		tip, err := newestStamped(tx)
-		if err != nil {
-			return err
-		}
-		var id uint
-		hash := ""
-		if tip != nil {
-			id, hash = tip.ID, tip.RowHash
-		}
-		if err := r.writeHead(tx, id, hash); err != nil {
-			return err
-		}
-		logger.WithFields(logger.Fields{"row_id": id}).Info("RFC-007: audit chain head anchored")
-		return nil
-	})
-	if err == nil {
-		r.headSeen.Store(true)
+	head, err := readHead(r.db.WithContext(ctx))
+	if err != nil {
+		return err
 	}
-	return err
+	if head != nil {
+		r.headSeen.Store(true)
+		return nil
+	}
+	// The append takes the chain lock and re-reads the head, so two
+	// instances starting together each record an anchoring at worst.
+	anchor := &model.SecurityAuditLog{
+		EventType: model.SecurityEventAuditChainAnchored,
+		Severity:  model.SecuritySeverityInfo,
+		Success:   true,
+		Details:   map[string]interface{}{"reason": "chain head anchored outside the audit table"},
+	}
+	if err := r.Create(ctx, anchor); err != nil {
+		return err
+	}
+	logger.WithFields(logger.Fields{"row_id": anchor.ID}).Info("RFC-007: audit chain head anchored")
+	return nil
 }
 
 // AuditChainWindow is the range of audit rows a scan covers, in id order.

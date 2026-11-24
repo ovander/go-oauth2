@@ -58,9 +58,10 @@ type gormSecurityAuditLogRepository struct {
 	// The chain head (#364): whether its table exists (looked up once), and
 	// whether this repository has seen or written it, after which its absence
 	// can only mean it was deleted.
-	headOnce  sync.Once
-	headTable bool
-	headSeen  atomic.Bool
+	headMu      sync.Mutex
+	headChecked bool
+	headTable   bool
+	headSeen    atomic.Bool
 }
 
 // SetOutboxWriter installs the transactional outbox writer. Called once at
@@ -132,6 +133,9 @@ func normalizeAuditCreatedAt(log *model.SecurityAuditLog) {
 // the asynchronous appender writes a batch, so a burst of events costs one
 // chain lock and one commit instead of one each.
 func (r *gormSecurityAuditLogRepository) createRows(ctx context.Context, logs []*model.SecurityAuditLog) error {
+	if len(logs) == 0 {
+		return nil
+	}
 	for _, log := range logs {
 		normalizeAuditCreatedAt(log)
 	}

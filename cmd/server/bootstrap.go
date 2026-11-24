@@ -436,10 +436,12 @@ func Bootstrap(cfg *config.Config) *App {
 	if !ok {
 		logger.Fatal("bootstrap: the audit repository does not expose the chain head")
 	}
-	if err := auditChain.EnsureAuditChainHead(context.Background()); err != nil {
+	anchorCtx, cancelAnchor := context.WithTimeout(context.Background(), 30*time.Second)
+	if err := auditChain.EnsureAuditChainHead(anchorCtx); err != nil {
 		logger.WithFields(logger.Fields{"error": err.Error()}).
 			Error("RFC-007: could not anchor the audit chain head; the next audit write anchors it")
 	}
+	cancelAnchor()
 	// AUDIT_WRITE_MODE=async: a background writer appends the rows in batches,
 	// so a request no longer waits on the audit chain lock and its commit.
 	// Drained last at shutdown (App.Stop).

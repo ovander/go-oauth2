@@ -3,6 +3,7 @@ package repository_test
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -88,8 +89,13 @@ func detail(events []model.SecurityAuditLog, key string) []string {
 }
 
 // toString formats a detail value: a string as is, a number (a uint when
-// written, a float64 when read back from jsonb) in decimal.
-func toString(v interface{}) string { return fmt.Sprint(v) }
+// written, a float64 when read back from jsonb) in plain decimal.
+func toString(v interface{}) string {
+	if f, ok := v.(float64); ok {
+		return strconv.FormatFloat(f, 'f', -1, 64)
+	}
+	return fmt.Sprint(v)
+}
 
 func uintString(u uint) string { return fmt.Sprint(u) }
 
@@ -171,7 +177,14 @@ func TestAuditChain_DeletedHeadIsDetected(t *testing.T) {
 }
 
 func TestAuditChain_RetentionKeepsTheHeadRow(t *testing.T) {
-	db, repo, scanner := chainFixture(t)
+	// Every row old: dates follow ids, as in a real log (the fixture's
+	// anchoring row would be a recent row before old ones).
+	db := auditScratchDB(t)
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	repo := repository.NewSecurityAuditLogRepositoryWithIntegrity(db, auditTestSecret).(chainRepo)
+	scanner := service.NewAuditIntegrityScanner(repo, repo, auditTestSecret).WithPageSize(2)
 	old := time.Now().Add(-48 * time.Hour)
 	for i := 0; i < 3; i++ {
 		if err := repo.Create(context.Background(), &model.SecurityAuditLog{
@@ -206,5 +219,43 @@ func TestAuditChain_ExistingLogIsAnchoredAtStartup(t *testing.T) {
 	if events := scan(t, db, scanner); len(events) != 0 {
 		t.Fatalf("upgraded log: %+v", events)
 	}
-	checkAuditTable(t, db, 5)
+	// 3 rows before, the anchoring row, 2 after; the first anchoring is not
+	// a violation.
+	rows := checkAuditTable(t, db, 6)
+	if rows[3].EventType != model.SecurityEventAuditChainAnchored {
+		t.Fatalf("row 4 is %s, want the anchoring", rows[3].EventType)
+	}
+	var violations int64
+	db.Model(&model.SecurityAuditLog{}).Where("event_type = ?", model.SecurityEventAuditIntegrityViolation).Count(&violations)
+	if violations != 0 {
+		t.Fatalf("%d violations on a first anchoring", violations)
+	}
+}
+
+// A head deleted while no server runs: the restarted server finds the chain's
+// record of an anchoring, so it reports the missing head before re-anchoring,
+// instead of silently creating a new one.
+func TestAuditChain_HeadDeletedWhileStoppedIsReported(t *testing.T) {
+	db, repo, _ := chainFixture(t)
+	writeRows(t, repo, 2)
+	if err := db.Exec("DELETE FROM audit_chain_head").Error; err != nil {
+		t.Fatal(err)
+	}
+	// A new process: it has never seen the head.
+	restarted := repository.NewSecurityAuditLogRepositoryWithIntegrity(db, auditTestSecret).(chainRepo)
+	if err := restarted.EnsureAuditChainHead(context.Background()); err != nil {
+		t.Fatalf("anchor after restart: %v", err)
+	}
+	var events []model.SecurityAuditLog
+	if err := db.Where("event_type = ?", model.SecurityEventAuditIntegrityViolation).Find(&events).Error; err != nil {
+		t.Fatal(err)
+	}
+	if got := detail(events, "chain_head"); len(got) != 1 || got[0] != repository.ChainHeadMissing {
+		t.Fatalf("chain_head = %v, want [%s]", got, repository.ChainHeadMissing)
+	}
+	// Re-anchored, and the log is consistent again.
+	scanner := service.NewAuditIntegrityScanner(restarted, restarted, auditTestSecret)
+	if got := scan(t, db, scanner); len(got) != 0 {
+		t.Fatalf("after re-anchoring: %+v", got)
+	}
 }

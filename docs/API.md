@@ -486,7 +486,11 @@ unauthorized_client`). The client is authenticated first, before any presented
 token is examined (since v1.14.6): it must be a confidential client with its
 secret (`401 invalid_client`; a public client gets `403 unauthorized_client`),
 active (`400 unauthorized_client`) and, if registered with `require_dpop`, send a
-DPoP proof (`400 invalid_dpop_proof`). The exchanged access token is downscoped (`invalid_scope`
+DPoP proof (`400 invalid_dpop_proof`). The subject token and the actor token get the
+same checks as a refresh token on the refresh grant (since v1.14.6): a rotated or revoked
+token, a DPoP-bound token without a proof for its key, a token issued before the user's
+tokens were revoked (token version), or one whose user is locked or unknown is
+`400 invalid_grant`. The exchanged access token is downscoped (`invalid_scope`
 beyond the subject's scope), audience-bound (`invalid_target` without a target)
 and carries the actor chain in `act`; an impersonation token lives at most
 `IMPERSONATION_TOKEN_TTL`. `IMPERSONATION_STEPUP_MODE` and

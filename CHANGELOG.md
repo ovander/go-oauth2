@@ -10,6 +10,19 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Security
+
+- **Token exchange checks the presented tokens like the refresh grant.** With
+  `TOKEN_EXCHANGE_MODE=enforce` (default `off`), a subject or actor token is now refused
+  (`400 invalid_grant`) when its `jti` is on the used/revoked list (a rotated refresh token, a
+  revoked access token) or the list cannot be read, when it is DPoP-bound (`cnf.jkt`) and the
+  request carries no proof for that key, when the user's tokens were revoked after it was issued
+  (token version), or when its user is locked or unknown. Before, only its signature, type and
+  expiry were checked. The audit row names the check (`deny_reason` `subject_revoked`,
+  `subject_dpop_mismatch`, `subject_token_version`, `subject_locked`, `subject_unknown_user`, or
+  the same with `actor_`). An ID token carries no token version, so only the other checks apply
+  to it. Deploy note: no migration, no environment variable, no change of default.
+
 ### Changed
 
 - CI and image supply chain: every GitHub Action is pinned to a commit SHA (the tag kept as a

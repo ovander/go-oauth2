@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/repository"
 	"github.com/ovander/go-oauth2/internal/shared/auth"
 	"github.com/ovander/go-oauth2/internal/shared/auth/tokenexchange"
 )
@@ -45,6 +46,7 @@ func newShadowExchangeSvc(t *testing.T, app *model.App) (*oauthService, *capture
 	}
 	audit := &captureAuditRepo{}
 	svc := &oauthService{
+		userRepo:          &exchangeUserRepo{users: map[uint]*model.User{}},
 		appRepo:           &crit02AppRepo{app: app},
 		auditRepo:         audit,
 		tokenService:      ts,
@@ -53,6 +55,26 @@ func newShadowExchangeSvc(t *testing.T, app *model.App) (*oauthService, *capture
 		tokenExchangeMode: TokenExchangeModeShadow,
 	}
 	return svc, audit, ts
+}
+
+// exchangeUserRepo answers FindByID for the exchange tests: a user listed in
+// users as stored, any other id as an active user with token version 1 (the
+// version mintToken uses). The embedded nil interface fails loudly on any
+// other call.
+type exchangeUserRepo struct {
+	repository.UserRepository
+	users map[uint]*model.User
+}
+
+func (r *exchangeUserRepo) FindByID(_ context.Context, id uint) (*model.User, error) {
+	if u, ok := r.users[id]; ok {
+		if u == nil {
+			return nil, errors.New("record not found")
+		}
+		cp := *u
+		return &cp, nil
+	}
+	return &model.User{ID: id, TokenVersion: 1}, nil
 }
 
 // exchangeTestSecret is the client secret of the exchange tests' client.

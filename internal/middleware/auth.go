@@ -139,6 +139,13 @@ func VerifyUserToken(ctx context.Context, tokenService *auth.TokenService, userR
 // token-abuse security event. A request with no Authorization header never fires
 // the hook (an unauthenticated probe is not a token-abuse signal).
 func AuthMiddleware(tokenService *auth.TokenService, userRepo repository.UserRepository, usedTokenRepo repository.UsedTokenRepository, onReject ...AuthRejectFunc) func(http.Handler) http.Handler {
+	return AuthMiddlewareWithDPoP(nil, tokenService, userRepo, usedTokenRepo, onReject...)
+}
+
+// AuthMiddlewareWithDPoP is AuthMiddleware that also checks the DPoP binding
+// of a bound token (see DPoPBinding) and, when binding is enabled, accepts the
+// DPoP authorization scheme. A nil binding is AuthMiddleware.
+func AuthMiddlewareWithDPoP(binding *DPoPBinding, tokenService *auth.TokenService, userRepo repository.UserRepository, usedTokenRepo repository.UsedTokenRepository, onReject ...AuthRejectFunc) func(http.Handler) http.Handler {
 	var reject AuthRejectFunc
 	if len(onReject) > 0 {
 		reject = onReject[0]
@@ -157,8 +164,8 @@ func AuthMiddleware(tokenService *auth.TokenService, userRepo repository.UserRep
 				return
 			}
 
-			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-			if tokenString == authHeader {
+			tokenString, ok := binding.tokenFromAuthorization(authHeader)
+			if !ok {
 				fire(r, AuthRejectInvalid, "malformed_authorization_header")
 				writeAuthError(w, "invalid authorization header format", http.StatusUnauthorized)
 				return
@@ -170,6 +177,9 @@ func AuthMiddleware(tokenService *auth.TokenService, userRepo repository.UserRep
 					fire(r, terr.Reason, terr.Detail)
 				}
 				writeAuthError(w, terr.Message, terr.Status)
+				return
+			}
+			if !binding.allow(w, r, tokenString, claims) {
 				return
 			}
 

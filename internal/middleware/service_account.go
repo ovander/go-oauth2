@@ -26,6 +26,14 @@ import (
 //
 // On success the resolved *model.App is stored in context under ServiceAccountAppKey.
 func ServiceAccountMiddleware(appRepo repository.AppRepository, tokenService *auth.TokenService, usedTokenRepo repository.UsedTokenRepository) func(http.Handler) http.Handler {
+	return ServiceAccountMiddlewareWithDPoP(nil, appRepo, tokenService, usedTokenRepo)
+}
+
+// ServiceAccountMiddlewareWithDPoP is ServiceAccountMiddleware that also
+// checks the DPoP binding of a bound service token (see DPoPBinding) and,
+// when binding is enabled, accepts the DPoP authorization scheme. A nil
+// binding is ServiceAccountMiddleware.
+func ServiceAccountMiddlewareWithDPoP(binding *DPoPBinding, appRepo repository.AppRepository, tokenService *auth.TokenService, usedTokenRepo repository.UsedTokenRepository) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
@@ -34,8 +42,8 @@ func ServiceAccountMiddleware(appRepo repository.AppRepository, tokenService *au
 				return
 			}
 
-			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-			if tokenString == authHeader {
+			tokenString, ok := binding.tokenFromAuthorization(authHeader)
+			if !ok {
 				writeAuthError(w, "invalid authorization header format", http.StatusUnauthorized)
 				return
 			}
@@ -58,6 +66,9 @@ func ServiceAccountMiddleware(appRepo repository.AppRepository, tokenService *au
 			}
 			if isRevoked(r.Context(), usedTokenRepo, claims.ID) {
 				writeAuthError(w, "token has been revoked", http.StatusUnauthorized)
+				return
+			}
+			if !binding.allow(w, r, tokenString, claims) {
 				return
 			}
 

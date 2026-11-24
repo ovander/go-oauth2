@@ -1,6 +1,7 @@
 package dpop
 
 import (
+	"crypto/subtle"
 	"errors"
 	"sync"
 	"time"
@@ -85,6 +86,29 @@ func (c *MemoryReplayCache) cleanup(interval time.Duration) {
 			c.mu.Unlock()
 		}
 	}
+}
+
+// VerifyForResource verifies the DPoP proof sent with a DPoP-bound access
+// token to a protected resource (RFC 9449 §7.1): the proof must be valid for
+// the request (see Verify), carry ath, the hash of accessToken, and be signed
+// by the key the token is bound to (its thumbprint equals jkt, the token's
+// cnf.jkt). Its jti is then recorded in cache, so it is used once; a proof
+// that fails a check is not recorded.
+func VerifyForResource(proofJWT, htm, htu, accessToken, jkt string, now time.Time, cache ReplayCache) (*Proof, error) {
+	p, err := Verify(proofJWT, htm, htu, now)
+	if err != nil {
+		return nil, err
+	}
+	if p.ATH == "" || subtle.ConstantTimeCompare([]byte(p.ATH), []byte(AccessTokenHash(accessToken))) != 1 {
+		return nil, ErrATHMismatch
+	}
+	if jkt == "" || subtle.ConstantTimeCompare([]byte(p.Thumbprint), []byte(jkt)) != 1 {
+		return nil, ErrKeyMismatch
+	}
+	if cache == nil || !cache.CheckAndStore(p.JTI, p.IssuedAt.Add(MaxAge)) {
+		return nil, ErrReplayed
+	}
+	return p, nil
 }
 
 // VerifyOnce verifies a DPoP proof (see Verify) and additionally enforces

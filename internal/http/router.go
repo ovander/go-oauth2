@@ -27,6 +27,13 @@ import (
 // credentials, so we enforce AllowCredentials: false whenever the origin list
 // contains only the wildcard.  Callers that need credentialed cross-origin
 // requests must supply an explicit origin list via ALLOWED_ORIGINS.
+// dpopBinding is the RFC 9449 §7.1 check of DPoP-bound tokens presented to
+// Socrate's own APIs under DPOP_MODE observe or enforce; nil (no check, Bearer
+// only) when the mode is off. It shares the token endpoint's replay cache.
+func (config RouterConfig) dpopBinding() *middleware.DPoPBinding {
+	return middleware.NewDPoPBinding(config.DPoPReplayCache, config.DPoPMode, config.DPoPHTUBase, config.DPoPRejectSink)
+}
+
 func corsHandler(config RouterConfig) func(http.Handler) http.Handler {
 	allowCredentials := len(config.AllowedOrigins) > 0
 	for _, o := range config.AllowedOrigins {
@@ -49,10 +56,14 @@ func corsHandler(config RouterConfig) func(http.Handler) http.Handler {
 		// failure. X-Requested-By is sent by the first-party admin console on the
 		// token/refresh calls as a custom-header CSRF defense (a cross-site page
 		// cannot set a custom header without a CORS grant), so it must be
-		// explicitly allowed here. Keep this list explicit and auditable rather
-		// than reflecting arbitrary requested headers.
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Correlation-ID", "X-Requested-By"},
-		ExposedHeaders:   []string{"X-Content-Type-Options", "X-Frame-Options", "Content-Security-Policy", "Strict-Transport-Security", "X-Correlation-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"},
+		// explicitly allowed here. DPoP carries the RFC 9449 proof a browser
+		// client sends to the token endpoint and with a bound token; without it
+		// such a client cannot send a proof at all. Keep this list explicit
+		// and auditable rather than reflecting arbitrary requested headers.
+		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "DPoP", "X-Correlation-ID", "X-Requested-By"},
+		// WWW-Authenticate lets a browser client read the DPoP (or Bearer)
+		// challenge of a 401.
+		ExposedHeaders:   []string{"X-Content-Type-Options", "X-Frame-Options", "Content-Security-Policy", "Strict-Transport-Security", "X-Correlation-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After", "WWW-Authenticate"},
 		AllowCredentials: allowCredentials,
 		MaxAge:           300,
 	})
@@ -247,9 +258,9 @@ func newOAuthRouter(
 				Post("/token", oauthHandler.Token)
 		}
 
-		r.With(middleware.JSONContentType(), middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo, config.AuthRejectSink)).
+		r.With(middleware.JSONContentType(), middleware.AuthMiddlewareWithDPoP(config.dpopBinding(), tokenService, userRepo, usedTokenRepo, config.AuthRejectSink)).
 			Get("/userinfo", oauthHandler.UserInfo)
-		r.With(middleware.JSONContentType(), middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo, config.AuthRejectSink)).
+		r.With(middleware.JSONContentType(), middleware.AuthMiddlewareWithDPoP(config.dpopBinding(), tokenService, userRepo, usedTokenRepo, config.AuthRejectSink)).
 			Post("/userinfo", oauthHandler.UserInfo)
 
 		// P4-4: introspect and revoke authenticate the client with its secret
@@ -322,7 +333,7 @@ func newOAuthRouter(
 		r.Use(middleware.JSONContentType())
 
 		// UserInfo endpoint
-		r.With(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo, config.AuthRejectSink)).
+		r.With(middleware.AuthMiddlewareWithDPoP(config.dpopBinding(), tokenService, userRepo, usedTokenRepo, config.AuthRejectSink)).
 			Get("/userinfo", authHandler.GetUserInfo)
 
 		// Auth Routes (Public)
@@ -349,7 +360,7 @@ func newOAuthRouter(
 				r.Post("/refresh", authHandler.Refresh)
 			}
 
-			r.With(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo, config.AuthRejectSink)).
+			r.With(middleware.AuthMiddlewareWithDPoP(config.dpopBinding(), tokenService, userRepo, usedTokenRepo, config.AuthRejectSink)).
 				Post("/logout", authHandler.Logout)
 
 			// LOW-06 fix: request-password-reset triggers email sending; rate-limit
@@ -379,7 +390,7 @@ func newOAuthRouter(
 
 		// Profile Routes (Protected - user self-service)
 		r.Route("/profile", func(r chi.Router) {
-			r.Use(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo, config.AuthRejectSink))
+			r.Use(middleware.AuthMiddlewareWithDPoP(config.dpopBinding(), tokenService, userRepo, usedTokenRepo, config.AuthRejectSink))
 			r.Get("/", profileHandler.GetProfile)
 			r.Put("/", profileHandler.UpdateProfile)
 			r.Patch("/", profileHandler.UpdateProfile)
@@ -474,7 +485,7 @@ func newAdminRouter(
 	// Admin API Routes (protected)
 	// ==========================================
 	r.Route("/api/admin", func(r chi.Router) {
-		r.Use(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo, config.AuthRejectSink))
+		r.Use(middleware.AuthMiddlewareWithDPoP(config.dpopBinding(), tokenService, userRepo, usedTokenRepo, config.AuthRejectSink))
 		// M-03: only a token issued to an operator console (or Socrate's own
 		// admin-portal token) reaches the admin API; a token the same admin got
 		// from an application is refused here, before any other gate.
@@ -742,7 +753,7 @@ func newAdminRouter(
 	// App-Scoped User Management (for app admins)
 	// ==========================================
 	r.Route("/api/apps/{app_id}", func(r chi.Router) {
-		r.Use(middleware.AuthMiddleware(tokenService, userRepo, usedTokenRepo, config.AuthRejectSink))
+		r.Use(middleware.AuthMiddlewareWithDPoP(config.dpopBinding(), tokenService, userRepo, usedTokenRepo, config.AuthRejectSink))
 		// ADMIN_API_AUDIENCE_MODE: a token issued to another application is
 		// refused here (enforce), before the role gates that let a global
 		// admin through for every app. The /service routes below keep their
@@ -781,7 +792,7 @@ func newAdminRouter(
 	// Token must carry sub="app:{id}" matching the {app_id} URL parameter.
 	// ==========================================
 	r.Route("/api/apps/{app_id}/service", func(r chi.Router) {
-		r.Use(middleware.ServiceAccountMiddleware(appRepo, tokenService, usedTokenRepo))
+		r.Use(middleware.ServiceAccountMiddlewareWithDPoP(config.dpopBinding(), appRepo, tokenService, usedTokenRepo))
 		r.Post("/users", appUsersHandler.CreateUser)
 		// The app backend looks up one of its own members by numeric id (the
 		// token's sub). Same answer as GET /api/apps/{app_id}/users/{user_id};

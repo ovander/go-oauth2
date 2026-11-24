@@ -44,7 +44,11 @@ func (r *lockoutUserRepo) Update(_ context.Context, u *model.User) error {
 }
 
 func (r *lockoutUserRepo) IncrementTokenVersion(_ context.Context, id uint) error {
-	r.users[id].TokenVersion++
+	u, ok := r.users[id]
+	if !ok {
+		return errors.New("record not found")
+	}
+	u.TokenVersion++
 	return nil
 }
 
@@ -65,6 +69,10 @@ func TestPasswordLockout_EveryPath(t *testing.T) {
 		role model.UserRole
 		try  attempt
 	}{
+		"login": {model.UserRoleUser, func(s *authService, pw string) error {
+			_, err := s.Login(context.Background(), dto.LoginRequest{Email: "lock@example.com", Password: pw, AppClientID: "app"})
+			return err
+		}},
 		"admin login": {model.UserRoleSuperadmin, func(s *authService, pw string) error {
 			_, err := s.AdminLogin(context.Background(), dto.AdminLoginRequest{Email: "lock@example.com", Password: pw})
 			return err
@@ -124,6 +132,23 @@ func TestPasswordLockout_SuccessResets(t *testing.T) {
 				t.Fatalf("counter %d after success, want 0", got)
 			}
 		})
+	}
+}
+
+// A successful password change stores the new password and revokes the
+// user's tokens.
+func TestPasswordLockout_ChangePasswordChangesIt(t *testing.T) {
+	repo := newLockoutUserRepo(lockoutTestUser(t, model.UserRoleSuperadmin))
+	s := &authService{userRepo: repo, maxFailedAttempts: 3, lockoutDuration: 15 * time.Minute, auditRepo: &captureAuditRepo{}}
+	if err := s.ChangePassword(context.Background(), 5, lockoutTestPassword, "Another-Password-2!"); err != nil {
+		t.Fatal(err)
+	}
+	u := repo.users[5]
+	if bcrypt.CompareHashAndPassword([]byte(u.HashedPassword), []byte("Another-Password-2!")) != nil {
+		t.Fatal("the new password was not stored")
+	}
+	if u.TokenVersion != 1 {
+		t.Fatalf("token version %d, want 1 (tokens revoked)", u.TokenVersion)
 	}
 }
 

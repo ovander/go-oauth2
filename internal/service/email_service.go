@@ -5,7 +5,9 @@ import (
 	"crypto/tls"
 	"fmt"
 	"html/template"
+	"mime"
 	"mime/quotedprintable"
+	"net/mail"
 	"net/smtp"
 	"strings"
 
@@ -191,40 +193,13 @@ func (s *smtpEmailService) sendTemplatedEmail(to, subject, templateName string, 
 }
 
 func (s *smtpEmailService) sendEmail(to, subject, htmlBody string) error {
-	// Build email headers
-	headers := make(map[string]string)
-	if s.config.FromName != "" {
-		headers["From"] = fmt.Sprintf("%s <%s>", s.config.FromName, s.config.FromEmail)
-	} else {
-		headers["From"] = s.config.FromEmail
+	rcpt, msg, err := buildEmailMessage(s.config.FromName, s.config.FromEmail, to, subject, htmlBody)
+	if err != nil {
+		return err
 	}
-	headers["To"] = to
-	headers["Subject"] = subject
-	headers["MIME-Version"] = "1.0"
-	headers["Content-Type"] = "text/html; charset=UTF-8"
-	// quoted-printable encodes the body so that SMTP transport never needs to
-	// fold long lines itself.  Without this, a JWT token inside an href
-	// attribute can be broken by a space injected at the 76-char boundary,
-	// producing a %20 in the URL and an "invalid token" error on click.
-	headers["Content-Transfer-Encoding"] = "quoted-printable"
-
-	// Encode body as quoted-printable before building the message.
-	var qpBuf bytes.Buffer
-	qpw := quotedprintable.NewWriter(&qpBuf)
-	if _, err := qpw.Write([]byte(htmlBody)); err != nil {
-		return fmt.Errorf("failed to encode email body: %w", err)
-	}
-	if err := qpw.Close(); err != nil {
-		return fmt.Errorf("failed to flush quoted-printable encoder: %w", err)
-	}
-
-	// Build message
+	to = rcpt
 	var message strings.Builder
-	for k, v := range headers {
-		fmt.Fprintf(&message, "%s: %s\r\n", k, v)
-	}
-	message.WriteString("\r\n")
-	message.WriteString(qpBuf.String())
+	message.Write(msg)
 
 	// Connect to SMTP server
 	addr := fmt.Sprintf("%s:%d", s.config.SMTPHost, s.config.SMTPPort)
@@ -745,4 +720,49 @@ func (s *NoOpEmailService) SendMagicLinkEmail(to, name, appName, magicURL string
 	s.LastEmail = &SentEmail{To: to, Subject: "Magic Link", URL: magicURL}
 	fmt.Printf("[EMAIL] Magic link email to %s for %s: %s\n", to, appName, magicURL)
 	return nil
+}
+
+// buildEmailMessage builds the RFC 5322 message for an HTML email and returns
+// the bare recipient address for the SMTP envelope. Header values never carry a
+// raw line break: the recipient must be a single valid address (net/mail), the
+// From display name is encoded by mail.Address, and the Subject is a MIME
+// encoded-word whenever it holds a control or non-ASCII character (RFC 2047).
+// The HTML body is quoted-printable encoded.
+func buildEmailMessage(fromName, fromEmail, to, subject, htmlBody string) (string, []byte, error) {
+	rcpt, err := mail.ParseAddress(to)
+	if err != nil || strings.ContainsAny(to, "\r\n") {
+		return "", nil, fmt.Errorf("invalid recipient address")
+	}
+	from := (&mail.Address{Name: fromName, Address: fromEmail}).String()
+	if strings.ContainsAny(fromEmail, "\r\n") {
+		return "", nil, fmt.Errorf("invalid sender address")
+	}
+
+	// quoted-printable encodes the body so that SMTP transport never needs to
+	// fold long lines itself.  Without this, a JWT token inside an href
+	// attribute can be broken by a space injected at the 76-char boundary,
+	// producing a %20 in the URL and an "invalid token" error on click.
+	var qpBuf bytes.Buffer
+	qpw := quotedprintable.NewWriter(&qpBuf)
+	if _, err := qpw.Write([]byte(htmlBody)); err != nil {
+		return "", nil, fmt.Errorf("failed to encode email body: %w", err)
+	}
+	if err := qpw.Close(); err != nil {
+		return "", nil, fmt.Errorf("failed to flush quoted-printable encoder: %w", err)
+	}
+
+	var msg bytes.Buffer
+	for _, h := range [][2]string{
+		{"From", from},
+		{"To", (&mail.Address{Address: rcpt.Address}).String()},
+		{"Subject", mime.QEncoding.Encode("UTF-8", subject)},
+		{"MIME-Version", "1.0"},
+		{"Content-Type", "text/html; charset=UTF-8"},
+		{"Content-Transfer-Encoding", "quoted-printable"},
+	} {
+		fmt.Fprintf(&msg, "%s: %s\r\n", h[0], h[1])
+	}
+	msg.WriteString("\r\n")
+	msg.Write(qpBuf.Bytes())
+	return rcpt.Address, msg.Bytes(), nil
 }

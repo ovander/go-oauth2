@@ -10,6 +10,15 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Security
+
+- Dependencies: `github.com/go-chi/chi/v5` 5.3.2 → 5.5.0 (GHSA-j6qf-3m9c-vwj3, client IP from
+  `X-Forwarded-For` in chi's `ClientIPFromXFF`) and `golang.org/x/crypto` 0.57.0 → 0.59.0
+  (GO-2026-5932, the deprecated `openpgp` package), with `x/sync`, `x/sys` and `x/text` following.
+  Socrate uses neither affected code path (client IPs come from its own `ClientIP` middleware since
+  P3-2, and nothing imports `openpgp`; govulncheck reported neither as reachable); the bump closes
+  OpenSSF Scorecard's Vulnerabilities alert. No code change; rebuild to pick it up.
+
 ### Changed
 
 - CI and image supply chain: every GitHub Action is pinned to a commit SHA (the tag kept as a

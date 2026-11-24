@@ -472,6 +472,9 @@ scoped to that exact app:
 
 `ServiceAccountMiddleware` enforces that the `{app_id}` in the URL matches the
 app encoded in the token, so an app can never act on another app's resources.
+A service-account token revoked through `POST /oauth/revoke` is refused there
+with `401` from then on (since v1.14.7), as a user token is; before, it stayed
+usable until it expired.
 
 ### 6.1 Token exchange (RFC 8693)
 

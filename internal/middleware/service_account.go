@@ -16,13 +16,16 @@ import (
 // ServiceAccountMiddleware authenticates machine-to-machine requests carrying a
 // client_credentials access token (sub = "app:{id}").
 //
-// It enforces two things:
+// It enforces three things:
 //  1. The token is a valid, unexpired service account token (sub prefix "app:").
-//  2. The app ID encoded in the token matches the {app_id} URL parameter —
+//  2. It has not been revoked: its jti is not on the revoked list that
+//     /oauth/revoke writes (usedTokenRepo), as for user tokens. A token
+//     without a jti could never be revoked, so it is refused.
+//  3. The app ID encoded in the token matches the {app_id} URL parameter —
 //     a token issued for app 3 cannot touch app 7's resources.
 //
 // On success the resolved *model.App is stored in context under ServiceAccountAppKey.
-func ServiceAccountMiddleware(appRepo repository.AppRepository, tokenService *auth.TokenService) func(http.Handler) http.Handler {
+func ServiceAccountMiddleware(appRepo repository.AppRepository, tokenService *auth.TokenService, usedTokenRepo repository.UsedTokenRepository) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
@@ -46,6 +49,15 @@ func ServiceAccountMiddleware(appRepo repository.AppRepository, tokenService *au
 			// Service account tokens carry sub = "app:{numeric_id}"
 			if !strings.HasPrefix(claims.Subject, "app:") {
 				writeAuthError(w, "service account token required", http.StatusForbidden)
+				return
+			}
+
+			if claims.ID == "" {
+				writeAuthError(w, "invalid token claims", http.StatusUnauthorized)
+				return
+			}
+			if isRevoked(r.Context(), usedTokenRepo, claims.ID) {
+				writeAuthError(w, "token has been revoked", http.StatusUnauthorized)
 				return
 			}
 

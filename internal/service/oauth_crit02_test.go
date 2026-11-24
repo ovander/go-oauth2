@@ -89,8 +89,11 @@ func (r *crit02AppRepo) FindByClientID(_ context.Context, _ string) (*model.App,
 	return r.app, nil
 }
 func (r *crit02AppRepo) FindAll(_ context.Context) ([]model.App, error) { return nil, nil }
-func (r *crit02AppRepo) FindByID(_ context.Context, _ uint) (*model.App, error) {
-	return nil, errors.New("not found")
+func (r *crit02AppRepo) FindByID(_ context.Context, id uint) (*model.App, error) {
+	if r.app == nil || r.app.ID != id {
+		return nil, errors.New("not found")
+	}
+	return r.app, nil
 }
 func (r *crit02AppRepo) FindByOwnerID(_ context.Context, _ uint) ([]model.App, error) {
 	return nil, nil

@@ -1515,23 +1515,35 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 
 	// Verify the subject token and recover its subject, scope, version, and the
 	// end-user's authentication time (for the impersonation step-up check).
-	subjectSub, subjectScope, subjectVer, subjectAuthTime, _, sverr := s.verifyExchangeToken(req.SubjectToken, req.SubjectTokenType)
+	subject, sverr := s.verifyExchangeToken(req.SubjectToken, req.SubjectTokenType)
 	if sverr != nil {
 		return fail("invalid_subject_token", ErrInvalidToken)
 	}
-	details["subject_sub"] = subjectSub
+	details["subject_sub"] = subject.sub
+	// The same checks as the refresh grant: not rotated or revoked, its DPoP
+	// key proven when it is sender-constrained, and its user still current
+	// (token version) and not locked.
+	if reason := s.checkExchangeToken(ctx, subject); reason != "" {
+		details["deny_reason"] = "subject_" + reason
+		return fail("invalid_subject_token", ErrInvalidToken)
+	}
+	subjectSub, subjectScope, subjectVer, subjectAuthTime := subject.sub, subject.scope, subject.version, subject.authTime
 
 	// For delegation, verify the actor token too and recover its authentication
 	// methods (amr) for the delegation step-up check.
 	actorSub := ""
 	var actorAmr []string
 	if req.IsDelegation() {
-		as, _, _, _, aamr, averr := s.verifyExchangeToken(req.ActorToken, req.ActorTokenType)
+		actorTok, averr := s.verifyExchangeToken(req.ActorToken, req.ActorTokenType)
 		if averr != nil {
 			return fail("invalid_actor_token", ErrInvalidToken)
 		}
-		actorSub, actorAmr = as, aamr
-		details["actor_sub"] = actorSub
+		details["actor_sub"] = actorTok.sub
+		if reason := s.checkExchangeToken(ctx, actorTok); reason != "" {
+			details["deny_reason"] = "actor_" + reason
+			return fail("invalid_actor_token", ErrInvalidToken)
+		}
+		actorSub, actorAmr = actorTok.sub, actorTok.amr
 	}
 
 	// Authorization policy (default-deny, downscope-only, audience-bound).
@@ -1657,33 +1669,121 @@ func (s *oauthService) impersonationExchangeTTL(isImpersonation bool) time.Durat
 	return s.impersonationTokenTTL
 }
 
-// verifyExchangeToken verifies a token presented to the exchange and returns its
-// subject, scope, token version, the end-user authentication time (auth_time, 0
-// when the token carries none), and the authentication methods (amr, nil when
-// the token carries none), dispatching on the RFC 8693 token type.
-func (s *oauthService) verifyExchangeToken(tokenStr, tokenType string) (sub, scope string, version int, authTime int64, amr []string, err error) {
+// exchangeToken is what the exchange keeps from a verified subject or actor
+// token.
+type exchangeToken struct {
+	sub      string
+	scope    string
+	version  int
+	authTime int64
+	amr      []string
+	jti      string
+	cnfJKT   string
+	// versioned: the token carries the user's token version (access and
+	// refresh tokens; an ID token does not).
+	versioned bool
+}
+
+// verifyExchangeToken verifies a token presented to the exchange (signature,
+// type, expiry) and returns what the exchange uses from it, dispatching on the
+// RFC 8693 token type. checkExchangeToken then checks it against the server's
+// state.
+func (s *oauthService) verifyExchangeToken(tokenStr, tokenType string) (exchangeToken, error) {
 	switch tokenType {
 	case tokenexchange.TokenTypeAccessToken, tokenexchange.TokenTypeJWT:
 		c, e := s.tokenService.VerifyAccessToken(tokenStr)
 		if e != nil {
-			return "", "", 0, 0, nil, e
+			return exchangeToken{}, e
 		}
-		return c.Subject, c.Scope, c.TokenVersion, c.AuthTime, c.Amr, nil
+		t := exchangeToken{sub: c.Subject, scope: c.Scope, version: c.TokenVersion, authTime: c.AuthTime,
+			amr: c.Amr, jti: c.ID, versioned: true}
+		if c.Cnf != nil {
+			t.cnfJKT = c.Cnf.JKT
+		}
+		return t, nil
 	case tokenexchange.TokenTypeRefreshToken:
 		c, e := s.tokenService.VerifyRefreshToken(tokenStr)
 		if e != nil {
-			return "", "", 0, 0, nil, e
+			return exchangeToken{}, e
 		}
-		return c.Subject, c.Scope, c.Ver, c.AuthTime, nil, nil
+		t := exchangeToken{sub: c.Subject, scope: c.Scope, version: c.Ver, authTime: c.AuthTime,
+			jti: c.ID, versioned: true}
+		if c.Cnf != nil {
+			t.cnfJKT = c.Cnf.JKT
+		}
+		return t, nil
 	case tokenexchange.TokenTypeIDToken:
 		c, e := s.tokenService.VerifyIDToken(tokenStr)
 		if e != nil {
-			return "", "", 0, 0, nil, e
+			return exchangeToken{}, e
 		}
-		return c.Subject, "", 0, c.AuthTime, c.Amr, nil
+		return exchangeToken{sub: c.Subject, authTime: c.AuthTime, amr: c.Amr, jti: c.ID}, nil
 	default:
-		return "", "", 0, 0, nil, fmt.Errorf("unsupported token type %q", tokenType)
+		return exchangeToken{}, fmt.Errorf("unsupported token type %q", tokenType)
 	}
+}
+
+// checkExchangeToken applies to a verified subject or actor token the checks
+// the refresh grant applies to its token, and returns a short reason when one
+// fails:
+//   - "revoked": its jti is on the used/revoked list (a rotated refresh token,
+//     a revoked access token), or the list cannot be read;
+//   - "dpop_mismatch": it is DPoP-bound (cnf.jkt) and the request carries no
+//     proof for that key;
+//   - "unknown_user": its subject is not a user of this server;
+//   - "token_version": the user's tokens were revoked after it was issued;
+//   - "locked": the user's account is locked;
+//   - "id_token": it is an ID token, which carries no token version and so
+//     cannot be revoked;
+//   - "unknown_app" / "inactive_app": for a service-account token (a
+//     client_credentials token, sub "app:<id>"), its app no longer exists or
+//     is deactivated. Such a token has no user, so the user checks do not
+//     apply to it.
+func (s *oauthService) checkExchangeToken(ctx context.Context, t exchangeToken) string {
+	if s.usedTokenRepo != nil && t.jti != "" {
+		used, err := s.usedTokenRepo.IsUsed(ctx, t.jti)
+		if err != nil || used {
+			return "revoked"
+		}
+	}
+	if verifyRefreshDPoPBinding(ctx, t.cnfJKT) != nil {
+		return "dpop_mismatch"
+	}
+	// An ID token carries no token version, so revoking the user's tokens
+	// (logout, password change, admin revocation) would not reach it: it is
+	// not accepted as an exchange input.
+	if !t.versioned {
+		return "id_token"
+	}
+	if appIDStr, ok := strings.CutPrefix(t.sub, "app:"); ok {
+		appID, err := strconv.ParseUint(appIDStr, 10, strconv.IntSize)
+		if err != nil {
+			return "unknown_app"
+		}
+		app, err := s.appRepo.FindByID(ctx, uint(appID))
+		if err != nil || app == nil {
+			return "unknown_app"
+		}
+		if !app.Active {
+			return "inactive_app"
+		}
+		return ""
+	}
+	uid, err := strconv.ParseUint(t.sub, 10, strconv.IntSize)
+	if err != nil {
+		return "unknown_user"
+	}
+	user, err := s.userRepo.FindByID(ctx, uint(uid))
+	if err != nil || user == nil {
+		return "unknown_user"
+	}
+	if t.versioned && user.TokenVersion != t.version {
+		return "token_version"
+	}
+	if user.IsLocked() {
+		return "locked"
+	}
+	return ""
 }
 
 // withAudienceCoverage adds EPIC-7 parity telemetry to a token-issuance audit

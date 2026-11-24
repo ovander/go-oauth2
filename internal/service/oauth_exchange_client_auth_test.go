@@ -17,15 +17,14 @@ func TestExchangeToken_ClientChecks(t *testing.T) {
 	for name, tc := range map[string]struct {
 		setup      func(app *model.App)
 		secret     string
-		dpopJKT    string
 		wantErr    error
 		denyReason string
 	}{
-		"public client": {func(a *model.App) { a.ClientSecretHash = "" }, "", "", ErrExchangeNotAllowed, "public_client"},
-		"wrong secret":  {nil, "wrong-secret", "", ErrInvalidCredentials, "invalid_client"},
-		"no secret":     {nil, "", "", ErrInvalidCredentials, "invalid_client"},
-		"inactive":      {func(a *model.App) { a.Active = false }, exchangeTestSecret, "", ErrAppInactive, "inactive_client"},
-		"dpop required": {func(a *model.App) { a.RequireDPoP = true }, exchangeTestSecret, "", ErrDPoPRequired, "dpop_required"},
+		"public client": {func(a *model.App) { a.ClientSecretHash = "" }, "", ErrExchangeNotAllowed, "public_client"},
+		"wrong secret":  {nil, "wrong-secret", ErrInvalidCredentials, "invalid_client"},
+		"no secret":     {nil, "", ErrInvalidCredentials, "invalid_client"},
+		"inactive":      {func(a *model.App) { a.Active = false }, exchangeTestSecret, ErrAppInactive, "inactive_client"},
+		"dpop required": {func(a *model.App) { a.RequireDPoP = true }, exchangeTestSecret, ErrDPoPRequired, "dpop_required"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			app := &model.App{ID: 7, ClientID: "c", AllowTokenExchange: true, AllowImpersonation: true}
@@ -35,12 +34,12 @@ func TestExchangeToken_ClientChecks(t *testing.T) {
 				tc.setup(app)
 			}
 			ctx := context.Background()
-			if tc.dpopJKT != "" {
-				ctx = context.WithValue(ctx, contextkeys.DPoPJKTKey, tc.dpopJKT)
-			}
 			form := exForm(mintToken(t, ts, 100, "read"), "", "read", "https://api")
 			if _, err := svc.ExchangeToken(ctx, form, "c", tc.secret); !errors.Is(err, tc.wantErr) {
 				t.Fatalf("enforce: %v, want %v", err, tc.wantErr)
+			}
+			if audit.last == nil {
+				t.Fatal("no audit row")
 			}
 			if audit.last.Details["deny_reason"] != tc.denyReason || audit.last.Details["outcome"] != "denied" {
 				t.Fatalf("audit: outcome %v deny_reason %v, want denied %s",
@@ -81,6 +80,9 @@ func TestExchangeToken_ClientAuthComesBeforeTokenValidity(t *testing.T) {
 	form := exForm("not-a-jwt", "", "read", "https://api")
 	if _, err := svc.ExchangeToken(context.Background(), form, "c", "wrong-secret"); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("%v, want ErrInvalidCredentials", err)
+	}
+	if audit.last == nil {
+		t.Fatal("no audit row")
 	}
 	if audit.last.Details["deny_reason"] != "invalid_client" {
 		t.Fatalf("deny_reason %v, want invalid_client", audit.last.Details["deny_reason"])

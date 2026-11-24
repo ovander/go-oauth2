@@ -12,6 +12,20 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **Token exchange checks the presented tokens like the refresh grant.** With
+  `TOKEN_EXCHANGE_MODE=enforce` (default `off`), a subject or actor token is now refused
+  (`400 invalid_grant`) when its `jti` is on the used/revoked list (a rotated refresh token, a
+  revoked access token) or the list cannot be read, when it is DPoP-bound (`cnf.jkt`) and the
+  request carries no proof for that key, when the user's tokens were revoked after it was issued
+  (token version), or when its user is locked or unknown. Before, only its signature, type and
+  expiry were checked. The audit row names the check (`deny_reason` `subject_revoked`,
+  `subject_dpop_mismatch`, `subject_token_version`, `subject_locked`, `subject_unknown_user`, or
+  the same with `actor_`). An ID token is no longer accepted as a subject or actor token
+  (`…_id_token`): it carries no token version, so revoking the user's tokens would not reach it. A service-account token (a `client_credentials` token, `sub` `app:<id>`), such as a
+  service's own token used as the actor of a delegation, has no user: it is accepted while its app
+  exists and is active (`deny_reason` `…_unknown_app` / `…_inactive_app` otherwise), and the
+  revocation and DPoP checks apply to it too. Deploy note: no migration, no environment variable, no change of default.
+
 - Dependencies: `github.com/go-chi/chi/v5` 5.3.2 → 5.5.0 (GHSA-j6qf-3m9c-vwj3, client IP from
   `X-Forwarded-For` in chi's `ClientIPFromXFF`) and `golang.org/x/crypto` 0.57.0 → 0.59.0
   (GO-2026-5932, the deprecated `openpgp` package), with `x/sync`, `x/sys` and `x/text` following.

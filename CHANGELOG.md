@@ -12,6 +12,13 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **Saving a user no longer brings back a user deleted in the meantime.** `UserRepository.Update`
+  used GORM's `Save`, which retries an update that matches no row as an insert that clears
+  `deleted_at`: a path that loaded a user before an admin deleted it (a sign-in saving its
+  last-login time, an MFA change) restored the account. `Update` is now a plain update of the
+  live row and reports a deleted or missing user as not found. Deploy note: no migration, no
+  environment variable.
+
 - **Saving a user can no longer undo a session revocation or a lockout change.**
   `UserRepository.Update` (a full-row save) now leaves out `token_version`,
   `failed_login_attempts` and `locked_until`, which only their targeted statements write. A path

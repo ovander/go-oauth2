@@ -639,7 +639,8 @@ func newAdminRouter(
 
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", adminHandler.GetSuperadmin)
-				r.Put("/", adminHandler.UpdateSuperadmin)
+				// Step-up: it can change a superadmin's email or password.
+				r.With(freshAuth).Put("/", adminHandler.UpdateSuperadmin)
 				// Destructive: require fresh step-up.
 				r.With(freshAuth).Delete("/", adminHandler.DeleteSuperadmin)
 			})

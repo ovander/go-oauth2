@@ -439,17 +439,22 @@ func (s *userService) UpdateSuperadmin(ctx context.Context, id uint, req dto.Upd
 		return nil, ErrNotAdmin
 	}
 
+	// A change of sign-in identifier or password revokes the account's
+	// existing sessions, as a password change does.
+	credentialsChanged := false
 	if req.Name != nil {
 		user.Name = *req.Name
 	}
-	if req.Email != nil {
+	if req.Email != nil && *req.Email != user.Email {
 		// Check if new email already exists
 		existing, err := s.repo.FindByEmail(ctx, *req.Email)
 		if err == nil && existing != nil && existing.ID != id {
 			return nil, ErrEmailAlreadyExists
 		}
 		user.Email = *req.Email
+		credentialsChanged = true
 	}
+	now := time.Now()
 	if req.Password != nil {
 		// Validate password
 		if err := auth.ValidatePassword(*req.Password); err != nil {
@@ -461,12 +466,19 @@ func (s *userService) UpdateSuperadmin(ctx context.Context, id uint, req dto.Upd
 			return nil, err
 		}
 		user.HashedPassword = hashedPassword
+		user.PasswordChangedAt = &now
+		credentialsChanged = true
 	}
 
-	user.UpdatedAt = time.Now()
+	user.UpdatedAt = now
 
 	if err := s.repo.Update(ctx, user); err != nil {
 		return nil, err
+	}
+	if credentialsChanged {
+		if err := s.repo.IncrementTokenVersion(ctx, user.ID); err != nil {
+			return nil, fmt.Errorf("failed to revoke the superadmin's sessions: %w", err)
+		}
 	}
 
 	return user, nil

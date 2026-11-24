@@ -610,7 +610,10 @@ public PKCE client auto-registered from `ADMIN_CONSOLE_CLIENT_ID` +
 routes — **create / update / delete an OAuth client** (`POST /api/admin/apps`,
 `PUT` and `DELETE /api/admin/apps/{id}`; create and update since v1.14.7), **rotate
 client secret** (`POST /api/admin/apps/{id}/rotate-secret`), **create/delete
-superadmin** (`POST /api/admin/superadmins`, `DELETE /api/admin/superadmins/{id}`),
+superadmin** (`POST /api/admin/superadmins`, `DELETE /api/admin/superadmins/{id}`;
+**update** `PUT /api/admin/superadmins/{id}` since v1.14.7 — a change of email or password
+there revokes that superadmin's sessions, and an admin's own password is changed through
+`POST /api/admin/change-password` instead, `400` here),
 **block / delete a user** (`POST /api/admin/users/{id}/block`, `DELETE
 /api/admin/users/{id}` since v1.14.7), **revoke a user's tokens**, **block /
 unblock an IP**, **create / update / delete an alert rule**, every webhook write

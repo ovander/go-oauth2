@@ -709,6 +709,19 @@ func Bootstrap(cfg *config.Config) *App {
 		cfg.OAuthIssuer,
 		cfg.Environment,
 	)
+	// The admin sign-in policies apply to magic links too; VerifyMagicLink
+	// refuses every Socrate admin if they are not wired.
+	if ms, ok := magicLinkService.(interface {
+		SetSignInPolicy(service.MagicLinkSignInPolicy)
+	}); ok {
+		if p, ok := authService.(service.MagicLinkSignInPolicy); ok {
+			ms.SetSignInPolicy(p)
+		} else {
+			logger.Fatalf("bootstrap: %T does not implement MagicLinkSignInPolicy", authService)
+		}
+	} else {
+		logger.Fatalf("bootstrap: %T does not support SetSignInPolicy", magicLinkService)
+	}
 	magicLinkHandler := handler.NewMagicLinkHandler(magicLinkService, cfg.Environment)
 
 	// Web handler for HTML auth pages

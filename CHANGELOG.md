@@ -22,6 +22,17 @@ Capabilities**, non-breaking).
   through their BFF, from one address), falling back to the client IP. Deploy note: no
   migration, no environment variable, no change of default.
 
+- **Magic-link sign-in applies the checks of the other sign-in paths.**
+  `POST /api/auth/magic-link/verify` now refuses (`403`) an account with MFA enabled — a link
+  proves one factor, so such a user signs in with the password and code — and a deactivated
+  client, and applies `ADMIN_MFA_POLICY` to a Socrate admin, as password sign-in does (a magic
+  link always requires a membership in the app, so `ADMIN_APP_SIGNIN_POLICY`, which covers admins
+  without one, does not apply). Before, a magic link signed in an MFA-enrolled user with one factor
+  and ignored both the client's deactivation and the admin MFA policy. Tokens issued for a magic link carry no `amr`
+  that would suggest a second factor. Deploy note: no migration, no environment variable, no
+  change of default; MFA-enrolled users of an app that offers magic links sign in with their
+  password instead.
+
 ## [1.14.6] - 2026-11-24
 
 Security patch release on the **v1.x** line. The token-exchange grant (only active with the

@@ -58,6 +58,10 @@ const (
 
 	// Integrity (RFC-007): a stored audit row failed HMAC verification.
 	SecurityEventAuditIntegrityViolation SecurityEventType = "audit_integrity_violation"
+	// SecurityEventAuditChainAnchored records, in the chain itself, that the
+	// chain head was first anchored outside the audit table (#364): from then
+	// on a missing head is tampering, even across a restart.
+	SecurityEventAuditChainAnchored SecurityEventType = "audit_chain_anchored"
 
 	// MFA (RFC-011): an admin subject to the MFA policy logged in (observe) or
 	// was denied (enforce) without having MFA enrolled.

@@ -2,7 +2,8 @@ package repository
 
 import (
 	"context"
-	"errors"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ovander/go-oauth2/internal/model"
@@ -53,6 +54,14 @@ type gormSecurityAuditLogRepository struct {
 	// outbox, when set, enqueues webhook deliveries in the same transaction as
 	// the audit row (A3). Nil (the default) keeps the prior behaviour exactly.
 	outbox AuditOutboxWriter
+
+	// The chain head (#364): whether its table exists (looked up once), and
+	// whether this repository has seen or written it, after which its absence
+	// can only mean it was deleted.
+	headMu      sync.Mutex
+	headChecked bool
+	headTable   bool
+	headSeen    atomic.Bool
 }
 
 // SetOutboxWriter installs the transactional outbox writer. Called once at
@@ -124,6 +133,9 @@ func normalizeAuditCreatedAt(log *model.SecurityAuditLog) {
 // the asynchronous appender writes a batch, so a burst of events costs one
 // chain lock and one commit instead of one each.
 func (r *gormSecurityAuditLogRepository) createRows(ctx context.Context, logs []*model.SecurityAuditLog) error {
+	if len(logs) == 0 {
+		return nil
+	}
 	for _, log := range logs {
 		normalizeAuditCreatedAt(log)
 	}
@@ -155,21 +167,30 @@ func (r *gormSecurityAuditLogRepository) createRows(ctx context.Context, logs []
 	// transaction. A transaction-scoped advisory lock serializes concurrent
 	// audit appends so the chain links to a single, stable predecessor and does
 	// not fork. The lock is released automatically at commit/rollback. Rows
-	// are inserted in order, so ascending ids follow the chain.
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	// are inserted in order, so ascending ids follow the chain. The
+	// predecessor is the chain head (#364), which the transaction moves to the
+	// last row it appends.
+	useHead := r.hasHeadTable(ctx)
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", auditChainLockKey).Error; err != nil {
 			return err
 		}
-		var tip model.SecurityAuditLog
-		prev := ""
-		err := tx.Where("row_hash <> ''").Order("id DESC").Limit(1).Take(&tip).Error
-		switch {
-		case err == nil:
-			prev = tip.RowHash
-		case errors.Is(err, gorm.ErrRecordNotFound):
-			// genesis row
-		default:
+		prev, problem, err := r.chainPredecessor(tx, useHead)
+		if err != nil {
 			return err
+		}
+		if problem != "" {
+			// The head was deleted or rewritten: say so in the chain itself,
+			// before the rows of this append.
+			logger.WithFields(logger.Fields{"chain_head": problem}).
+				Error("RFC-007: audit chain head missing or invalid; re-anchored at the newest stamped row")
+			violation := &model.SecurityAuditLog{
+				EventType: model.SecurityEventAuditIntegrityViolation,
+				Severity:  model.SecuritySeverityCritical,
+				Details:   map[string]interface{}{"chain_head": problem},
+			}
+			normalizeAuditCreatedAt(violation)
+			logs = append([]*model.SecurityAuditLog{violation}, logs...)
 		}
 		for _, log := range logs {
 			log.PrevHash = prev
@@ -182,8 +203,16 @@ func (r *gormSecurityAuditLogRepository) createRows(ctx context.Context, logs []
 			r.writeOutbox(ctx, tx, log)
 			prev = log.RowHash
 		}
+		if useHead {
+			last := logs[len(logs)-1]
+			return r.writeHead(tx, last.ID, last.RowHash)
+		}
 		return nil
 	})
+	if err == nil && useHead {
+		r.headSeen.Store(true)
+	}
+	return err
 }
 
 func (r *gormSecurityAuditLogRepository) FindByUser(ctx context.Context, userID uint, page, pageSize int) ([]model.SecurityAuditLog, int64, error) {
@@ -321,9 +350,15 @@ func (r *gormSecurityAuditLogRepository) CountBySeveritySince(ctx context.Contex
 	return count, err
 }
 
+// DeleteOlderThan removes the rows created before the cutoff. With integrity
+// stamping on, it keeps the newest row even when it is older: the chain head
+// names it, and its absence would read as the newest rows having been removed
+// (#364).
 func (r *gormSecurityAuditLogRepository) DeleteOlderThan(ctx context.Context, before time.Time) (int64, error) {
-	result := r.db.WithContext(ctx).
-		Where("created_at < ?", before).
-		Delete(&model.SecurityAuditLog{})
+	q := r.db.WithContext(ctx).Where("created_at < ?", before)
+	if len(r.secret) > 0 {
+		q = q.Where("id < (SELECT MAX(id) FROM security_audit_logs)")
+	}
+	result := q.Delete(&model.SecurityAuditLog{})
 	return result.RowsAffected, result.Error
 }

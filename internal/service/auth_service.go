@@ -77,6 +77,69 @@ type authService struct {
 	// adminAppSignIn refuses or audits a Socrate admin signing in to an
 	// application that is not an operator console (ADMIN_APP_SIGNIN_POLICY).
 	adminAppSignIn AdminAppSignInPolicy
+	// lockoutSourceMode and loginFailures implement LOCKOUT_SOURCE_MODE
+	// (#403): failed sign-ins counted per account and source.
+	lockoutSourceMode string
+	loginFailures     repository.LoginSourceFailureRepository
+}
+
+// SetLockoutSourcePolicy sets LOCKOUT_SOURCE_MODE (#403) and its store:
+//
+//   - "off": the account-wide lock, as before.
+//   - "observe": the account-wide lock, and failures also counted per source,
+//     with the source's count in the audit details (and source_would_lock
+//     when enforce would lock it).
+//   - "enforce": failures counted per account and source only. Reaching the
+//     limit locks that source out of that account for the lockout duration;
+//     the owner signing in from elsewhere is unaffected. A lock already on the
+//     account (an admin block, or one set before enforce) still applies.
+//
+// A nil store leaves the mode off.
+func (s *authService) SetLockoutSourcePolicy(mode string, failures repository.LoginSourceFailureRepository) {
+	if failures == nil {
+		mode = lockoutSourceOff
+	}
+	s.lockoutSourceMode, s.loginFailures = mode, failures
+}
+
+const (
+	lockoutSourceOff     = "off"
+	lockoutSourceObserve = "observe"
+	lockoutSourceEnforce = "enforce"
+)
+
+func (s *authService) countsPerSource() bool {
+	return s.loginFailures != nil && (s.lockoutSourceMode == lockoutSourceObserve || s.lockoutSourceMode == lockoutSourceEnforce)
+}
+
+// lockedOut reports whether the account is locked for this sign-in: by its
+// account-wide lock, or (LOCKOUT_SOURCE_MODE=enforce) by a lock on the
+// request's source. scope is "account" or "source". A store error counts as
+// locked (fail closed).
+func (s *authService) lockedOut(ctx context.Context, user *model.User) (locked bool, scope string) {
+	if user.IsLocked() {
+		return true, "account"
+	}
+	if s.lockoutSourceMode != lockoutSourceEnforce || s.loginFailures == nil {
+		return false, ""
+	}
+	until, err := s.loginFailures.LockedUntil(ctx, user.ID, loginSource(ctx))
+	if err != nil {
+		logger.FromContext(ctx).Errorf("auth: could not read the source lock of user %d, refusing: %v", user.ID, err)
+		return true, "source"
+	}
+	return until != nil, "source"
+}
+
+// resetFailedAttempts forgets the failed attempts after a complete sign-in:
+// the account's counter, and the request source's count when it is kept.
+func (s *authService) resetFailedAttempts(ctx context.Context, userID uint) error {
+	if s.countsPerSource() {
+		if err := s.loginFailures.Reset(ctx, userID, loginSource(ctx)); err != nil {
+			logger.FromContext(ctx).Warnf("auth: could not reset the source failures of user %d: %v", userID, err)
+		}
+	}
+	return s.userRepo.ResetFailedLoginAttempts(ctx, userID)
 }
 
 // SetRefreshGranter wires the single hardened refresh path so that
@@ -168,7 +231,7 @@ func (s *authService) stepUpMFA(ctx context.Context, user *model.User, code stri
 	if s.mfa == nil || !user.MFAEnabled {
 		return nil
 	}
-	if user.IsLocked() {
+	if locked, _ := s.lockedOut(ctx, user); locked {
 		return fmt.Errorf("%w: try again later", ErrAccountLocked)
 	}
 	if strings.TrimSpace(code) == "" {
@@ -198,12 +261,12 @@ func (s *authService) stepUpMFA(ctx context.Context, user *model.User, code stri
 		logger.FromContext(ctx).Warnf("auth: TOTP verification error for user %d: %v", user.ID, verifyErr)
 		return ErrMFAInvalidCode
 	}
-	if locked, attempts := s.countFailedAttempt(ctx, user); locked {
-		s.logSecurityEvent(ctx, model.SecurityEventAccountLocked, &user.ID, nil, false, map[string]interface{}{
-			"email":           user.Email,
-			"failed_attempts": attempts,
-			"reason":          "mfa_invalid",
-		})
+	if locked, counts := s.countFailedAttempt(ctx, user); locked {
+		details := map[string]interface{}{"email": user.Email, "reason": "mfa_invalid"}
+		for k, v := range counts {
+			details[k] = v
+		}
+		s.logSecurityEvent(ctx, model.SecurityEventAccountLocked, &user.ID, nil, false, details)
 		return ErrAccountLocked
 	}
 	return ErrMFAInvalidCode
@@ -540,7 +603,7 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 	}
 
 	// Reset failed attempts and update last login
-	if err := s.userRepo.ResetFailedLoginAttempts(ctx, user.ID); err != nil {
+	if err := s.resetFailedAttempts(ctx, user.ID); err != nil {
 		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 	now := time.Now()
@@ -599,11 +662,14 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 // an unknown email or another wrong password does, and is audited without
 // counting towards the lock already in place.
 func (s *authService) checkPasswordWithLockout(ctx context.Context, user *model.User, password, loginType string) error {
-	if user.IsLocked() {
+	if locked, scope := s.lockedOut(ctx, user); locked {
 		if auth.CheckPassword(password, user.HashedPassword) {
 			return fmt.Errorf("%w: try again later", ErrAccountLocked)
 		}
 		details := map[string]interface{}{"email": user.Email, "account_locked": true}
+		if scope == "source" {
+			details["lock_scope"] = "source"
+		}
 		if loginType != "" {
 			details["login_type"] = loginType
 		}
@@ -613,10 +679,10 @@ func (s *authService) checkPasswordWithLockout(ctx context.Context, user *model.
 	if auth.CheckPassword(password, user.HashedPassword) {
 		return nil
 	}
-	locked, attempts := s.countFailedAttempt(ctx, user)
-	details := map[string]interface{}{
-		"email":           user.Email,
-		"failed_attempts": attempts,
+	locked, counts := s.countFailedAttempt(ctx, user)
+	details := map[string]interface{}{"email": user.Email}
+	for k, v := range counts {
+		details[k] = v
 	}
 	if loginType != "" {
 		details["login_type"] = loginType
@@ -632,11 +698,51 @@ func (s *authService) checkPasswordWithLockout(ctx context.Context, user *model.
 }
 
 // countFailedAttempt records one failed sign-in attempt (a wrong password or a
-// wrong second-factor code) on the user's counter and locks the account for
-// the lockout duration once the counter reaches the limit. It reports whether
-// the account is now locked and the counter value. Persistence errors are
+// wrong second-factor code) and reports whether it locked the account, with
+// the counts for the audit details.
+//
+// Under LOCKOUT_SOURCE_MODE=enforce the attempt is counted against the
+// account and the request's source only, and reaching the limit locks that
+// source out of the account (lock_scope "source"). Otherwise it is counted on
+// the account, which is locked at the limit; observe also counts it per
+// source and says whether enforce would lock the source. Persistence errors are
 // logged and do not stop the caller, which refuses the attempt either way.
-func (s *authService) countFailedAttempt(ctx context.Context, user *model.User) (locked bool, attempts int) {
+func (s *authService) countFailedAttempt(ctx context.Context, user *model.User) (bool, map[string]interface{}) {
+	counts := map[string]interface{}{}
+	sourceLocked := false
+	if s.countsPerSource() {
+		source := loginSource(ctx)
+		n, err := s.loginFailures.RecordFailure(ctx, user.ID, source, s.lockoutDuration)
+		if err != nil {
+			logger.FromContext(ctx).Warnf("auth: could not count a source failure of user %d: %v", user.ID, err)
+		}
+		counts["source"] = source
+		counts["source_failed_attempts"] = n
+		if n >= s.maxFailedAttempts {
+			if s.lockoutSourceMode == lockoutSourceEnforce {
+				if err := s.loginFailures.Lock(ctx, user.ID, source, time.Now().Add(s.lockoutDuration)); err != nil {
+					logger.FromContext(ctx).Warnf("auth: could not lock source %s out of user %d: %v", source, user.ID, err)
+				}
+				sourceLocked = true
+			} else {
+				counts["source_would_lock"] = true
+			}
+		}
+	}
+	if s.lockoutSourceMode == lockoutSourceEnforce && s.loginFailures != nil {
+		if sourceLocked {
+			counts["lock_scope"] = "source"
+		}
+		return sourceLocked, counts
+	}
+	locked, attempts := s.countAccountFailure(ctx, user)
+	counts["failed_attempts"] = attempts
+	return locked, counts
+}
+
+// countAccountFailure counts the attempt on the user's account-wide counter
+// and locks the account for the lockout duration once it reaches the limit.
+func (s *authService) countAccountFailure(ctx context.Context, user *model.User) (locked bool, attempts int) {
 	if err := s.userRepo.IncrementFailedLoginAttempts(ctx, user.ID); err != nil {
 		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
@@ -688,7 +794,7 @@ func (s *authService) AuthenticateAccount(ctx context.Context, email, password, 
 		}
 		return nil, err
 	}
-	if err := s.userRepo.ResetFailedLoginAttempts(ctx, user.ID); err != nil {
+	if err := s.resetFailedAttempts(ctx, user.ID); err != nil {
 		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 	s.logSecurityEvent(ctx, model.SecurityEventLoginSuccess, &user.ID, nil, true, map[string]interface{}{
@@ -748,7 +854,7 @@ func (s *authService) AdminLogin(ctx context.Context, req dto.AdminLoginRequest)
 	}
 
 	// Reset failed attempts and update last login
-	if err := s.userRepo.ResetFailedLoginAttempts(ctx, user.ID); err != nil {
+	if err := s.resetFailedAttempts(ctx, user.ID); err != nil {
 		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 	now := time.Now()
@@ -841,7 +947,7 @@ func (s *authService) ReAuthenticate(ctx context.Context, userID uint, password,
 	if err := s.stepUpMFA(ctx, user, mfaCode); err != nil {
 		return nil, err
 	}
-	if err := s.userRepo.ResetFailedLoginAttempts(ctx, user.ID); err != nil {
+	if err := s.resetFailedAttempts(ctx, user.ID); err != nil {
 		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 
@@ -1006,7 +1112,7 @@ func (s *authService) ChangePassword(ctx context.Context, userID uint, currentPa
 	}); err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
 	}
-	if err := s.userRepo.ResetFailedLoginAttempts(ctx, user.ID); err != nil {
+	if err := s.resetFailedAttempts(ctx, user.ID); err != nil {
 		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 

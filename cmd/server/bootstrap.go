@@ -148,6 +148,7 @@ func LogStartupSummary(cfg *config.Config) {
 		"admin_app_signin_policy": cfg.AdminAppSignInPolicy,
 		"admin_api_audience_mode": cfg.AdminAPIAudienceMode,
 		"service_user_scope_mode": cfg.ServiceUserScopeMode,
+		"lockout_source_mode":     cfg.LockoutSourceMode,
 		"audit_write_mode":        cfg.AuditWriteMode,
 		"policy_mode":             cfg.PolicyMode,
 		// Admin-console session hardening.
@@ -421,6 +422,8 @@ func Bootstrap(cfg *config.Config) *App {
 	appActivityLogRepo := repository.NewAppActivityLogRepository(db)
 	authCodeRepo := repository.NewAuthorizationCodeRepository(db)
 	usedTokenRepo := repository.NewUsedTokenRepository(db)
+	// #403: failed sign-ins per account and source (LOCKOUT_SOURCE_MODE).
+	loginSourceFailures := repository.NewLoginSourceFailureRepository(db)
 	// RFC-007: stamp a tamper-evidence HMAC on each audit row, keyed by
 	// SECRET_KEY_BASE (held in config, never in the DB). Empty secret disables it.
 	// B1: every persisted security event is also a Prometheus counter.
@@ -502,6 +505,12 @@ func Bootstrap(cfg *config.Config) *App {
 		usedTokenCleanupStop = cluster.Every(jobDB, cluster.LockUsedTokenSweep, "used_token_cleanup",
 			cfg.UsedTokenCleanupInterval, func(ctx context.Context) error {
 				_, err := cleaner.Cleanup(ctx)
+				// #403: the per-source failure counts no longer counted
+				// (older than the lockout duration, no lock in force).
+				if _, serr := loginSourceFailures.DeleteStale(ctx,
+					time.Now().Add(-time.Duration(cfg.LockoutDurationSecs)*time.Second)); serr != nil && err == nil {
+					err = serr
+				}
 				return err
 			})
 		logger.WithFields(logger.Fields{
@@ -571,6 +580,14 @@ func Bootstrap(cfg *config.Config) *App {
 			AdminMFAPolicy:    cfg.AdminMFAPolicy,
 		},
 	).WithMFA(mfaService)
+	// LOCKOUT_SOURCE_MODE (#403): failed sign-ins per account and source.
+	if ls, ok := authService.(interface {
+		SetLockoutSourcePolicy(string, repository.LoginSourceFailureRepository)
+	}); ok {
+		ls.SetLockoutSourcePolicy(cfg.LockoutSourceMode, loginSourceFailures)
+	} else {
+		logger.Fatalf("bootstrap: %T does not support SetLockoutSourcePolicy", authService)
+	}
 
 	// M-09 fix: securityAuditService was created and immediately discarded.
 	// The monitoring handler receives securityAuditRepo directly and does not

@@ -12,6 +12,19 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **A failed-sign-in lock no longer has to lock the owner out.** New `LOCKOUT_SOURCE_MODE` (`off`
+  default, `observe`, `enforce`). The lockout counted wrong passwords and codes per account, so
+  anyone who knew an email could keep the account locked, admins and superadmins included. Under
+  `enforce`, failures are counted per account and source (client IPv4 address, or IPv6 /64):
+  reaching `MAX_FAILED_ATTEMPTS` locks that source out of that account for
+  `LOCKOUT_DURATION_SECONDS`, audited `account_locked` with `lock_scope: source`, and the owner
+  signing in from elsewhere is unaffected. An account-wide lock (an admin block, or one set before
+  `enforce`) still applies. `observe` keeps the account-wide lock and adds `source`,
+  `source_failed_attempts` and `source_would_lock` to the audit details. Deploy note: migration
+  0034 (new table `login_source_failures`, swept with the used tokens); run `observe` first. An
+  attacker using many addresses gets `MAX_FAILED_ATTEMPTS` tries from each, so keep the per-IP
+  rate limits and automatic IP blocking on.
+
 - **A locked account no longer reveals that it exists.** The password check answered "account
   locked" to any password, before the hash comparison: the answer and its speed told apart an
   existing account from an unknown email. A locked account's password is now checked as any

@@ -698,6 +698,28 @@ var migrations = []Migration{
 			return db.Exec("ALTER TABLE users ADD COLUMN mfa_last_step BIGINT NOT NULL DEFAULT 0").Error
 		},
 	},
+	{
+		// 0034 (#403): failed sign-ins per account and source, for
+		// LOCKOUT_SOURCE_MODE. A row is the count of one source (a client
+		// address or IPv6 /64) on one account, and the lock it may hold.
+		// Swept with the used tokens.
+		ID:   "0034",
+		Name: "create_login_source_failures",
+		Run: func(db *gorm.DB) error {
+			if err := db.Exec(`CREATE TABLE IF NOT EXISTS login_source_failures (
+				user_id         BIGINT      NOT NULL,
+				source          VARCHAR(64) NOT NULL,
+				failed_attempts INTEGER     NOT NULL DEFAULT 0,
+				locked_until    TIMESTAMPTZ,
+				updated_at      TIMESTAMPTZ NOT NULL,
+				PRIMARY KEY (user_id, source)
+			)`).Error; err != nil {
+				return err
+			}
+			return db.Exec(`CREATE INDEX IF NOT EXISTS idx_login_source_failures_updated_at
+				ON login_source_failures (updated_at)`).Error
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

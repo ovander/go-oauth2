@@ -78,6 +78,7 @@ func (r *mfaMemUserRepo) AdvanceMFAStep(_ context.Context, id uint, step int64) 
 func (*mfaMemUserRepo) SetPassword(context.Context, uint, repository.PasswordChange) error {
 	return nil
 }
+func (*mfaMemUserRepo) UpdateProfile(context.Context, *model.User, bool) error { return nil }
 
 // --- stubs for the rest of the interface (not exercised by MFA) ---
 

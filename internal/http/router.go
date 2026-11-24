@@ -554,7 +554,8 @@ func newAdminRouter(
 				r.With(adminScope).Get("/apps", adminHandler.GetUserApps)
 				// A2: free-form attributes a client can project into its
 				// tokens via a claim mapping. Global-admin only, audited.
-				r.With(adminScope).Put("/attributes", adminHandler.UpdateUserAttributes)
+				// Step-up: policy rules read these attributes to constrain admins.
+				r.With(freshAuth, adminScope).Put("/attributes", adminHandler.UpdateUserAttributes)
 				// Monitoring console: inspect a user's sessions, revoke their tokens.
 				r.With(monRead).Get("/sessions", monitoringHandler.GetUserSessions)
 				// Destructive: require fresh step-up (revokes all of a user's tokens).
@@ -639,7 +640,8 @@ func newAdminRouter(
 
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", adminHandler.GetSuperadmin)
-				r.Put("/", adminHandler.UpdateSuperadmin)
+				// Step-up: it can change a superadmin's email or password.
+				r.With(freshAuth).Put("/", adminHandler.UpdateSuperadmin)
 				// Destructive: require fresh step-up.
 				r.With(freshAuth).Delete("/", adminHandler.DeleteSuperadmin)
 			})

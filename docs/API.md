@@ -610,7 +610,10 @@ public PKCE client auto-registered from `ADMIN_CONSOLE_CLIENT_ID` +
 routes — **create / update / delete an OAuth client** (`POST /api/admin/apps`,
 `PUT` and `DELETE /api/admin/apps/{id}`; create and update since v1.14.7), **rotate
 client secret** (`POST /api/admin/apps/{id}/rotate-secret`), **create/delete
-superadmin** (`POST /api/admin/superadmins`, `DELETE /api/admin/superadmins/{id}`),
+superadmin** (`POST /api/admin/superadmins`, `DELETE /api/admin/superadmins/{id}`;
+**update** `PUT /api/admin/superadmins/{id}` since v1.14.7 — a change of email or password
+there revokes that superadmin's sessions, and an admin's own password is changed through
+`POST /api/admin/change-password` instead, `400` here),
 **block / delete a user** (`POST /api/admin/users/{id}/block`, `DELETE
 /api/admin/users/{id}` since v1.14.7), **revoke a user's tokens**, **block /
 unblock an IP**, **create / update / delete an alert rule**, every webhook write
@@ -718,8 +721,11 @@ List/get/delete users, `GET /{id}/apps`, `GET /{id}/sessions`,
 
 - `PUT /{id}/attributes` — replace a user's free-form attributes (A2):
   `{ "attributes": { "tier": "gold", "dept": "engineering" } }` → the updated
-  `UserResponse`. Global admin only, audited (`update_user_attributes`; the
-  audit row records the attribute *names*, never their values). The body
+  `UserResponse`. Global admin only, with fresh step-up (since v1.14.7: policy
+  rules read these attributes). An admin cannot change their own (`400`), and only
+  a superadmin changes a superadmin's (`403`). Audited (`update_user_attributes`;
+  the audit row records the attribute *names* — all of them, and which were
+  `added`, `changed` and `removed` — never their values). The body
   replaces the whole set, so `{}` clears it. At most 32 attributes / 4 KB, names
   ≤ 64 characters — `400` otherwise. Attributes are inert on their own: they
   reach a token only when a client declares a matching `claim_mappings` entry.

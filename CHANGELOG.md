@@ -25,6 +25,28 @@ Capabilities**, non-breaking).
   version in the database. Deploy note: no migration, no environment variable, no change of
   default.
 
+- **User attributes that policy rules read are protected.** `PUT /api/admin/users/{id}/attributes`
+  now requires fresh step-up (it joins `policy.StepUpActions`); an admin cannot change their own
+  attributes (`400`), and only a superadmin changes a superadmin's (`403`). The audit entry
+  keeps recording names, never values, and now also says which attributes were `added`,
+  `changed` and `removed`. Deploy note: no migration, no environment variable; under
+  `POLICY_MODE` `shadow` or `enforce`, add the action to the stored `destructive-step-up` rule,
+  and expect shadow mode to record an admin editing a superadmin's attributes as a divergence
+  (the decision point does not see the target's role).
+
+- **Updating a superadmin requires step-up and revokes their sessions on a credential change.**
+  `PUT /api/admin/superadmins/{id}` now requires a recent authentication (it joins
+  `policy.StepUpActions`). Changing a superadmin's email or password there bumps their token
+  version in the same transaction as the new credentials, so their existing sessions end, and sets
+  `password_changed_at` for a password. The update writes only the edited columns, so it cannot
+  undo a concurrent revocation or failed sign-in (new `UserRepository.UpdateProfile`). An
+  admin can no longer set their own password through it (`400`): they use
+  `POST /api/admin/change-password`, which asks for the current password and applies the
+  lockout. The audit entry lists which fields were set (`name`, `email`, `password`), never their
+  values. Deploy note: no migration, no environment variable; a stored A4 policy needs the action
+  added to its `destructive-step-up` rule under `POLICY_MODE` `shadow` or `enforce`, as for the
+  previous step-up additions.
+
 - **Creating or changing an OAuth client and deleting a user require step-up.**
   `POST /api/admin/apps`, `PUT /api/admin/apps/{id}` (redirect URIs, `allow_impersonation`,
   `allow_token_exchange`, claim mappings, allowed scopes…) and `DELETE /api/admin/users/{id}`

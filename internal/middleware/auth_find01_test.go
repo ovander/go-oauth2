@@ -411,3 +411,4 @@ func (*find01UserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error
 func (*find01UserRepo) SetPassword(context.Context, uint, repository.PasswordChange) error {
 	return nil
 }
+func (*find01UserRepo) UpdateProfile(context.Context, *model.User, bool) error { return nil }

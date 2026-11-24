@@ -15,8 +15,6 @@ var adminWritesWithoutStepUp = map[string]string{
 	"POST /api/admin/alerts/{id}/acknowledge": "operational acknowledgement; changes no access",
 	"POST /api/admin/reports/security":        "generates a report",
 	"POST /api/admin/users/{id}/unlock":       "restores a user's access; operational",
-	"PUT /api/admin/superadmins/{id}":         "step-up added with #353",
-	"PUT /api/admin/users/{id}/attributes":    "protected by #352",
 }
 
 // Every state-changing admin route is either a step-up action or listed above

@@ -29,6 +29,22 @@ Capabilities**, non-breaking).
   Deploy note: no migration; the records live in `used_tokens`. `off` (the default) is
   unchanged, except that a replayed token is now rejected after client authentication.
 
+- **The audit chain detects removed or blanked newest rows.** The newest rows could be deleted, or
+  have their hash blanked, without breaking the chain: what remained still linked up, the next
+  row linked to the newest row still carrying a hash, and the scanner skipped rows without one.
+  The chain head (id and hash of the newest row, with an HMAC keyed by `SECRET_KEY_BASE`) is now
+  kept outside the audit table, in `audit_chain_head` (migration 0033), and moved in the
+  transaction of every append. The next row links to the head, so a gap stays visible. The
+  integrity scanner reports a head that is missing, invalid or no longer matches the row it
+  names, and a row without a hash after the chain started. It now reads rows in id order and
+  checks the link between pages. It also logs the head it saw, outside the database. The first
+  anchoring is recorded in the chain (`audit_chain_anchored`), so a head deleted while the
+  server is stopped is reported at the next start instead of being silently recreated. Retention
+  keeps the newest row, which the head names. New violation details: `unstamped_row_id`,
+  `chain_head` (`kind` stays `chain`). Deploy note: migration 0033 (new table); the server
+  anchors the head on the existing log at startup. A database-only attacker who saved an earlier
+  head can still roll the log back to it; the scan log line is the evidence for that case.
+
 - **`ADMIN_SCOPE_MODE` is read like the other modes.** The value is now trimmed and
   case-insensitive, so `Enforce` or `enforce ` turns the scope gate on instead of silently leaving
   it off. Anything other than `enforce` still means `off`. The startup log's effective

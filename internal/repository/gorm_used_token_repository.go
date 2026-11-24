@@ -23,6 +23,15 @@ type UsedTokenRepository interface {
 	DeleteExpired(ctx context.Context) (int64, error)
 }
 
+// UsedTokenTypeReader is implemented by used-token stores that can say how a
+// token was used (#365), so a rotated refresh token (a reuse signal) is told
+// apart from a revoked one (a logout, or RFC 7009).
+type UsedTokenTypeReader interface {
+	// UsedTokenType returns the type the token was marked with, or "" when it
+	// was not.
+	UsedTokenType(ctx context.Context, tokenJTI string) (string, error)
+}
+
 type usedTokenRepository struct {
 	db *gorm.DB
 }
@@ -61,6 +70,19 @@ func (r *usedTokenRepository) IsUsed(ctx context.Context, tokenJTI string) (bool
 		return false, err
 	}
 	return count > 0, nil
+}
+
+// UsedTokenType implements UsedTokenTypeReader.
+func (r *usedTokenRepository) UsedTokenType(ctx context.Context, tokenJTI string) (string, error) {
+	var types []string
+	if err := r.db.WithContext(ctx).Model(&model.UsedToken{}).
+		Where("token_jti = ?", tokenJTI).Limit(1).Pluck("token_type", &types).Error; err != nil {
+		return "", err
+	}
+	if len(types) == 0 {
+		return "", nil
+	}
+	return types[0], nil
 }
 
 func (r *usedTokenRepository) DeleteExpired(ctx context.Context) (int64, error) {

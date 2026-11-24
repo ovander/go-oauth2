@@ -804,47 +804,7 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 		return nil, err
 	}
 
-	// HIGH-04 fix: enforce single-use on refresh tokens by checking whether
-	// the token's JTI has already been consumed.  This closes the replay
-	// window that exists when both the attacker and the legitimate user hold
-	// the same stateless JWT refresh token simultaneously.
-	//
-	// The check is best-effort: if usedTokenRepo is nil (e.g. in tests that
-	// don't exercise this path) the guard is skipped rather than panicking.
 	jti := claims.ID
-	if s.usedTokenRepo != nil && jti != "" {
-		used, err := s.usedTokenRepo.IsUsed(ctx, jti)
-		if err != nil {
-			return nil, fmt.Errorf("%w: failed to verify token single-use", ErrInvalidToken)
-		}
-		if used {
-			// RFC 9700 §4.14.2: presenting an already-rotated refresh token is a
-			// token-theft signal. Beyond rejecting this request, optionally revoke
-			// the user's whole token family so neither the attacker's nor the
-			// victim's outstanding tokens survive. observe records the event;
-			// enforce additionally revokes. off keeps the historical behaviour
-			// (reject only). The token's signature + audience were already verified
-			// above, so the subject is trustworthy provenance for the revocation.
-			if s.refreshReuseMode != refreshReuseModeOff {
-				uid64, _ := strconv.ParseUint(claims.Subject, 10, strconv.IntSize)
-				uid := uint(uid64)
-				reuseDetails := map[string]interface{}{
-					"jti":       jti,
-					"client_id": clientID,
-					"mode":      s.refreshReuseMode,
-				}
-				if s.refreshReuseMode == refreshReuseModeEnforce {
-					if rerr := s.userRepo.IncrementTokenVersion(ctx, uid); rerr != nil {
-						logger.FromContext(ctx).Errorf("RFC 9700: failed to revoke token family on refresh reuse for user %d: %v", uid, rerr)
-					} else {
-						reuseDetails["family_revoked"] = true
-					}
-				}
-				s.logSecurityEvent(ctx, model.SecurityEventRefreshTokenReuse, &uid, nil, false, reuseDetails)
-			}
-			return nil, fmt.Errorf("%w: refresh token has already been used", ErrInvalidToken)
-		}
-	}
 
 	// HIGH-03 fix: authenticate the client BEFORE looking up user data.
 	// Moving the app lookup and credential check here (ahead of the user
@@ -909,6 +869,14 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 	// Check token version (revocation check)
 	if user.TokenVersion != claims.Ver {
 		return nil, fmt.Errorf("%w: token has been revoked", ErrInvalidToken)
+	}
+
+	// HIGH-04: each refresh token is single-use. Checked only now, once the
+	// client is authenticated and the token is still current (#365): a reuse
+	// signal can revoke tokens, so an unauthenticated caller, or a token a
+	// logout already revoked, must not be able to raise it.
+	if err := s.checkRefreshTokenUnused(ctx, claims, clientID, user.ID); err != nil {
+		return nil, err
 	}
 
 	// P3-3: a locked account (admin Block, or brute-force lockout) must not
@@ -976,7 +944,8 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 		claims.Scope,
 		appRoles,
 		"", // nonce: intentionally absent on refresh — see LOW-04 comment above
-		auth.AuthnEvidence{AuthTime: claims.AuthTime, AMR: claims.Amr, ACR: claims.Acr},
+		// The new refresh token stays in the family of the one it replaces.
+		auth.AuthnEvidence{AuthTime: claims.AuthTime, AMR: claims.Amr, ACR: claims.Acr, Family: claims.Family},
 		dpopJKTFromContext(ctx),
 	)
 	if err != nil {
@@ -990,8 +959,10 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 	if s.usedTokenRepo != nil && jti != "" {
 		exp := claims.ExpiresAt.Time
 		if markErr := s.usedTokenRepo.MarkAsUsed(ctx, jti, "refresh", user.ID, exp); markErr != nil {
-			// ErrTokenAlreadyUsed indicates a concurrent replay — reject.
+			// ErrTokenAlreadyUsed: another request redeemed the same token
+			// between the check and here — the same reuse signal (#365).
 			if errors.Is(markErr, repository.ErrTokenAlreadyUsed) {
+				s.signalRefreshReuse(ctx, claims, clientID, user.ID, true)
 				return nil, fmt.Errorf("%w: concurrent refresh token replay detected", ErrInvalidToken)
 			}
 			// Any other DB error is non-fatal: log it but don't break the
@@ -1024,6 +995,117 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 		Roles:        roles,
 		AppRoles:     appRoles,
 	}, nil
+}
+
+// Used-token records of the refresh grant (#365), next to the token JTIs in
+// used_tokens.
+const (
+	// usedTokenTypeRevoked marks a token revoked by RFC 7009 or a logout.
+	usedTokenTypeRevoked = "revoked"
+	// usedTokenTypeFamilyRevoked marks a refresh-token family revoked after a
+	// reuse, under the key familyRevocationKey(family).
+	usedTokenTypeFamilyRevoked = "family_revoked"
+	// usedTokenTypeReuseSignal records that a token's reuse was already
+	// signalled, under the key reuseSignalKey(jti).
+	usedTokenTypeReuseSignal = "reuse_signal"
+)
+
+func familyRevocationKey(family string) string { return "fam:" + family }
+func reuseSignalKey(jti string) string         { return "reuse:" + jti }
+
+// usedTokenType says how a token was used ("" when it was not). A store that
+// cannot tell reports every used token as rotated, as before #365.
+func (s *oauthService) usedTokenType(ctx context.Context, jti string) (string, error) {
+	if r, ok := s.usedTokenRepo.(repository.UsedTokenTypeReader); ok {
+		return r.UsedTokenType(ctx, jti)
+	}
+	used, err := s.usedTokenRepo.IsUsed(ctx, jti)
+	if err != nil || !used {
+		return "", err
+	}
+	return "refresh", nil
+}
+
+// checkRefreshTokenUnused rejects a refresh token whose family was revoked,
+// that was revoked, or that was already rotated. Only the last is the reuse
+// signal of RFC 9700 §4.14.2: a stale tab retrying a token its logout revoked
+// is not theft. A store error rejects the token (fail closed).
+func (s *oauthService) checkRefreshTokenUnused(ctx context.Context, claims *auth.RefreshTokenClaims, clientID string, userID uint) error {
+	if s.usedTokenRepo == nil || claims.ID == "" {
+		return nil
+	}
+	if claims.Family != "" {
+		revoked, err := s.usedTokenRepo.IsUsed(ctx, familyRevocationKey(claims.Family))
+		if err != nil {
+			return fmt.Errorf("%w: failed to verify token single-use", ErrInvalidToken)
+		}
+		if revoked {
+			return fmt.Errorf("%w: refresh token family has been revoked", ErrInvalidToken)
+		}
+	}
+	kind, err := s.usedTokenType(ctx, claims.ID)
+	if err != nil {
+		return fmt.Errorf("%w: failed to verify token single-use", ErrInvalidToken)
+	}
+	switch kind {
+	case "":
+		return nil
+	case usedTokenTypeRevoked:
+		return fmt.Errorf("%w: refresh token has been revoked", ErrInvalidToken)
+	}
+	s.signalRefreshReuse(ctx, claims, clientID, userID, false)
+	return fmt.Errorf("%w: refresh token has already been used", ErrInvalidToken)
+}
+
+// signalRefreshReuse handles a rotated refresh token presented again
+// (REFRESH_REUSE_MODE): observe audits it, enforce also revokes the token's
+// family — the refresh tokens of that sign-in at that client, and no other
+// session of the user. A token issued before families existed cannot be
+// placed in one, so enforce revokes all the user's tokens for it, as before.
+// Each token raises the signal once: replaying it again is only rejected, so
+// a single old token cannot keep revoking sessions or flood the audit log.
+func (s *oauthService) signalRefreshReuse(ctx context.Context, claims *auth.RefreshTokenClaims, clientID string, userID uint, concurrent bool) {
+	if s.refreshReuseMode == refreshReuseModeOff || s.usedTokenRepo == nil {
+		return
+	}
+	exp := time.Now().Add(s.tokenService.GetRefreshTokenTTL())
+	if claims.ExpiresAt != nil {
+		exp = claims.ExpiresAt.Time
+	}
+	if err := s.usedTokenRepo.MarkAsUsed(ctx, reuseSignalKey(claims.ID), usedTokenTypeReuseSignal, userID, exp); err != nil {
+		if errors.Is(err, repository.ErrTokenAlreadyUsed) {
+			return // already signalled
+		}
+		// Signal anyway: a store error must not hide a theft signal.
+		logger.FromContext(ctx).Errorf("RFC 9700: could not record the reuse signal of refresh token %s: %v", claims.ID, err)
+	}
+	details := map[string]interface{}{
+		"jti":       claims.ID,
+		"client_id": clientID,
+		"mode":      s.refreshReuseMode,
+	}
+	if concurrent {
+		details["concurrent"] = true
+	}
+	if s.refreshReuseMode == refreshReuseModeEnforce {
+		if claims.Family != "" {
+			// Every token of the family expires within one refresh TTL from now.
+			famExp := time.Now().Add(s.tokenService.GetRefreshTokenTTL())
+			err := s.usedTokenRepo.MarkAsUsed(ctx, familyRevocationKey(claims.Family), usedTokenTypeFamilyRevoked, userID, famExp)
+			if err == nil || errors.Is(err, repository.ErrTokenAlreadyUsed) {
+				details["family_revoked"] = true
+				details["revoked"] = "family"
+			} else {
+				logger.FromContext(ctx).Errorf("RFC 9700: failed to revoke the token family on refresh reuse for user %d: %v", userID, err)
+			}
+		} else if err := s.userRepo.IncrementTokenVersion(ctx, userID); err != nil {
+			logger.FromContext(ctx).Errorf("RFC 9700: failed to revoke token family on refresh reuse for user %d: %v", userID, err)
+		} else {
+			details["family_revoked"] = true
+			details["revoked"] = "all_user_tokens"
+		}
+	}
+	s.logSecurityEvent(ctx, model.SecurityEventRefreshTokenReuse, &userID, nil, false, details)
 }
 
 // RefreshFromBearer redeems a refresh token presented outside the OAuth token
@@ -1340,7 +1422,7 @@ func (s *oauthService) Revoke(ctx context.Context, token string, userID uint, re
 				return nil
 			}
 			exp := rClaims.ExpiresAt.Time
-			if markErr := s.usedTokenRepo.MarkAsUsed(ctx, rClaims.ID, "revoked", userID, exp); markErr != nil &&
+			if markErr := s.usedTokenRepo.MarkAsUsed(ctx, rClaims.ID, usedTokenTypeRevoked, userID, exp); markErr != nil &&
 				!errors.Is(markErr, repository.ErrTokenAlreadyUsed) {
 				logger.FromContext(ctx).Errorf("MED-01: failed to blacklist refresh token JTI %s: %v", rClaims.ID, markErr)
 			}

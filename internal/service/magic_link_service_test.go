@@ -297,7 +297,7 @@ func seedTestUser(
 func TestRequestMagicLink_HappyPath(t *testing.T) {
 	svc, mlRepo, userRepo, appRepo, roleRepo, emailSvc := buildMagicLinkService(t)
 
-	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding}
+	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding, Active: true}
 	user := &model.User{ID: 10, Email: "alice@example.com", Name: "Alice", IsVerified: true}
 	appRepo.add(app) // needed by VerifyMagicLink; not used in request path
 	seedTestUser(userRepo, roleRepo, user, app)
@@ -326,7 +326,7 @@ func TestRequestMagicLink_HappyPath(t *testing.T) {
 func TestRequestMagicLink_UnknownEmail_SilentSuccess(t *testing.T) {
 	// An unknown email must not return an error (enumeration resistance).
 	svc, mlRepo, _, _, _, _ := buildMagicLinkService(t)
-	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding}
+	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding, Active: true}
 
 	rawToken, err := svc.RequestMagicLink(context.Background(), "ghost@example.com", app)
 
@@ -346,7 +346,7 @@ func TestRequestMagicLink_UserNoRoleInApp_SilentSuccess(t *testing.T) {
 	// silently ignored so that enumeration via the M2M channel is prevented.
 	svc, mlRepo, userRepo, _, _, _ := buildMagicLinkService(t)
 
-	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding}
+	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding, Active: true}
 	user := &model.User{ID: 10, Email: "alice@example.com", Name: "Alice", IsVerified: true}
 	userRepo.add(user)
 	// Intentionally NOT calling seedTestUser — user has no role in app.
@@ -367,7 +367,7 @@ func TestRequestMagicLink_UserNoRoleInApp_SilentSuccess(t *testing.T) {
 func TestRequestMagicLink_RateLimit(t *testing.T) {
 	svc, _, userRepo, appRepo, roleRepo, _ := buildMagicLinkService(t)
 
-	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding}
+	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding, Active: true}
 	user := &model.User{ID: 10, Email: "alice@example.com", Name: "Alice", IsVerified: true}
 	appRepo.add(app)
 	seedTestUser(userRepo, roleRepo, user, app)
@@ -394,7 +394,7 @@ func TestRequestMagicLink_RateLimit(t *testing.T) {
 func TestVerifyMagicLink_HappyPath(t *testing.T) {
 	svc, _, userRepo, appRepo, roleRepo, _ := buildMagicLinkService(t)
 
-	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding}
+	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding, Active: true}
 	user := &model.User{ID: 10, Email: "alice@example.com", Name: "Alice", IsVerified: true}
 	appRepo.add(app)
 	seedTestUser(userRepo, roleRepo, user, app)
@@ -430,7 +430,7 @@ func TestVerifyMagicLink_HappyPath(t *testing.T) {
 func TestVerifyMagicLink_AlreadyUsed(t *testing.T) {
 	svc, _, userRepo, appRepo, roleRepo, _ := buildMagicLinkService(t)
 
-	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding}
+	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding, Active: true}
 	user := &model.User{ID: 10, Email: "alice@example.com", Name: "Alice", IsVerified: true}
 	appRepo.add(app)
 	seedTestUser(userRepo, roleRepo, user, app)
@@ -455,7 +455,7 @@ func TestVerifyMagicLink_AlreadyUsed(t *testing.T) {
 
 func TestVerifyMagicLink_WrongToken(t *testing.T) {
 	svc, _, _, appRepo, _, _ := buildMagicLinkService(t)
-	appRepo.add(&model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding})
+	appRepo.add(&model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding, Active: true})
 
 	_, err := svc.VerifyMagicLink(context.Background(), dto.MagicLinkVerifyRequest{
 		Token:    "notavalidtoken",
@@ -469,7 +469,7 @@ func TestVerifyMagicLink_WrongToken(t *testing.T) {
 func TestVerifyMagicLink_ExpiredToken(t *testing.T) {
 	svc, mlRepo, userRepo, appRepo, roleRepo, _ := buildMagicLinkService(t)
 
-	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding}
+	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding, Active: true}
 	user := &model.User{ID: 10, Email: "alice@example.com", Name: "Alice", IsVerified: true}
 	appRepo.add(app)
 	seedTestUser(userRepo, roleRepo, user, app)
@@ -491,7 +491,7 @@ func TestVerifyMagicLink_ExpiredToken(t *testing.T) {
 
 func TestVerifyMagicLink_EmptyToken(t *testing.T) {
 	svc, _, _, appRepo, _, _ := buildMagicLinkService(t)
-	appRepo.add(&model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding})
+	appRepo.add(&model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding, Active: true})
 
 	_, err := svc.VerifyMagicLink(context.Background(), dto.MagicLinkVerifyRequest{
 		Token:    "",
@@ -505,8 +505,8 @@ func TestVerifyMagicLink_EmptyToken(t *testing.T) {
 func TestVerifyMagicLink_AppMismatch(t *testing.T) {
 	svc, _, userRepo, appRepo, roleRepo, _ := buildMagicLinkService(t)
 
-	app1 := &model.App{ID: 1, ClientID: "app-1", Name: "App One", MagicLinkURL: &testMagicLanding}
-	app2 := &model.App{ID: 2, ClientID: "app-2", Name: "App Two", MagicLinkURL: &testMagicLanding}
+	app1 := &model.App{ID: 1, ClientID: "app-1", Name: "App One", MagicLinkURL: &testMagicLanding, Active: true}
+	app2 := &model.App{ID: 2, ClientID: "app-2", Name: "App Two", MagicLinkURL: &testMagicLanding, Active: true}
 	user := &model.User{ID: 10, Email: "alice@example.com", Name: "Alice", IsVerified: true}
 	appRepo.add(app1)
 	appRepo.add(app2)
@@ -550,4 +550,104 @@ func (*fakeMagicLinkUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool
 }
 func (*fakeMagicLinkUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
 	return false, nil
+}
+
+// ---------------------------------------------------------------------------
+// VerifyMagicLink: the checks of the other sign-in paths
+// ---------------------------------------------------------------------------
+
+// stubMagicLinkPolicy records the admin checks and answers with err.
+type stubMagicLinkPolicy struct {
+	calls int
+	err   error
+}
+
+func (p *stubMagicLinkPolicy) checkMagicLinkSignIn(context.Context, *model.User, *model.App) error {
+	p.calls++
+	return p.err
+}
+
+func verifyMagicLinkFor(t *testing.T, user *model.User, app *model.App, policy MagicLinkSignInPolicy) (*dto.LoginResponse, error) {
+	t.Helper()
+	svc, _, userRepo, appRepo, roleRepo, _ := buildMagicLinkService(t)
+	if policy != nil {
+		svc.(*magicLinkService).SetSignInPolicy(policy)
+	}
+	appRepo.add(app)
+	seedTestUser(userRepo, roleRepo, user, app)
+	activeApp := *app
+	activeApp.Active = true // the request side is not what is tested here
+	raw, err := svc.RequestMagicLink(context.Background(), user.Email, &activeApp)
+	if err != nil || raw == "" {
+		t.Fatalf("RequestMagicLink: %v %q", err, raw)
+	}
+	return svc.VerifyMagicLink(context.Background(), dto.MagicLinkVerifyRequest{Token: raw, ClientID: app.ClientID})
+}
+
+// A magic link is one factor: an account with MFA enabled is refused.
+func TestVerifyMagicLink_MFAUserRefused(t *testing.T) {
+	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding, Active: true}
+	user := &model.User{ID: 10, Email: "alice@example.com", IsVerified: true, MFAEnabled: true}
+	if _, err := verifyMagicLinkFor(t, user, app, nil); !errors.Is(err, ErrMagicLinkSecondFactor) {
+		t.Fatalf("%v, want ErrMagicLinkSecondFactor", err)
+	}
+}
+
+// A deactivated client gets no tokens through a magic link.
+func TestVerifyMagicLink_InactiveAppRefused(t *testing.T) {
+	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding, Active: false}
+	user := &model.User{ID: 10, Email: "alice@example.com", IsVerified: true}
+	if _, err := verifyMagicLinkFor(t, user, app, nil); !errors.Is(err, ErrAppInactive) {
+		t.Fatalf("%v, want ErrAppInactive", err)
+	}
+}
+
+// A Socrate admin goes through the admin sign-in policies; without them wired
+// the sign-in is refused. A regular user is not affected by them.
+func TestVerifyMagicLink_AdminPolicies(t *testing.T) {
+	app := &model.App{ID: 1, ClientID: "app-1", Name: "Test App", MagicLinkURL: &testMagicLanding, Active: true}
+	admin := func() *model.User {
+		return &model.User{ID: 10, Email: "admin@example.com", IsVerified: true, Role: model.UserRoleSuperadmin}
+	}
+
+	if _, err := verifyMagicLinkFor(t, admin(), app, nil); !errors.Is(err, ErrAdminAppSignInRefused) {
+		t.Fatalf("admin without policy wired: %v, want ErrAdminAppSignInRefused", err)
+	}
+
+	refusing := &stubMagicLinkPolicy{err: ErrMFAEnrollmentRequired}
+	if _, err := verifyMagicLinkFor(t, admin(), app, refusing); !errors.Is(err, ErrMFAEnrollmentRequired) || refusing.calls != 1 {
+		t.Fatalf("admin refused by policy: %v (calls %d), want ErrMFAEnrollmentRequired", err, refusing.calls)
+	}
+
+	allowing := &stubMagicLinkPolicy{}
+	if resp, err := verifyMagicLinkFor(t, admin(), app, allowing); err != nil || resp.AccessToken == "" || allowing.calls != 1 {
+		t.Fatalf("admin allowed by policy: %v (calls %d)", err, allowing.calls)
+	}
+
+	regular := &stubMagicLinkPolicy{err: ErrAdminAppSignInRefused}
+	user := &model.User{ID: 11, Email: "bob@example.com", IsVerified: true}
+	if _, err := verifyMagicLinkFor(t, user, app, regular); err != nil || regular.calls != 0 {
+		t.Fatalf("regular user: %v (policy calls %d), want success without the admin checks", err, regular.calls)
+	}
+}
+
+// The auth service implements the admin checks: enforce-mode MFA enrollment
+// refuses an admin without MFA; a regular user is untouched.
+func TestAuthService_CheckMagicLinkSignIn(t *testing.T) {
+	s := &authService{adminMFAPolicy: MFAPolicyEnforce, auditRepo: &captureAuditRepo{}}
+	admin := &model.User{ID: 1, Role: model.UserRoleSuperadmin}
+	if err := s.checkMagicLinkSignIn(context.Background(), admin, &model.App{ID: 1, ClientID: "app-1"}); !errors.Is(err, ErrMFAEnrollmentRequired) {
+		t.Fatalf("admin without MFA under enforce: %v, want ErrMFAEnrollmentRequired", err)
+	}
+	if err := s.checkMagicLinkSignIn(context.Background(), &model.User{ID: 2, Role: model.UserRoleUser}, &model.App{ID: 1}); err != nil {
+		t.Fatalf("regular user: %v", err)
+	}
+	// ADMIN_APP_SIGNIN_POLICY covers admins without a membership; a magic link
+	// always has one, so a member admin with MFA policy satisfied signs in to a
+	// non-console app as with a password.
+	member := &authService{adminAppSignIn: NewAdminAppSignInPolicy(AdminAppSignInEnforce, []string{"admin-console"}), auditRepo: &captureAuditRepo{}}
+	if err := member.checkMagicLinkSignIn(context.Background(), &model.User{ID: 3, Role: model.UserRoleAdmin}, &model.App{ID: 1, ClientID: "member-app"}); err != nil {
+		t.Fatalf("member admin, app sign-in policy enforce: %v, want allowed", err)
+	}
+	var _ MagicLinkSignInPolicy = s
 }

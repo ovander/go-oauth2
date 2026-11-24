@@ -182,7 +182,9 @@ type Config struct {
 	// RefreshReuseMode governs refresh-token reuse detection (OAuth 2.0 Security
 	// BCP / RFC 9700 §4.14.2): "off" (default — a reused single-use refresh token
 	// is rejected, unchanged), "observe" (also audit the reuse), or "enforce"
-	// (also revoke the user's token family, since reuse signals token theft).
+	// (also revoke the token's family — the refresh tokens of that sign-in at
+	// that client — since reuse signals token theft). Each token raises the
+	// signal once, and only from an authenticated client (#365).
 	RefreshReuseMode string
 	// ScopePolicyMode governs the per-client allowed_scopes policy (A1 / P3-8):
 	// "off" (default — policy stored but not applied), "observe" (audit

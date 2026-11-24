@@ -12,6 +12,12 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **Saving a user can no longer clear an invite claim.** `UserRepository.Update` now also leaves
+  out `invite_app_id`, which only account creation and `ClaimInviteApp` set. A save of a pending
+  account loaded before another app claimed it (an admin edit racing the claim) used to write the
+  empty value back, so a third app could claim the account and its invite set the password.
+  Deploy note: no migration, no environment variable.
+
 - **The admin-API audience check covers the app-management routes.** Under
   `ADMIN_API_AUDIENCE_MODE` `observe` or `enforce`, `/api/apps/{app_id}/*` (app users and app
   logs) now accepts a token issued to an operator console, to Socrate's admin portal, or to that

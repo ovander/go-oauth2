@@ -48,8 +48,14 @@ func newDPoPKey(t *testing.T) dpopKey {
 // proof signs a DPoP proof for GET bindingPath carrying ath.
 func (k dpopKey) proof(t *testing.T, ath string) string {
 	t.Helper()
+	return k.proofFor(t, http.MethodGet, bindingHTUBase+bindingPath, ath)
+}
+
+// proofFor signs a DPoP proof for method and htu carrying ath.
+func (k dpopKey) proofFor(t *testing.T, method, htu, ath string) string {
+	t.Helper()
 	tok := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
-		"htm": http.MethodGet, "htu": bindingHTUBase + bindingPath, "ath": ath,
+		"htm": method, "htu": htu, "ath": ath,
 		"jti": uuid.NewString(), "iat": time.Now().Unix(),
 	})
 	tok.Header["typ"] = "dpop+jwt"

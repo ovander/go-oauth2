@@ -788,7 +788,7 @@ func newAdminRouter(
 	// Token must carry sub="app:{id}" matching the {app_id} URL parameter.
 	// ==========================================
 	r.Route("/api/apps/{app_id}/service", func(r chi.Router) {
-		r.Use(middleware.ServiceAccountMiddleware(appRepo, tokenService, usedTokenRepo))
+		r.Use(middleware.ServiceAccountMiddlewareWithDPoP(config.dpopBinding(), appRepo, tokenService, usedTokenRepo))
 		r.Post("/users", appUsersHandler.CreateUser)
 		// The app backend looks up one of its own members by numeric id (the
 		// token's sub). Same answer as GET /api/apps/{app_id}/users/{user_id};

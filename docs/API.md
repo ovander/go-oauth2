@@ -515,8 +515,8 @@ without a valid proof (so it needs DPoP on). The token response keeps
 `token_type: "Bearer"`.
 
 **Bound tokens on Socrate's own APIs (since v1.14.7).** The same mode covers a
-token carrying `cnf.jkt` presented to `/oauth/userinfo`, `/api/*` and the admin
-API (RFC 9449 §7.1). Send it with `Authorization: DPoP <token>` (or `Bearer`,
+token carrying `cnf.jkt` presented to `/oauth/userinfo`, `/api/*` (including
+the app and service-account routes) and the admin API (RFC 9449 §7.1). Send it with `Authorization: DPoP <token>` (or `Bearer`,
 since the token response says `Bearer`) and a fresh `DPoP` proof for that
 request: signed by the bound key, with `htm`, `htu` (the issuer's
 `scheme://host` plus the path) and `ath`, the base64url SHA-256 of the token.

@@ -21,6 +21,15 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **Email header values cannot carry a line break.** Outgoing emails are built so that no header
+  takes a raw line break from its input: the recipient must be a single valid address
+  (`net/mail`), the sender's display name is encoded, and the subject (which includes the
+  application name) becomes a MIME encoded-word (RFC 2047) when it holds a control or non-ASCII
+  character, which also makes non-ASCII application names display correctly. An email to an
+  invalid address is refused instead of being sent. No migration, no environment variable.
+
+### Security
+
 - **Token exchange authenticates the client first, and only an active, confidential client may
   exchange.** With `TOKEN_EXCHANGE_MODE=enforce` (default `off`), the token-exchange grant now
   checks the requesting client before it looks at any presented token: a client without a secret

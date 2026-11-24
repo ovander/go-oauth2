@@ -146,6 +146,7 @@ func LogStartupSummary(cfg *config.Config) {
 		"admin_mfa_policy":        cfg.AdminMFAPolicy,
 		"admin_app_signin_policy": cfg.AdminAppSignInPolicy,
 		"admin_api_audience_mode": cfg.AdminAPIAudienceMode,
+		"service_user_scope_mode": cfg.ServiceUserScopeMode,
 		"audit_write_mode":        cfg.AuditWriteMode,
 		"policy_mode":             cfg.PolicyMode,
 		// Admin-console session hardening.
@@ -674,6 +675,9 @@ func Bootstrap(cfg *config.Config) *App {
 	// #203: AdminHandler emits client-lifecycle changes as alertable security
 	// events; give it a security audit service over the same repo.
 	adminSecurityAuditService := service.NewSecurityAuditService(securityAuditRepo)
+	// SERVICE_USER_SCOPE_MODE: what an app's service account may do to an
+	// account it did not create (adding it to the app, editing its profile).
+	appUsersHandler.SetServiceUserScope(cfg.ServiceUserScopeMode, adminSecurityAuditService)
 	adminHandler := handler.NewAdminHandler(appService, userService, userAppRoleService, adminLogService, appActivityLogService, emailService, adminSecurityAuditService)
 	// The operator consoles' clients are changed by a superadmin only, and
 	// every change is audited at critical severity.

@@ -12,6 +12,16 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **An app's service account can be kept away from accounts it did not create.** New
+  `SERVICE_USER_SCOPE_MODE` (`off` default, `observe`, `enforce`). Under `enforce`, the service
+  API (`/api/apps/{app_id}/service/users`) no longer enrols an existing account in the app unless
+  it was created for this app or is already a member (`409 account_exists`; an admin adds it, or
+  the person signs in), and edits the global profile only of an account created for the app
+  (`403 profile_not_owned`). `observe` allows both and audits `service_user_scope`. The look-up
+  (`GET`) is unchanged: `token_version` is how an app detects revoked user tokens. Deploy note:
+  no migration; run `observe` and check `service_user_scope` events, which show the apps relying
+  on either, before `enforce`.
+
 - **A DPoP-bound token presented to Socrate's own APIs needs its proof.** Under `DPOP_MODE`
   `observe` or `enforce`, a token carrying `cnf.jkt` sent to `/oauth/userinfo`, `/api/*`, the
   app routes, the service-account routes or the admin API must come with a fresh DPoP proof of the bound key for that request,

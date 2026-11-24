@@ -27,6 +27,47 @@ type AppUsersHandler struct {
 	emailService       service.EmailService
 	tokenService       *auth.TokenService
 	baseURL            string
+
+	// serviceScopeMode is SERVICE_USER_SCOPE_MODE; serviceScopeAudit
+	// records what it observes or refuses. See SetServiceUserScope.
+	serviceScopeMode  string
+	serviceScopeAudit service.SecurityAuditService
+}
+
+// SetServiceUserScope sets SERVICE_USER_SCOPE_MODE for the service-account
+// routes: "observe" audits, and "enforce" also refuses, a service account
+// adding an existing account that is not already a member of its app, or
+// editing the profile of an account not created for its app. Any other mode
+// changes nothing.
+func (h *AppUsersHandler) SetServiceUserScope(mode string, audit service.SecurityAuditService) {
+	h.serviceScopeMode = mode
+	h.serviceScopeAudit = audit
+}
+
+// createdForApp reports whether u's account was created for appID: by an
+// invite of that app, the only way a service account creates an account.
+func createdForApp(u *model.User, appID uint) bool {
+	return u != nil && u.InviteAppID != nil && *u.InviteAppID == appID
+}
+
+// serviceScopeRefuses records a service-account action on an account outside
+// its app's scope and reports whether to refuse it (enforce). Off: nothing
+// is recorded and nothing refused.
+func (h *AppUsersHandler) serviceScopeRefuses(r *http.Request, appID, userID uint, action string) bool {
+	if h.serviceScopeMode != "observe" && h.serviceScopeMode != "enforce" {
+		return false
+	}
+	refused := h.serviceScopeMode == "enforce"
+	if h.serviceScopeAudit != nil {
+		_ = h.serviceScopeAudit.LogFromRequest(r.Context(), r, service.SecurityEvent{
+			UserID:    &userID,
+			AppID:     &appID,
+			EventType: model.SecurityEventServiceUserScope,
+			Success:   !refused,
+			Details:   map[string]interface{}{"action": action, "mode": h.serviceScopeMode},
+		})
+	}
+	return refused
 }
 
 func NewAppUsersHandler(
@@ -183,6 +224,17 @@ func (h *AppUsersHandler) UpdateUserProfile(w http.ResponseWriter, r *http.Reque
 		writeError(w, "user not in app", http.StatusNotFound)
 		return
 	}
+	// The profile is global: every other app sees the change. Under
+	// SERVICE_USER_SCOPE_MODE an app may edit only an account created for it.
+	member, err := h.userService.GetByID(r.Context(), userID)
+	if err != nil {
+		writeError(w, "user not in app", http.StatusNotFound)
+		return
+	}
+	if !createdForApp(member, appID) && h.serviceScopeRefuses(r, appID, userID, "edit_profile") {
+		writeError(w, "profile_not_owned: this app may only edit the profile of an account created for it", http.StatusForbidden)
+		return
+	}
 
 	user, err := h.userService.UpdateProfile(r.Context(), userID, req)
 	if err != nil {
@@ -283,6 +335,17 @@ func (h *AppUsersHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		// granted explicit app roles (an app member cannot be a Socrate admin).
 		writeError(w, "socrate admins and superadmins cannot be assigned to a specific app", http.StatusForbidden)
 		return
+	}
+	// A service account may not enrol an existing person in its app without
+	// their consent (SERVICE_USER_SCOPE_MODE): only an account created for
+	// this app, or one already a member, is accepted. An admin adds anyone
+	// else from the console, or the person signs in to the app themselves.
+	if _, isService := middleware.GetServiceAccountAppFromContext(r.Context()); isService && !isNewUser && !createdForApp(user, appID) {
+		if _, memberErr := h.userAppRoleService.GetUserRoleForApp(r.Context(), user.ID, appID); memberErr != nil &&
+			h.serviceScopeRefuses(r, appID, user.ID, "add_existing_account") {
+			writeError(w, "account_exists: an existing account can only be added to the app by an admin or by signing in", http.StatusConflict)
+			return
+		}
 	}
 	// An invite only activates a pending account created for the same app.
 	// For an existing pending account created for another app, the role is

@@ -333,9 +333,15 @@ Instead, on `authorization_code` login and on every refresh, `/oauth/token` sets
 it as a cookie and omits it from the body:
 
 ```
-Set-Cookie: refresh_token=<jwt>; Path=/oauth/token; Max-Age=<REFRESH_TOKEN_TTL>;
+Set-Cookie: __Host-refresh_token=<jwt>; Path=/; Max-Age=<REFRESH_TOKEN_TTL>;
             HttpOnly; Secure; SameSite=Strict
 ```
+
+In production (Secure) the cookie is `__Host-refresh_token` (since v1.14.7): the
+prefix makes the browser refuse it unless it is Secure, host-only and on `Path=/`,
+so a sibling subdomain cannot set or overwrite it. Over plain http (local
+development) it stays `refresh_token` on `Path=/oauth/token`. A browser holding
+the cookie under its old name gets it expired; the console signs in once more.
 
 - The **access token** stays a Bearer token in the JSON body (held in memory by
   the SPA); the **refresh token** is never readable by JavaScript (XSS-safe).
@@ -343,6 +349,13 @@ Set-Cookie: refresh_token=<jwt>; Path=/oauth/token; Max-Age=<REFRESH_TOKEN_TTL>;
   to `/oauth/token` with the cookie attached — no `refresh_token` form field.
   The server reads it from the cookie and runs the single hardened refresh grant
   (rotation + replay detection + DPoP binding, §5.4 / §2.3), rotating the cookie.
+- The cookie is read only for the console's own `client_id`, only with an
+  `X-Requested-By` header (a page on another site cannot add a custom header
+  without a CORS grant), and only when the request's `Origin`, if any, is one of
+  the console's own origins (those of `ADMIN_CONSOLE_REDIRECT_URIS`) (since
+  v1.14.7). `SameSite=Strict` alone lets a page on another origin of the same site
+  send the cookie, and `ALLOWED_ORIGINS` may grant it CORS. A request that fails
+  these checks is handled as one without a refresh token.
 - **Logout** (`/api/auth/logout`) revokes the tokens server-side and clears the
   cookie. The channel is inert (unchanged behaviour) when the env var is unset.
 

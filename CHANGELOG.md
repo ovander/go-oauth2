@@ -12,6 +12,14 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **IP blocks and alert-rule changes are audited.** A manual block, an unblock, and creating,
+  changing or deleting an alert rule now record a security event naming the admin:
+  `ip_blocked` and `ip_unblocked` (the block's address, reason, author and dates, read before
+  the row is deleted), `alert_rule_created`, `alert_rule_updated` (values `before` and `after`)
+  and `alert_rule_deleted`. Lifting a block and changing or deleting a rule are `warning`. A
+  webhook URL is recorded as its host only. Unblocking or deleting an unknown id now answers
+  `404` (it answered `204`). Deploy note: no migration, no environment variable.
+
 - **A revoked service-account token is refused.** The service-account routes
   (`/api/apps/{app_id}/service/*`) now check a `client_credentials` token's `jti` against the
   revoked list that `POST /oauth/revoke` writes, as `AuthMiddleware` does for user tokens, and

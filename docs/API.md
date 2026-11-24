@@ -834,6 +834,13 @@ With `ADMIN_SCOPE_MODE=enforce` the monitoring routes also need
 (`403 insufficient_scope`). `GET /metrics` (Prometheus) is served on the admin
 port only, without authentication; see [`OBSERVABILITY.md`](OBSERVABILITY.md).
 
+Changes to the defences are security events (since v1.14.7), with the admin
+as the user: `ip_blocked` and `ip_unblocked` (the block's address, reason,
+author, dates; `DELETE /security/blocked-ips/{id}` answers `404` for an unknown
+block), `alert_rule_created`, `alert_rule_updated` (the values `before` and
+`after`) and `alert_rule_deleted` (`404` for an unknown rule). A rule's webhook
+URL is recorded as its host only, since its path often carries a secret.
+
 ### 8.5 App-scoped user management — `/api/apps/{app_id}/users`
 For **app admins** (per-app `admin` role or global admin). CRUD over an app's
 members, `POST /{user_id}/resend-verification`, `POST /{user_id}/reset-password`.

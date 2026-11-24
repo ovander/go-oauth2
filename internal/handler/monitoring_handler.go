@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +32,80 @@ type MonitoringHandler struct {
 	// background tamper-evidence scanner actually runs. Set via
 	// SetAuditScanningEnabled at wiring time; false by default.
 	auditScanningEnabled bool
+
+	// securityAudit records block, unblock and alert-rule changes. Nil skips
+	// them (tests); bootstrap always sets it.
+	securityAudit service.SecurityAuditService
+}
+
+// SetSecurityAuditService sets where block, unblock and alert-rule changes
+// are recorded.
+func (h *MonitoringHandler) SetSecurityAuditService(s service.SecurityAuditService) {
+	h.securityAudit = s
+}
+
+// auditDefenceChange records a change to the defences, made by the admin in
+// the request. Fire-and-forget: a write failure never fails the change.
+func (h *MonitoringHandler) auditDefenceChange(r *http.Request, eventType model.SecurityEventType, details map[string]interface{}) {
+	if h.securityAudit == nil {
+		return
+	}
+	var actor *uint
+	if id, ok := middleware.GetUserIDFromContext(r.Context()); ok {
+		actor = &id
+	}
+	_ = h.securityAudit.LogFromRequest(r.Context(), r, service.SecurityEvent{
+		UserID:    actor,
+		EventType: eventType,
+		Success:   true,
+		Details:   details,
+	})
+}
+
+// blockDetails is what the audit records about a block.
+func blockDetails(b *model.BlockedIP) map[string]interface{} {
+	d := map[string]interface{}{
+		"block_id":   b.ID,
+		"ip_address": b.IPAddress,
+		"reason":     b.Reason,
+		"permanent":  b.Permanent,
+		"blocked_at": b.BlockedAt,
+	}
+	if b.ExpiresAt != nil {
+		d["expires_at"] = *b.ExpiresAt
+	}
+	if b.BlockedBy != nil {
+		d["blocked_by"] = *b.BlockedBy
+	}
+	return d
+}
+
+// webhookHost is the host of an alert rule's webhook URL: the audit never
+// records the full URL, whose path often carries a secret token.
+func webhookHost(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return "(unparsable)"
+	}
+	return u.Host
+}
+
+// alertRuleValues is what the audit records about an alert rule.
+func alertRuleValues(rule *model.AlertRule) map[string]interface{} {
+	return map[string]interface{}{
+		"name":         rule.Name,
+		"description":  rule.Description,
+		"event_type":   rule.EventType,
+		"condition":    rule.Condition,
+		"severity":     string(rule.Severity),
+		"enabled":      rule.Enabled,
+		"actions":      rule.Actions,
+		"recipients":   rule.Recipients,
+		"webhook_host": webhookHost(rule.WebhookURL),
+	}
 }
 
 // SetAuditScanningEnabled records whether the background audit-integrity
@@ -500,6 +575,9 @@ func (h *MonitoringHandler) CreateAlertRule(w http.ResponseWriter, r *http.Reque
 		writeError(w, "failed to create alert rule", http.StatusInternalServerError)
 		return
 	}
+	h.auditDefenceChange(r, model.SecurityEventAlertRuleCreated, map[string]interface{}{
+		"rule_id": rule.ID, "rule": alertRuleValues(rule),
+	})
 
 	w.WriteHeader(http.StatusCreated)
 	writeJSON(w, dto.FromAlertRule(rule))
@@ -526,6 +604,8 @@ func (h *MonitoringHandler) UpdateAlertRule(w http.ResponseWriter, r *http.Reque
 		writeError(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
+	before := alertRuleValues(rule)
+	oldWebhook := rule.WebhookURL
 
 	if req.Name != "" {
 		rule.Name = req.Name
@@ -560,6 +640,10 @@ func (h *MonitoringHandler) UpdateAlertRule(w http.ResponseWriter, r *http.Reque
 		writeError(w, "failed to update alert rule", http.StatusInternalServerError)
 		return
 	}
+	h.auditDefenceChange(r, model.SecurityEventAlertRuleUpdated, map[string]interface{}{
+		"rule_id": rule.ID, "before": before, "after": alertRuleValues(rule),
+		"webhook_url_changed": rule.WebhookURL != oldWebhook,
+	})
 
 	writeJSON(w, dto.FromAlertRule(rule))
 }
@@ -574,10 +658,18 @@ func (h *MonitoringHandler) DeleteAlertRule(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	rule, err := h.alertRuleRepo.FindByID(ctx, uint(id))
+	if err != nil {
+		writeError(w, "alert rule not found", http.StatusNotFound)
+		return
+	}
 	if err := h.alertRuleRepo.Delete(ctx, uint(id)); err != nil {
 		writeError(w, "failed to delete alert rule", http.StatusInternalServerError)
 		return
 	}
+	h.auditDefenceChange(r, model.SecurityEventAlertRuleDeleted, map[string]interface{}{
+		"rule_id": rule.ID, "rule": alertRuleValues(rule),
+	})
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -729,6 +821,7 @@ func (h *MonitoringHandler) BlockIP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, "failed to block IP", http.StatusInternalServerError)
 		return
 	}
+	h.auditDefenceChange(r, model.SecurityEventIPBlocked, blockDetails(blockedIP))
 
 	w.WriteHeader(http.StatusCreated)
 	writeJSON(w, dto.FromBlockedIP(blockedIP))
@@ -744,10 +837,18 @@ func (h *MonitoringHandler) UnblockIP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read the block first: deleting the row would otherwise leave no trace
+	// of what was lifted.
+	block, err := h.blockedIPRepo.FindByID(ctx, uint(id))
+	if err != nil {
+		writeError(w, "blocked IP not found", http.StatusNotFound)
+		return
+	}
 	if err := h.blockedIPRepo.Delete(ctx, uint(id)); err != nil {
 		writeError(w, "failed to unblock IP", http.StatusInternalServerError)
 		return
 	}
+	h.auditDefenceChange(r, model.SecurityEventIPUnblocked, blockDetails(block))
 
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -103,6 +103,16 @@ const (
 	// observe mode the request still proceeds; in enforce it is rejected. Either
 	// way the failure is recorded so the SOC can see DPoP abuse/misconfiguration.
 	SecurityEventDPoPValidationFailed SecurityEventType = "dpop_validation_failed"
+
+	// Defence configuration changed by an admin: a manual IP block or
+	// unblock, and an alert rule created, changed or deleted. Lifting a block
+	// or disabling a rule is how an intruder would quiet the monitoring, so
+	// each change is recorded with who made it and the values involved.
+	SecurityEventIPBlocked        SecurityEventType = "ip_blocked"
+	SecurityEventIPUnblocked      SecurityEventType = "ip_unblocked"
+	SecurityEventAlertRuleCreated SecurityEventType = "alert_rule_created"
+	SecurityEventAlertRuleUpdated SecurityEventType = "alert_rule_updated"
+	SecurityEventAlertRuleDeleted SecurityEventType = "alert_rule_deleted"
 )
 
 // SecuritySeverity indicates the severity level of the event
@@ -169,6 +179,9 @@ func MaxSeverity(a, b SecuritySeverity) SecuritySeverity {
 func GetSeverityForEvent(eventType SecurityEventType, success bool) SecuritySeverity {
 	switch eventType {
 	case SecurityEventLoginFailed, SecurityEventInvalidTokenUsed, SecurityEventExpiredTokenUsed:
+		return SecuritySeverityWarning
+	case SecurityEventIPBlocked, SecurityEventIPUnblocked, SecurityEventAlertRuleUpdated, SecurityEventAlertRuleDeleted:
+		// A change to the defences themselves warrants SOC attention.
 		return SecuritySeverityWarning
 	case SecurityEventClientDeleted, SecurityEventClientSecretRotated:
 		// Destructive / credential-changing client-lifecycle actions warrant SOC

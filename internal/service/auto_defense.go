@@ -60,10 +60,10 @@ type ipRecord struct {
 
 // AutoDefenseService provides automatic threat detection and blocking
 type AutoDefenseService struct {
-	config            AutoDefenseConfig
-	blockedIPRepo     repository.BlockedIPRepository
+	config        AutoDefenseConfig
+	blockedIPRepo repository.BlockedIPRepository
 	// blockGuard: addresses never blocked automatically (see IPBlockGuard).
-	blockGuard *IPBlockGuard
+	blockGuard        *IPBlockGuard
 	securityAuditRepo repository.SecurityAuditLogRepository
 
 	// In-memory tracking for real-time detection

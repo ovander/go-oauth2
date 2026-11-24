@@ -10,64 +10,16 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
-### Changed
+## [1.14.6] - 2026-11-24
 
-- Tests: `TestPostgresRateLimitStore_WindowsAreSeparate` no longer fails during the first minute
-  of every hour (when a 1-minute and a 1-hour window both start at hh:00:00). The Postgres
-  rate-limit store reads its clock through a field that the test pins. No runtime change.
-
-### Security
-
-- **Token exchange targets only the client's registered audiences, and the actor must be the
-  requesting client.** With `TOKEN_EXCHANGE_MODE=enforce` (default `off`), each requested
-  `audience` and `resource` must be one of the client's registered `audiences` (set by an
-  operator in the admin console), otherwise `400 invalid_target`; the exchanged token's `aud` is
-  the requested audiences and resources together (a `resource`-only request used to yield a token
-  without `aud`). In a delegation, the actor token must belong to the requesting client — issued
-  to it (`aud[0]` is its `client_id`) or its own service-account token — otherwise
-  `400 invalid_grant` (`deny_reason` `actor_not_requesting_client`). Before, any audience string
-  was accepted and any valid token could act as the actor. Deploy note: no migration, no
-  environment variable, no change of default; a client that exchanges tokens must have its
-  target audiences registered.
-
-- **Token exchange checks the presented tokens like the refresh grant.** With
-  `TOKEN_EXCHANGE_MODE=enforce` (default `off`), a subject or actor token is now refused
-  (`400 invalid_grant`) when its `jti` is on the used/revoked list (a rotated refresh token, a
-  revoked access token) or the list cannot be read, when it is DPoP-bound (`cnf.jkt`) and the
-  request carries no proof for that key, when the user's tokens were revoked after it was issued
-  (token version), or when its user is locked or unknown. Before, only its signature, type and
-  expiry were checked. The audit row names the check (`deny_reason` `subject_revoked`,
-  `subject_dpop_mismatch`, `subject_token_version`, `subject_locked`, `subject_unknown_user`, or
-  the same with `actor_`). An ID token is no longer accepted as a subject or actor token
-  (`…_id_token`): it carries no token version, so revoking the user's tokens would not reach it. A service-account token (a `client_credentials` token, `sub` `app:<id>`), such as a
-  service's own token used as the actor of a delegation, has no user: it is accepted while its app
-  exists and is active (`deny_reason` `…_unknown_app` / `…_inactive_app` otherwise), and the
-  revocation and DPoP checks apply to it too. Deploy note: no migration, no environment variable, no change of default.
-
-- Dependencies: `github.com/go-chi/chi/v5` 5.3.2 → 5.5.0 (GHSA-j6qf-3m9c-vwj3, client IP from
-  `X-Forwarded-For` in chi's `ClientIPFromXFF`) and `golang.org/x/crypto` 0.57.0 → 0.59.0
-  (GO-2026-5932, the deprecated `openpgp` package), with `x/sync`, `x/sys` and `x/text` following.
-  Socrate uses neither affected code path (client IPs come from its own `ClientIP` middleware since
-  P3-2, and nothing imports `openpgp`; govulncheck reported neither as reachable); the bump closes
-  OpenSSF Scorecard's Vulnerabilities alert. No code change; rebuild to pick it up.
-
-### Changed
-
-- CI and image supply chain: every GitHub Action is pinned to a commit SHA (the tag kept as a
-  comment) and both `Dockerfile` base images to a digest, so a moved tag cannot change what CI or
-  the image build runs; Dependabot (already configured for `github-actions` and `docker`) keeps
-  the pins current. The `Release` workflow is read-only by default and only its release job may
-  write. Closes OpenSSF Scorecard's Pinned-Dependencies and Token-Permissions alerts. No change to
-  the server.
-
-### Security
-
-- **Email header values cannot carry a line break.** Outgoing emails are built so that no header
-  takes a raw line break from its input: the recipient must be a single valid address
-  (`net/mail`), the sender's display name is encoded, and the subject (which includes the
-  application name) becomes a MIME encoded-word (RFC 2047) when it holds a control or non-ASCII
-  character, which also makes non-ASCII application names display correctly. An email to an
-  invalid address is refused instead of being sent. No migration, no environment variable.
+Security patch release on the **v1.x** line. The token-exchange grant (only active with the
+non-default `TOKEN_EXCHANGE_MODE=enforce`) authenticates the client first and accepts only active,
+confidential clients, checks the presented tokens like the refresh grant, and targets only the
+client's registered audiences with an actor that belongs to the requesting client. Email header
+values can no longer carry a line break; chi and x/crypto move past two advisories that Socrate's
+code does not reach; numeric ids are parsed at the platform's integer size; CI actions and base
+images are pinned. No migration, no environment variable, no change of default; with
+`TOKEN_EXCHANGE_MODE=off` (the default) the token endpoint behaves as in v1.14.5.
 
 ### Security
 
@@ -85,6 +37,46 @@ Capabilities**, non-breaking).
   variable, no change of default; a public client that had `allow_token_exchange` must become a
   confidential client to keep exchanging.
 
+- **Token exchange checks the presented tokens like the refresh grant.** With
+  `TOKEN_EXCHANGE_MODE=enforce` (default `off`), a subject or actor token is now refused
+  (`400 invalid_grant`) when its `jti` is on the used/revoked list (a rotated refresh token, a
+  revoked access token) or the list cannot be read, when it is DPoP-bound (`cnf.jkt`) and the
+  request carries no proof for that key, when the user's tokens were revoked after it was issued
+  (token version), or when its user is locked or unknown. Before, only its signature, type and
+  expiry were checked. The audit row names the check (`deny_reason` `subject_revoked`,
+  `subject_dpop_mismatch`, `subject_token_version`, `subject_locked`, `subject_unknown_user`, or
+  the same with `actor_`). An ID token is no longer accepted as a subject or actor token
+  (`…_id_token`): it carries no token version, so revoking the user's tokens would not reach it. A service-account token (a `client_credentials` token, `sub` `app:<id>`), such as a
+  service's own token used as the actor of a delegation, has no user: it is accepted while its app
+  exists and is active (`deny_reason` `…_unknown_app` / `…_inactive_app` otherwise), and the
+  revocation and DPoP checks apply to it too. Deploy note: no migration, no environment variable, no change of default.
+
+- **Token exchange targets only the client's registered audiences, and the actor must be the
+  requesting client.** With `TOKEN_EXCHANGE_MODE=enforce` (default `off`), each requested
+  `audience` and `resource` must be one of the client's registered `audiences` (set by an
+  operator in the admin console), otherwise `400 invalid_target`; the exchanged token's `aud` is
+  the requested audiences and resources together (a `resource`-only request used to yield a token
+  without `aud`). In a delegation, the actor token must belong to the requesting client — issued
+  to it (`aud[0]` is its `client_id`) or its own service-account token — otherwise
+  `400 invalid_grant` (`deny_reason` `actor_not_requesting_client`). Before, any audience string
+  was accepted and any valid token could act as the actor. Deploy note: no migration, no
+  environment variable, no change of default; a client that exchanges tokens must have its
+  target audiences registered.
+
+- **Email header values cannot carry a line break.** Outgoing emails are built so that no header
+  takes a raw line break from its input: the recipient must be a single valid address
+  (`net/mail`), the sender's display name is encoded, and the subject (which includes the
+  application name) becomes a MIME encoded-word (RFC 2047) when it holds a control or non-ASCII
+  character, which also makes non-ASCII application names display correctly. An email to an
+  invalid address is refused instead of being sent. No migration, no environment variable.
+
+- Dependencies: `github.com/go-chi/chi/v5` 5.3.2 → 5.5.0 (GHSA-j6qf-3m9c-vwj3, client IP from
+  `X-Forwarded-For` in chi's `ClientIPFromXFF`) and `golang.org/x/crypto` 0.57.0 → 0.59.0
+  (GO-2026-5932, the deprecated `openpgp` package), with `x/sync`, `x/sys` and `x/text` following.
+  Socrate uses neither affected code path (client IPs come from its own `ClientIP` middleware since
+  P3-2, and nothing imports `openpgp`; govulncheck reported neither as reachable); the bump closes
+  OpenSSF Scorecard's Vulnerabilities alert. No code change; rebuild to pick it up.
+
 ### Changed
 
 - Numeric ids read from URLs, query strings and token subjects are parsed at the platform's
@@ -92,10 +84,19 @@ Capabilities**, non-breaking).
   refused instead of wrapping on a 32-bit build. No change on the 64-bit builds Socrate ships;
   closes CodeQL's "incorrect conversion between integer types" alerts.
 
-### Changed
+- CI and image supply chain: every GitHub Action is pinned to a commit SHA (the tag kept as a
+  comment) and both `Dockerfile` base images to a digest, so a moved tag cannot change what CI or
+  the image build runs; Dependabot (already configured for `github-actions` and `docker`) keeps
+  the pins current. The `Release` workflow is read-only by default and only its release job may
+  write. Closes OpenSSF Scorecard's Pinned-Dependencies and Token-Permissions alerts. No change to
+  the server.
 
 - Tests: the TOTP single-use tests (#374) fail on every database or lookup error instead of
   ignoring it, and `scratchDB` gets its doc comment back. No runtime change.
+
+- Tests: `TestPostgresRateLimitStore_WindowsAreSeparate` no longer fails during the first minute
+  of every hour (when a 1-minute and a 1-hour window both start at hh:00:00). The Postgres
+  rate-limit store reads its clock through a field that the test pins. No runtime change.
 
 ## [1.14.5] - 2026-11-23
 
@@ -2269,7 +2270,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.14.5...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.14.6...HEAD
+[1.14.6]: https://github.com/ovander/go-oauth2/compare/v1.14.5...v1.14.6
 [1.14.5]: https://github.com/ovander/go-oauth2/compare/v1.14.4...v1.14.5
 [1.14.4]: https://github.com/ovander/go-oauth2/compare/v1.14.3...v1.14.4
 [1.14.3]: https://github.com/ovander/go-oauth2/compare/v1.14.2...v1.14.3

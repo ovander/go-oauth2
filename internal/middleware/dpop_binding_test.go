@@ -33,11 +33,15 @@ func newDPoPKey(t *testing.T) dpopKey {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pad := func(b []byte) []byte { return append(make([]byte, 32-len(b)), b...) }
+	// Uncompressed point: 0x04 || X (32 bytes) || Y (32 bytes).
+	point, err := priv.PublicKey.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
 	return dpopKey{priv: priv, jwk: map[string]interface{}{
 		"kty": "EC", "crv": "P-256",
-		"x": base64.RawURLEncoding.EncodeToString(pad(priv.PublicKey.X.Bytes())),
-		"y": base64.RawURLEncoding.EncodeToString(pad(priv.PublicKey.Y.Bytes())),
+		"x": base64.RawURLEncoding.EncodeToString(point[1:33]),
+		"y": base64.RawURLEncoding.EncodeToString(point[33:65]),
 	}}
 }
 

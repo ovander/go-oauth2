@@ -12,6 +12,15 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **Saving a user can no longer restore an old password.** `UserRepository.Update` now also leaves
+  out `hashed_password`, `password_changed_at` and `must_change_password`: a path that loaded a
+  user before a password change (a sign-in saving its last-login time racing a change or a
+  reset) used to write the old hash back, so the old password worked again. The password is
+  written only by `SetPassword`, which ends the existing sessions in the same statement, and by
+  `UpdateProfile`. Accepting an invite for a pending account now sets the password and the
+  verification with `SetPassword` (new `PasswordChange.ConfirmedAt`). Deploy note: no
+  migration, no environment variable.
+
 - **Saving a user no longer brings back a user deleted in the meantime.** `UserRepository.Update`
   used GORM's `Save`, which retries an update that matches no row as an insert that clears
   `deleted_at`: a path that loaded a user before an admin deleted it (a sign-in saving its

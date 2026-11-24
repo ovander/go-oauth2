@@ -56,7 +56,10 @@ func expectExchangeDenied(t *testing.T, svc *oauthService, audit *captureAuditRe
 	if !errors.Is(err, ErrInvalidToken) {
 		t.Fatalf("%s: %v, want ErrInvalidToken", wantReason, err)
 	}
-	if audit.last == nil || audit.last.Details["deny_reason"] != wantReason {
+	if audit.last == nil {
+		t.Fatalf("%s: no audit row", wantReason)
+	}
+	if audit.last.Details["deny_reason"] != wantReason {
 		t.Fatalf("deny_reason %v, want %s", audit.last.Details["deny_reason"], wantReason)
 	}
 }
@@ -129,6 +132,9 @@ func TestExchangeToken_RotatedRefreshSubjectToken(t *testing.T) {
 	if _, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret); !errors.Is(err, ErrInvalidToken) {
 		t.Fatalf("rotated refresh token: %v, want ErrInvalidToken", err)
 	}
+	if audit.last == nil {
+		t.Fatal("no audit row")
+	}
 	if audit.last.Details["deny_reason"] != "subject_revoked" {
 		t.Fatalf("deny_reason %v, want subject_revoked", audit.last.Details["deny_reason"])
 	}
@@ -146,4 +152,65 @@ func TestExchangeToken_ActorTokenChecks(t *testing.T) {
 	until := time.Now().Add(time.Hour)
 	users.users[200] = &model.User{ID: 200, TokenVersion: 1, LockedUntil: &until}
 	expectExchangeDenied(t, svc, audit, context.Background(), subject, actor, "actor_locked")
+}
+
+// A service-account token (client_credentials, sub "app:<id>") has no user:
+// it is exchangeable while its app exists and is active, for instance as the
+// actor token of a delegation, and the revocation list still applies to it.
+func TestExchangeToken_ServiceAccountToken(t *testing.T) {
+	svc, audit, ts, _, used := newCheckedExchangeSvc(t)
+	app, err := svc.appRepo.FindByClientID(context.Background(), "c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor, err := ts.GenerateClientCredentialsToken(app, "read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	subject := mintToken(t, ts, 100, "read write")
+	if _, err := svc.ExchangeToken(context.Background(), exForm(subject, actor, "read", "https://api"), "c", exchangeTestSecret); err != nil {
+		t.Fatalf("delegation with the client's own service-account token as actor: %v", err)
+	}
+
+	used.used[jtiOf(t, actor)] = true
+	expectExchangeDenied(t, svc, audit, context.Background(), subject, actor, "actor_revoked")
+	delete(used.used, jtiOf(t, actor))
+
+	app.Active = false
+	// The requesting client is the same app here, so deactivating it is
+	// refused earlier, at client authentication; check the token on its own.
+	if reason := svc.checkExchangeToken(context.Background(), exchangeToken{sub: "app:7", versioned: true}); reason != "inactive_app" {
+		t.Fatalf("inactive app: %q, want inactive_app", reason)
+	}
+	app.Active = true
+	if reason := svc.checkExchangeToken(context.Background(), exchangeToken{sub: "app:999", versioned: true}); reason != "unknown_app" {
+		t.Fatalf("unknown app: %q, want unknown_app", reason)
+	}
+	if reason := svc.checkExchangeToken(context.Background(), exchangeToken{sub: "app:x", versioned: true}); reason != "unknown_app" {
+		t.Fatalf("malformed app id: %q, want unknown_app", reason)
+	}
+}
+
+// An ID token cannot be revoked (it carries no token version), so it is not
+// accepted as a subject token.
+func TestExchangeToken_IDTokenSubjectRefused(t *testing.T) {
+	svc, audit, ts, _, _ := newCheckedExchangeSvc(t)
+	set, err := ts.GenerateTokenSet(&model.User{ID: 100, TokenVersion: 1}, &model.App{ClientID: "subject-app"}, "user", "openid read", nil, "n", time.Now().Unix())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if set.IDToken == "" {
+		t.Fatal("no ID token minted")
+	}
+	form := exForm(set.IDToken, "", "read", "https://api")
+	form.Set("subject_token_type", tokenexchange.TokenTypeIDToken)
+	if _, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret); !errors.Is(err, ErrInvalidToken) {
+		t.Fatalf("ID token as subject: %v, want ErrInvalidToken", err)
+	}
+	if audit.last == nil {
+		t.Fatal("no audit row")
+	}
+	if audit.last.Details["deny_reason"] != "subject_id_token" {
+		t.Fatalf("deny_reason %v, want subject_id_token", audit.last.Details["deny_reason"])
+	}
 }

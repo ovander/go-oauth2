@@ -20,8 +20,11 @@ Capabilities**, non-breaking).
   (token version), or when its user is locked or unknown. Before, only its signature, type and
   expiry were checked. The audit row names the check (`deny_reason` `subject_revoked`,
   `subject_dpop_mismatch`, `subject_token_version`, `subject_locked`, `subject_unknown_user`, or
-  the same with `actor_`). An ID token carries no token version, so only the other checks apply
-  to it. Deploy note: no migration, no environment variable, no change of default.
+  the same with `actor_`). An ID token is no longer accepted as a subject or actor token
+  (`…_id_token`): it carries no token version, so revoking the user's tokens would not reach it. A service-account token (a `client_credentials` token, `sub` `app:<id>`), such as a
+  service's own token used as the actor of a delegation, has no user: it is accepted while its app
+  exists and is active (`deny_reason` `…_unknown_app` / `…_inactive_app` otherwise), and the
+  revocation and DPoP checks apply to it too. Deploy note: no migration, no environment variable, no change of default.
 
 ### Changed
 

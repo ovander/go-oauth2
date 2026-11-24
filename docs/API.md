@@ -490,7 +490,8 @@ DPoP proof (`400 invalid_dpop_proof`). The subject token and the actor token get
 same checks as a refresh token on the refresh grant (since v1.14.6): a rotated or revoked
 token, a DPoP-bound token without a proof for its key, a token issued before the user's
 tokens were revoked (token version), or one whose user is locked or unknown is
-`400 invalid_grant`. The exchanged access token is downscoped (`invalid_scope`
+`400 invalid_grant`. A service-account token (`sub` `app:<id>`) is accepted while its
+app exists and is active; an ID token is not accepted (it cannot be revoked). The exchanged access token is downscoped (`invalid_scope`
 beyond the subject's scope), audience-bound (`invalid_target` without a target)
 and carries the actor chain in `act`; an impersonation token lives at most
 `IMPERSONATION_TOKEN_TTL`. `IMPERSONATION_STEPUP_MODE` and

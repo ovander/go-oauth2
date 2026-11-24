@@ -1732,7 +1732,13 @@ func (s *oauthService) verifyExchangeToken(tokenStr, tokenType string) (exchange
 //     proof for that key;
 //   - "unknown_user": its subject is not a user of this server;
 //   - "token_version": the user's tokens were revoked after it was issued;
-//   - "locked": the user's account is locked.
+//   - "locked": the user's account is locked;
+//   - "id_token": it is an ID token, which carries no token version and so
+//     cannot be revoked;
+//   - "unknown_app" / "inactive_app": for a service-account token (a
+//     client_credentials token, sub "app:<id>"), its app no longer exists or
+//     is deactivated. Such a token has no user, so the user checks do not
+//     apply to it.
 func (s *oauthService) checkExchangeToken(ctx context.Context, t exchangeToken) string {
 	if s.usedTokenRepo != nil && t.jti != "" {
 		used, err := s.usedTokenRepo.IsUsed(ctx, t.jti)
@@ -1742,6 +1748,26 @@ func (s *oauthService) checkExchangeToken(ctx context.Context, t exchangeToken) 
 	}
 	if verifyRefreshDPoPBinding(ctx, t.cnfJKT) != nil {
 		return "dpop_mismatch"
+	}
+	// An ID token carries no token version, so revoking the user's tokens
+	// (logout, password change, admin revocation) would not reach it: it is
+	// not accepted as an exchange input.
+	if !t.versioned {
+		return "id_token"
+	}
+	if appIDStr, ok := strings.CutPrefix(t.sub, "app:"); ok {
+		appID, err := strconv.ParseUint(appIDStr, 10, strconv.IntSize)
+		if err != nil {
+			return "unknown_app"
+		}
+		app, err := s.appRepo.FindByID(ctx, uint(appID))
+		if err != nil || app == nil {
+			return "unknown_app"
+		}
+		if !app.Active {
+			return "inactive_app"
+		}
+		return ""
 	}
 	uid, err := strconv.ParseUint(t.sub, 10, strconv.IntSize)
 	if err != nil {

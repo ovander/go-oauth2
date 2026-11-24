@@ -43,6 +43,8 @@ var (
 	ErrMethodMismatch = errors.New("dpop: htm does not match the request method")
 	ErrURIMismatch    = errors.New("dpop: htu does not match the request URI")
 	ErrStale          = errors.New("dpop: iat is outside the acceptable window")
+	ErrATHMismatch    = errors.New("dpop: ath does not match the access token")
+	ErrKeyMismatch    = errors.New("dpop: proof key does not match the token's cnf.jkt")
 )
 
 const (
@@ -69,12 +71,16 @@ type Proof struct {
 	Thumbprint string
 	// PublicKey is the client's verified public key from the embedded jwk.
 	PublicKey *ecdsa.PublicKey
+	// ATH is the proof's access-token hash (RFC 9449 §4.2), present on a
+	// proof sent to a protected resource; empty at the token endpoint.
+	ATH string
 }
 
 // proofClaims are the DPoP-specific claims plus the registered iat/jti.
 type proofClaims struct {
 	HTM string `json:"htm"`
 	HTU string `json:"htu"`
+	ATH string `json:"ath,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -134,7 +140,15 @@ func Verify(proofJWT, htm, htu string, now time.Time) (*Proof, error) {
 		IssuedAt:   iat,
 		Thumbprint: thumb,
 		PublicKey:  pub,
+		ATH:        claims.ATH,
 	}, nil
+}
+
+// AccessTokenHash is the ath value for accessToken: the base64url (no
+// padding) SHA-256 of its ASCII form (RFC 9449 §4.2).
+func AccessTokenHash(accessToken string) string {
+	sum := sha256.Sum256([]byte(accessToken))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
 // mapParseError translates golang-jwt parse failures (and the sentinel errors

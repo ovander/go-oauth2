@@ -12,6 +12,20 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **Creating or changing an OAuth client and deleting a user require step-up.**
+  `POST /api/admin/apps`, `PUT /api/admin/apps/{id}` (redirect URIs, `allow_impersonation`,
+  `allow_token_exchange`, claim mappings, allowed scopes…) and `DELETE /api/admin/users/{id}`
+  now require a recent authentication like the other destructive admin routes
+  (`403 elevation_required`, then `POST /api/admin/elevate`); they join `policy.StepUpActions`,
+  so the A4 baseline expresses the same obligation. A new test makes every state-changing admin
+  route either a step-up action or listed with a reason, so a new one cannot skip step-up
+  unnoticed. Deploy note: no migration, no environment variable; the admin console already
+  prompts for step-up on any `elevation_required`, and the installer's client registration
+  runs right after its sign-in, within the window. A policy already stored (A4) keeps its own
+  `destructive-step-up` rule: with `POLICY_MODE` `shadow` or `enforce`, add the three actions to
+  it in the policy editor, or the decision point will report them as divergences (the router's
+  own step-up check applies either way).
+
 - **Every password check counts failures and honours the lockout; `/elevate` and
   `/change-password` are rate-limited.** `POST /api/admin/elevate` (re-authentication) and
   `POST /api/admin/change-password` used to check the password without counting a wrong one or

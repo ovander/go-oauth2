@@ -7,10 +7,13 @@ const AdminPrefix = "/api/admin"
 // RequireFreshAuth today. The baseline expresses the same requirement as an
 // obligation; the router parity test fails if the two lists ever drift.
 var StepUpActions = []string{
+	"POST /api/admin/apps",
+	"PUT /api/admin/apps/{id}",
 	"DELETE /api/admin/apps/{id}",
 	"POST /api/admin/apps/{id}/rotate-secret",
 	"POST /api/admin/users/{id}/revoke-tokens",
 	"POST /api/admin/users/{id}/block",
+	"DELETE /api/admin/users/{id}",
 	"POST /api/admin/webhooks",
 	"POST /api/admin/webhooks/deliveries/{id}/requeue",
 	"PUT /api/admin/webhooks/{id}",

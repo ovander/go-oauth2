@@ -11,6 +11,7 @@ package http
 import (
 	nethttp "net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -214,5 +215,24 @@ func TestCORSHandler_WildcardConfig_NeverAllowsCredentials_MultipleOrigins(t *te
 				t.Errorf("wildcard config must never set Allow-Credentials: true (origin=%q)", origin)
 			}
 		})
+	}
+}
+
+// A browser client sends its DPoP proof in the DPoP header (RFC 9449), to the
+// token endpoint and with a bound token: the preflight must allow it, and the
+// 401 challenge (WWW-Authenticate) must be readable.
+func TestCORSHandler_DPoPHeader_Allowed(t *testing.T) {
+	config := RouterConfig{AllowedOrigins: []string{"https://spa.example.com"}}
+	h := preflightWithRequestedHeaders(t, config, "https://spa.example.com", "Authorization, DPoP")
+	if got := h.Get("Access-Control-Allow-Origin"); got != "https://spa.example.com" {
+		t.Fatalf("a preflight requesting DPoP got no ACAO (%q): the browser cannot send a proof", got)
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/oauth/userinfo", nil)
+	req.Header.Set("Origin", "https://spa.example.com")
+	corsHandler(config)(corsNopHandler).ServeHTTP(rec, req)
+	if exposed := rec.Header().Get("Access-Control-Expose-Headers"); !strings.Contains(exposed, "Www-Authenticate") && !strings.Contains(exposed, "WWW-Authenticate") {
+		t.Errorf("WWW-Authenticate is not exposed: %q", exposed)
 	}
 }

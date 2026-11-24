@@ -20,6 +20,18 @@ Capabilities**, non-breaking).
   webhook URL is recorded as its host only. Unblocking or deleting an unknown id now answers
   `404` (it answered `204`). Deploy note: no migration, no environment variable.
 
+- **A DPoP-bound token presented to Socrate's own APIs needs its proof.** Under `DPOP_MODE`
+  `observe` or `enforce`, a token carrying `cnf.jkt` sent to `/oauth/userinfo`, `/api/*`, the
+  app routes, the service-account routes or the admin API must come with a fresh DPoP proof of the bound key for that request,
+  carrying `ath` (RFC 9449 §7.1; new `dpop.VerifyForResource`, `middleware.DPoPBinding`). The
+  `DPoP` authorization scheme is accepted next to `Bearer`. `enforce` answers `401` with a
+  `WWW-Authenticate: DPoP` challenge; `observe` logs and audits `dpop_validation_failed` and lets
+  the request through. Before, a bound token was accepted as a plain bearer token there. Unbound
+  tokens, and `DPOP_MODE=off`, are unchanged. CORS now allows the `DPoP` request header and
+  exposes `WWW-Authenticate`, so a browser client on an allowed origin can send its proof and
+  read the challenge. Deploy note: no migration, no new variable; run `observe` first and check
+  `dpop_validation_failed` events before `enforce`.
+
 - **A revoked service-account token is refused.** The service-account routes
   (`/api/apps/{app_id}/service/*`) now check a `client_credentials` token's `jti` against the
   revoked list that `POST /oauth/revoke` writes, as `AuthMiddleware` does for user tokens, and

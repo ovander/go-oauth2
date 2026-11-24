@@ -113,6 +113,12 @@ const (
 	SecurityEventAlertRuleCreated SecurityEventType = "alert_rule_created"
 	SecurityEventAlertRuleUpdated SecurityEventType = "alert_rule_updated"
 	SecurityEventAlertRuleDeleted SecurityEventType = "alert_rule_deleted"
+
+	// SecurityEventServiceUserScope: an app's service account added an
+	// existing account that is not already a member, or edited the profile of
+	// an account not created for the app (SERVICE_USER_SCOPE_MODE). Success
+	// is false when enforce refused it.
+	SecurityEventServiceUserScope SecurityEventType = "service_user_scope"
 )
 
 // SecuritySeverity indicates the severity level of the event

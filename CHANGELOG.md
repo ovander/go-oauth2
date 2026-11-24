@@ -22,6 +22,16 @@ Capabilities**, non-breaking).
   `/elevate` and change-password. Deploy note: no migration, no environment variable; a client that
   sends a wrong password to a locked account now gets `401`, not `403`.
 
+- **An app's service account can be kept away from accounts it did not create.** New
+  `SERVICE_USER_SCOPE_MODE` (`off` default, `observe`, `enforce`). Under `enforce`, the service
+  API (`/api/apps/{app_id}/service/users`) no longer enrols an existing account in the app unless
+  it was created for this app or is already a member (`409 account_exists`; an admin adds it, or
+  the person signs in), and edits the global profile only of an account created for the app
+  (`403 profile_not_owned`). `observe` allows both and audits `service_user_scope`. The look-up
+  (`GET`) is unchanged: `token_version` is how an app detects revoked user tokens. Deploy note:
+  no migration; run `observe` and check `service_user_scope` events, which show the apps relying
+  on either, before `enforce`.
+
 - **IP blocks and alert-rule changes are audited.** A manual block, an unblock, and creating,
   changing or deleting an alert rule now record a security event naming the admin:
   `ip_blocked` and `ip_unblocked` (the block's address, reason, author and dates, read before

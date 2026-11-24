@@ -29,6 +29,29 @@ Capabilities**, non-breaking).
   Deploy note: no migration; the records live in `used_tokens`. `off` (the default) is
   unchanged, except that a replayed token is now rejected after client authentication.
 
+- **The admin-console refresh cookie is usable only by the console.** When
+  `ADMIN_CONSOLE_CLIENT_ID` enables the refresh-cookie channel, `/oauth/token` read the cookie
+  for any refresh request without a token in the body. `SameSite=Strict` lets a page on another
+  origin of the same site send it, and `ALLOWED_ORIGINS` may grant that origin credentialed
+  CORS, so a script there could refresh as the console and read the tokens. The cookie is now
+  read only for the console's own `client_id`, with an `X-Requested-By` header (the CSRF defence
+  the router comment described but no code checked), and from the origins of
+  `ADMIN_CONSOLE_REDIRECT_URIS` (or without an `Origin` header). In production the cookie is
+  `__Host-refresh_token` on `Path=/`, which a sibling subdomain cannot set or overwrite; the old
+  cookie is expired when the new one is set, and logout clears both. Deploy note: no migration,
+  no new variable; a browser still holding the old cookie signs in once more. The consoles use
+  their backend-for-frontend and do not use this channel.
+
+- **A locked account no longer reveals that it exists.** The password check answered "account
+  locked" to any password, before the hash comparison: the answer and its speed told apart an
+  existing account from an unknown email. A locked account's password is now checked as any
+  other, and only the right password gets `ErrAccountLocked` (`403`), so the owner still learns
+  why they cannot sign in. A wrong one gets `ErrInvalidCredentials` (`401`), as an unknown email
+  does; it is audited as `login_failed` with `account_locked: true` and does not move the counter.
+  This applies to every password check: `/api/auth/login`, the hosted login, admin login,
+  `/elevate` and change-password. Deploy note: no migration, no environment variable; a client that
+  sends a wrong password to a locked account now gets `401`, not `403`.
+
 - **An app's service account can be kept away from accounts it did not create.** New
   `SERVICE_USER_SCOPE_MODE` (`off` default, `observe`, `enforce`). Under `enforce`, the service
   API (`/api/apps/{app_id}/service/users`) no longer enrols an existing account in the app unless

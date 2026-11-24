@@ -591,9 +591,24 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 // A wrong password counts as a failed attempt; reaching the limit locks the
 // account. Both are audited. Shared by Login and AuthenticateAccount so every
 // password check on behalf of a user counts towards the same lockout.
+//
+// A locked account does not reveal itself: its password is still checked, at
+// the same cost as any attempt, and only the right password gets
+// ErrAccountLocked (whoever typed it knows the account, and the owner learns
+// why they cannot sign in). A wrong one gets ErrInvalidCredentials, exactly as
+// an unknown email or another wrong password does, and is audited without
+// counting towards the lock already in place.
 func (s *authService) checkPasswordWithLockout(ctx context.Context, user *model.User, password, loginType string) error {
 	if user.IsLocked() {
-		return fmt.Errorf("%w: try again later", ErrAccountLocked)
+		if auth.CheckPassword(password, user.HashedPassword) {
+			return fmt.Errorf("%w: try again later", ErrAccountLocked)
+		}
+		details := map[string]interface{}{"email": user.Email, "account_locked": true}
+		if loginType != "" {
+			details["login_type"] = loginType
+		}
+		s.logSecurityEvent(ctx, model.SecurityEventLoginFailed, &user.ID, nil, false, details)
+		return ErrInvalidCredentials
 	}
 	if auth.CheckPassword(password, user.HashedPassword) {
 		return nil

@@ -56,10 +56,14 @@ func corsHandler(config RouterConfig) func(http.Handler) http.Handler {
 		// failure. X-Requested-By is sent by the first-party admin console on the
 		// token/refresh calls as a custom-header CSRF defense (a cross-site page
 		// cannot set a custom header without a CORS grant), so it must be
-		// explicitly allowed here. Keep this list explicit and auditable rather
-		// than reflecting arbitrary requested headers.
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Correlation-ID", "X-Requested-By"},
-		ExposedHeaders:   []string{"X-Content-Type-Options", "X-Frame-Options", "Content-Security-Policy", "Strict-Transport-Security", "X-Correlation-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"},
+		// explicitly allowed here. DPoP carries the RFC 9449 proof a browser
+		// client sends to the token endpoint and with a bound token; without it
+		// such a client cannot send a proof at all. Keep this list explicit
+		// and auditable rather than reflecting arbitrary requested headers.
+		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "DPoP", "X-Correlation-ID", "X-Requested-By"},
+		// WWW-Authenticate lets a browser client read the DPoP (or Bearer)
+		// challenge of a 401.
+		ExposedHeaders:   []string{"X-Content-Type-Options", "X-Frame-Options", "Content-Security-Policy", "Strict-Transport-Security", "X-Correlation-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After", "WWW-Authenticate"},
 		AllowCredentials: allowCredentials,
 		MaxAge:           300,
 	})

@@ -152,3 +152,29 @@ func TestIntegration_ServiceUserScope_EditProfile(t *testing.T) {
 		})
 	}
 }
+
+// An account created before invite_app_id was recorded is attributed as
+// invites attribute it: to the app of its oldest role, for an account an
+// invite or an admin created; never for one the person registered.
+func TestIntegration_ServiceUserScope_LegacyAccounts(t *testing.T) {
+	e := newInviteEnv(t)
+	e.h.SetServiceUserScope("enforce", &captureAuditService{})
+
+	// Invited by A first, then added to B; no invite_app_id recorded.
+	legacy := e.seedUser(t, "legacy-"+e.tag+"@example.test", nil, e.appA, e.appB)
+	if err := e.tx.Model(&model.User{}).Where("id = ?", legacy.ID).Update("source", "manual").Error; err != nil {
+		t.Fatal(err)
+	}
+	if code := e.patchProfile(e.appA, legacy.ID, `{"name":"By A"}`); code != http.StatusOK {
+		t.Fatalf("legacy account, the app that invited it: %d, want 200", code)
+	}
+	if code := e.patchProfile(e.appB, legacy.ID, `{"name":"By B"}`); code != http.StatusForbidden {
+		t.Fatalf("legacy account, a later app: %d, want 403", code)
+	}
+
+	// Registered on their own, then joined A: A did not create it.
+	selfMade := e.seedUser(t, "self-"+e.tag+"@example.test", nil, e.appA)
+	if code := e.patchProfile(e.appA, selfMade.ID, `{"name":"By A"}`); code != http.StatusForbidden {
+		t.Fatalf("self-registered account: %d, want 403", code)
+	}
+}

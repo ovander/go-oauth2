@@ -21,6 +21,17 @@ Capabilities**, non-breaking).
   verification with `SetPassword` (new `PasswordChange.ConfirmedAt`). Deploy note: no
   migration, no environment variable.
 
+- **The operator-console clients are protected objects.** Changing, deleting or rotating the
+  secret of a client listed in `OPERATOR_CONSOLE_CLIENT_IDS` or `ADMIN_CONSOLE_CLIENT_ID`
+  (`PUT`, `DELETE`, `POST …/rotate-secret` on `/api/admin/apps/{id}`) needs a superadmin
+  (`403` otherwise), on top of the step-up these routes already require. Every change to one,
+  and every refused attempt, is audited with `console_client: true` at `critical` severity
+  (new `SecurityEvent.MinSeverity`, which raises an event's severity and never lowers it). Other
+  clients are unchanged. Deploy note: no migration; set `OPERATOR_CONSOLE_CLIENT_IDS` (and
+  `ADMIN_CONSOLE_CLIENT_ID`) to the consoles' client_ids, without them no client is protected;
+  under `POLICY_MODE` `shadow`, an admin's refused attempt is recorded as a divergence (the
+  decision point does not know which clients are consoles).
+
 - **Saving a user can no longer undo a session revocation or a lockout change.**
   `UserRepository.Update` (a full-row save) now leaves out `token_version`,
   `failed_login_attempts` and `locked_until`, which only their targeted statements write. A path

@@ -47,6 +47,10 @@ type SecurityEvent struct {
 	UserAgent string
 	Success   bool
 	Details   map[string]interface{}
+	// MinSeverity, when set, raises the severity derived from EventType to at
+	// least this level (it never lowers it): the same event type can be
+	// routine for one object and alert-worthy for another.
+	MinSeverity model.SecuritySeverity
 	// CorrelationID optionally overrides the correlation ID. When empty, Log
 	// derives it from the request context (RFC-007/RFC-008).
 	CorrelationID string
@@ -66,7 +70,7 @@ func NewSecurityAuditService(repo repository.SecurityAuditLogRepository) Securit
 }
 
 func (s *securityAuditService) Log(ctx context.Context, event SecurityEvent) error {
-	severity := model.GetSeverityForEvent(event.EventType, event.Success)
+	severity := model.MaxSeverity(model.GetSeverityForEvent(event.EventType, event.Success), event.MinSeverity)
 
 	// RFC-007/RFC-008: stamp the correlation ID so each audit row identifies the
 	// request that produced it. An explicit event.CorrelationID wins; otherwise

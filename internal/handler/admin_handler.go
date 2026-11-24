@@ -25,6 +25,43 @@ type AdminHandler struct {
 	appActivityService   service.AppActivityLogService
 	emailService         service.EmailService
 	securityAuditService service.SecurityAuditService
+	// consoleClientIDs are the operator consoles' client_ids: tokens issued to
+	// them reach the admin API, so only a superadmin changes those clients.
+	consoleClientIDs map[string]bool
+}
+
+// SetConsoleClientIDs marks the given client_ids (cfg.ConsoleClientIDs) as
+// operator consoles: changing, deleting or rotating the secret of one requires
+// a superadmin, and each change is audited at critical severity.
+func (h *AdminHandler) SetConsoleClientIDs(ids []string) {
+	h.consoleClientIDs = make(map[string]bool, len(ids))
+	for _, id := range ids {
+		h.consoleClientIDs[id] = true
+	}
+}
+
+// isConsoleClient reports whether app is one of the operator consoles.
+func (h *AdminHandler) isConsoleClient(app *model.App) bool {
+	return app != nil && h.consoleClientIDs[app.ClientID]
+}
+
+// refuseConsoleClientChange answers 403, audits the refused attempt and
+// returns true when app is an operator console and the caller is not a
+// superadmin (or is unknown).
+func (h *AdminHandler) refuseConsoleClientChange(w http.ResponseWriter, r *http.Request, eventType model.SecurityEventType, actorID uint, app *model.App) bool {
+	if !h.isConsoleClient(app) {
+		return false
+	}
+	if user, _ := r.Context().Value(contextkeys.CurrentUserKey).(*model.User); user != nil && user.Role == model.UserRoleSuperadmin {
+		return false
+	}
+	h.logClientEvent(r, eventType, &actorID, app, false, map[string]interface{}{
+		"client_id": app.ClientID,
+		"name":      app.Name,
+		"reason":    "operator console client: superadmin required",
+	})
+	writeError(w, "only a superadmin can change an operator-console client", http.StatusForbidden)
+	return true
 }
 
 func NewAdminHandler(
@@ -52,6 +89,13 @@ func NewAdminHandler(
 // audit service or a write failure never affects the admin response. IP, User-
 // Agent, and correlation ID are filled from the request by the audit service.
 func (h *AdminHandler) logClientLifecycle(r *http.Request, eventType model.SecurityEventType, actorID *uint, app *model.App, details map[string]interface{}) {
+	h.logClientEvent(r, eventType, actorID, app, true, details)
+}
+
+// logClientEvent records a client lifecycle event, successful or refused. An
+// event on an operator-console client is marked console_client and raised to
+// critical severity.
+func (h *AdminHandler) logClientEvent(r *http.Request, eventType model.SecurityEventType, actorID *uint, app *model.App, success bool, details map[string]interface{}) {
 	if h.securityAuditService == nil {
 		return
 	}
@@ -60,13 +104,21 @@ func (h *AdminHandler) logClientLifecycle(r *http.Request, eventType model.Secur
 		id := app.ID
 		appID = &id
 	}
-	_ = h.securityAuditService.LogFromRequest(r.Context(), r, service.SecurityEvent{
+	event := service.SecurityEvent{
 		UserID:    actorID,
 		AppID:     appID,
 		EventType: eventType,
-		Success:   true,
+		Success:   success,
 		Details:   details,
-	})
+	}
+	if h.isConsoleClient(app) {
+		if event.Details == nil {
+			event.Details = map[string]interface{}{}
+		}
+		event.Details["console_client"] = true
+		event.MinSeverity = model.SecuritySeverityCritical
+	}
+	_ = h.securityAuditService.LogFromRequest(r.Context(), r, event)
 }
 
 // appChangeSet compares a client before and after an update and returns the
@@ -329,6 +381,9 @@ func (h *AdminHandler) UpdateApp(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if h.refuseConsoleClientChange(w, r, model.SecurityEventClientUpdated, userID, app) {
+		return
+	}
 
 	var req dto.UpdateAppRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -386,6 +441,9 @@ func (h *AdminHandler) DeleteApp(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if h.refuseConsoleClientChange(w, r, model.SecurityEventClientDeleted, userID, app) {
+		return
+	}
 
 	if err := h.appService.Delete(r.Context(), uint(appID)); err != nil {
 		logger.Logger.WithFields(logger.Fields{
@@ -433,6 +491,9 @@ func (h *AdminHandler) RotateSecret(w http.ResponseWriter, r *http.Request) {
 			writeError(w, "forbidden", http.StatusForbidden)
 			return
 		}
+	}
+	if h.refuseConsoleClientChange(w, r, model.SecurityEventClientSecretRotated, userID, app) {
+		return
 	}
 
 	updatedApp, newSecret, err := h.appService.RotateSecret(r.Context(), uint(appID))

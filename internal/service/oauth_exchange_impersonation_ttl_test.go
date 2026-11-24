@@ -17,7 +17,7 @@ func TestExchangeToken_ImpersonationTokenIsTimeBoxed(t *testing.T) {
 	svc.impersonationTokenTTL = 5 * time.Minute // access TTL in the harness is 1h
 
 	form := exForm(mintToken(t, ts, 100, "read write"), "", "read", "https://api")
-	resp, err := svc.ExchangeToken(context.Background(), form, "c", "")
+	resp, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret)
 	if err != nil {
 		t.Fatalf("enforce impersonation: %v", err)
 	}
@@ -46,7 +46,7 @@ func TestExchangeToken_DelegationKeepsAccessTTL(t *testing.T) {
 	svc.impersonationTokenTTL = 5 * time.Minute
 
 	form := exForm(mintToken(t, ts, 100, "read write"), mintToken(t, ts, 200, "read"), "read", "https://api")
-	resp, err := svc.ExchangeToken(context.Background(), form, "c", "")
+	resp, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret)
 	if err != nil {
 		t.Fatalf("enforce delegation: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestExchangeToken_ImpersonationTTLCappedAtAccessTTL(t *testing.T) {
 	svc.impersonationTokenTTL = 24 * time.Hour // larger than the 1h access TTL
 
 	form := exForm(mintToken(t, ts, 100, "read write"), "", "read", "https://api")
-	resp, err := svc.ExchangeToken(context.Background(), form, "c", "")
+	resp, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret)
 	if err != nil {
 		t.Fatalf("enforce impersonation: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestExchangeToken_ImpersonationNoTimeBoxFallsBackToAccessTTL(t *testing.T) 
 	// impersonationTokenTTL left at zero.
 
 	form := exForm(mintToken(t, ts, 100, "read write"), "", "read", "https://api")
-	resp, err := svc.ExchangeToken(context.Background(), form, "c", "")
+	resp, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret)
 	if err != nil {
 		t.Fatalf("enforce impersonation: %v", err)
 	}

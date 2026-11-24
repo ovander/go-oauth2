@@ -802,6 +802,10 @@ func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 				writeOAuthError(w, "unsupported_grant_type", "unsupported grant type", http.StatusBadRequest)
 			case errors.Is(err, service.ErrInvalidCredentials):
 				writeOAuthError(w, "invalid_client", "client authentication failed", http.StatusUnauthorized)
+			case errors.Is(err, service.ErrAppInactive):
+				writeOAuthError(w, "unauthorized_client", "client is deactivated", http.StatusBadRequest)
+			case errors.Is(err, service.ErrDPoPRequired):
+				writeOAuthError(w, "invalid_dpop_proof", "this client requires a DPoP proof", http.StatusBadRequest)
 			case errors.Is(err, service.ErrInvalidToken):
 				writeOAuthError(w, "invalid_grant", "the subject or actor token is invalid", http.StatusBadRequest)
 			case errors.Is(err, service.ErrScopeNotSubset):

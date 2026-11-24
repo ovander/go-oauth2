@@ -382,7 +382,7 @@ func TestAppScope_TokenExchange(t *testing.T) {
 	subj := mintToken(t, ts, 100, "read swingdrift:worker")
 	actor := mintToken(t, ts, 200, "read")
 
-	resp, err := svc.ExchangeToken(context.Background(), exForm(subj, actor, "swingdrift:worker", "https://api.example.com"), "c", "")
+	resp, err := svc.ExchangeToken(context.Background(), exForm(subj, actor, "swingdrift:worker", "https://api.example.com"), "c", exchangeTestSecret)
 	if err != nil {
 		t.Fatalf("exchange with a registered app scope: %v", err)
 	}
@@ -397,7 +397,7 @@ func TestAppScope_TokenExchange(t *testing.T) {
 	subj = mintToken(t, ts, 100, "read swingdrift:worker")
 	actor = mintToken(t, ts, 200, "read")
 	for _, reqScope := range []string{"swingdrift:worker", ""} {
-		if _, err := svc.ExchangeToken(context.Background(), exForm(subj, actor, reqScope, "https://api.example.com"), "c", ""); !errors.Is(err, ErrInvalidScope) {
+		if _, err := svc.ExchangeToken(context.Background(), exForm(subj, actor, reqScope, "https://api.example.com"), "c", exchangeTestSecret); !errors.Is(err, ErrInvalidScope) {
 			t.Fatalf("exchange scope %q without registration: got %v, want ErrInvalidScope", reqScope, err)
 		}
 		if audit.last.Details["outcome"] != "denied" {
@@ -405,13 +405,13 @@ func TestAppScope_TokenExchange(t *testing.T) {
 		}
 	}
 	// A plain downscope that drops the app scope still works.
-	if _, err := svc.ExchangeToken(context.Background(), exForm(subj, actor, "read", "https://api.example.com"), "c", ""); err != nil {
+	if _, err := svc.ExchangeToken(context.Background(), exForm(subj, actor, "read", "https://api.example.com"), "c", exchangeTestSecret); err != nil {
 		t.Fatalf("downscope without the app scope: %v", err)
 	}
 
 	// Shadow mode: invisible to the client, recorded in the audit.
 	svc.tokenExchangeMode = TokenExchangeModeShadow
-	if _, err := svc.ExchangeToken(context.Background(), exForm(subj, actor, "swingdrift:worker", "https://api.example.com"), "c", ""); !errors.Is(err, ErrInvalidGrantType) {
+	if _, err := svc.ExchangeToken(context.Background(), exForm(subj, actor, "swingdrift:worker", "https://api.example.com"), "c", exchangeTestSecret); !errors.Is(err, ErrInvalidGrantType) {
 		t.Fatalf("shadow: got %v, want ErrInvalidGrantType", err)
 	}
 	if reason, _ := audit.last.Details["deny_reason"].(string); !strings.Contains(reason, "swingdrift:worker") {

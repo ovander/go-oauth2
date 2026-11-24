@@ -104,7 +104,7 @@ func (c refreshCookieConfig) requestMayUseCookie(r *http.Request) bool {
 	if r.Header.Get("X-Requested-By") == "" {
 		return false
 	}
-	if origin := r.Header.Get("Origin"); origin != "" && !c.origins[origin] {
+	if origin := r.Header.Get("Origin"); origin != "" && !c.origins[canonicalOrigin(origin)] {
 		return false
 	}
 	return true
@@ -160,11 +160,32 @@ func (h *OAuthHandler) SetRefreshCookie(clientID string, refreshTTL time.Duratio
 func (h *OAuthHandler) SetRefreshCookieOrigins(redirectURIs []string) {
 	origins := map[string]bool{}
 	for _, raw := range redirectURIs {
-		if u, err := url.Parse(strings.TrimSpace(raw)); err == nil && u.Scheme != "" && u.Host != "" {
-			origins[u.Scheme+"://"+u.Host] = true
+		if o := canonicalOrigin(raw); o != "" {
+			origins[o] = true
 		}
 	}
 	h.refreshCookie.origins = origins
+}
+
+// canonicalOrigin reduces a URL or an Origin header to scheme://host[:port] in
+// the form a browser sends: lower case, without the scheme's default port. ""
+// when it has no scheme or host.
+func canonicalOrigin(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	scheme, host, port := strings.ToLower(u.Scheme), strings.ToLower(u.Hostname()), u.Port()
+	if (scheme == "https" && port == "443") || (scheme == "http" && port == "80") {
+		port = ""
+	}
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]" // IPv6 literal
+	}
+	if port != "" {
+		return scheme + "://" + host + ":" + port
+	}
+	return scheme + "://" + host
 }
 
 // writeRefreshCookie stores the refresh token in an HttpOnly cookie so it is

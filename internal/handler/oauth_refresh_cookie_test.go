@@ -53,14 +53,7 @@ func postTokenWith(h *OAuthHandler, form string, headers map[string]string, cook
 
 // postToken drives h.Token with a form body and optional cookies.
 func postToken(h *OAuthHandler, form string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
-	r := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(form))
-	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	for _, c := range cookies {
-		r.AddCookie(c)
-	}
-	rr := httptest.NewRecorder()
-	h.Token(rr, r)
-	return rr
+	return postTokenWith(h, form, nil, cookies...)
 }
 
 func findCookie(rr *httptest.ResponseRecorder, name string) *http.Cookie {
@@ -177,8 +170,10 @@ func TestRefreshCookie_ExplicitFormValueWins(t *testing.T) {
 	svc := &fakeOAuthSvc{tokenResp: &dto.TokenResponse{AccessToken: "at", TokenType: "Bearer"}}
 	h := newCookieOAuthHandler(svc, adminClientID)
 
-	postToken(h, "grant_type=refresh_token&client_id="+adminClientID+"&refresh_token=rt-form",
-		&http.Cookie{Name: "refresh_token", Value: "rt-cookie"})
+	// The console's own request, with the production cookie: the cookie would
+	// be read, but the form value is explicit.
+	postTokenWith(h, "grant_type=refresh_token&client_id="+adminClientID+"&refresh_token=rt-form",
+		consoleHeaders, &http.Cookie{Name: "__Host-refresh_token", Value: "rt-cookie"})
 
 	if svc.gotReq.RefreshToken != "rt-form" {
 		t.Errorf("explicit form value should win, got %q", svc.gotReq.RefreshToken)
@@ -242,5 +237,28 @@ func TestRefreshCookie_LogoutClearsCookie(t *testing.T) {
 	host := findCookie(rr, "__Host-refresh_token")
 	if host == nil || host.MaxAge >= 0 || host.Path != "/" {
 		t.Errorf("logout must expire the __Host- cookie on Path=/: %+v", host)
+	}
+}
+
+// The console's origins are compared as a browser sends them: lower case,
+// without the scheme's default port, whatever the redirect URI looks like.
+func TestRefreshCookie_OriginsAreCanonical(t *testing.T) {
+	svc := &fakeOAuthSvc{tokenResp: &dto.TokenResponse{AccessToken: "at", TokenType: "Bearer"}}
+	h := newCookieOAuthHandler(svc, adminClientID)
+	h.SetRefreshCookieOrigins([]string{"HTTPS://Admin.Example.com:443/callback", "http://localhost:8081/cb"})
+	for origin, want := range map[string]bool{
+		"https://admin.example.com":     true,
+		"https://admin.example.com:443": true,
+		"http://localhost:8081":         true,
+		"http://localhost":              false,
+		"https://other.example.com":     false,
+	} {
+		svc.gotReq.RefreshToken = ""
+		postTokenWith(h, "grant_type=refresh_token&client_id="+adminClientID,
+			map[string]string{"X-Requested-By": "oauth2-admin", "Origin": origin},
+			&http.Cookie{Name: "__Host-refresh_token", Value: "rt-cookie"})
+		if got := svc.gotReq.RefreshToken == "rt-cookie"; got != want {
+			t.Errorf("Origin %s: cookie read = %v, want %v", origin, got, want)
+		}
 	}
 }

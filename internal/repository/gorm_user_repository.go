@@ -20,7 +20,7 @@ type UserRepository interface {
 	// password-change time and update time, and no other column, so it cannot
 	// overwrite a concurrent change to the others (token version, lockout).
 	// With revokeSessions it also increments the token version in the same
-	// statement, ending the user's existing sessions.
+	// transaction, ending the user's existing sessions.
 	UpdateProfile(ctx context.Context, user *model.User, revokeSessions bool) error
 	Delete(ctx context.Context, id uint) error
 	IncrementTokenVersion(ctx context.Context, userID uint) error
@@ -104,24 +104,28 @@ func (r *userRepository) Update(ctx context.Context, user *model.User) error {
 }
 
 func (r *userRepository) UpdateProfile(ctx context.Context, user *model.User, revokeSessions bool) error {
-	fields := map[string]any{
-		"name":                user.Name,
-		"email":               user.Email,
-		"hashed_password":     user.HashedPassword,
-		"password_changed_at": user.PasswordChangedAt,
-		"updated_at":          user.UpdatedAt,
-	}
-	if revokeSessions {
-		fields["token_version"] = gorm.Expr("token_version + 1")
-	}
-	res := r.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", user.ID).UpdateColumns(fields)
-	if res.Error != nil {
-		return res.Error
-	}
-	if res.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-	return nil
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&model.User{}).Where("id = ?", user.ID).
+			Select("name", "email", "hashed_password", "password_changed_at", "updated_at").
+			Updates(&model.User{
+				Name:              user.Name,
+				Email:             user.Email,
+				HashedPassword:    user.HashedPassword,
+				PasswordChangedAt: user.PasswordChangedAt,
+				UpdatedAt:         user.UpdatedAt,
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		if !revokeSessions {
+			return nil
+		}
+		return tx.Model(&model.User{}).Where("id = ?", user.ID).
+			UpdateColumn("token_version", gorm.Expr("token_version + 1")).Error
+	})
 }
 
 func (r *userRepository) Delete(ctx context.Context, id uint) error {

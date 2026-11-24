@@ -473,7 +473,7 @@ func (s *userService) UpdateSuperadmin(ctx context.Context, id uint, req dto.Upd
 	user.UpdatedAt = now
 
 	// Only the edited columns are written, and the sessions are revoked in
-	// the same statement as the new credentials: either both are saved or
+	// the same transaction as the new credentials: either both are saved or
 	// neither is, and a concurrent revocation is never overwritten.
 	if err := s.repo.UpdateProfile(ctx, user, credentialsChanged); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

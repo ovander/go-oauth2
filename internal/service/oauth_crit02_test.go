@@ -426,3 +426,5 @@ func (stubUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
 func (stubUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
 	return false, nil
 }
+
+func (stubUserRepo) SetPassword(context.Context, uint, repository.PasswordChange) error { return nil }

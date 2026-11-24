@@ -324,15 +324,9 @@ func (s *userService) UpdatePassword(ctx context.Context, userID uint, newPasswo
 		return err
 	}
 
-	user.HashedPassword = hashedPassword
-	user.UpdatedAt = time.Now()
-
-	if err := s.repo.Update(ctx, user); err != nil {
-		return err
-	}
-
-	// Invalidate all existing tokens
-	return s.repo.IncrementTokenVersion(ctx, userID)
+	// The new password and the revocation of every existing token are one
+	// write.
+	return s.repo.SetPassword(ctx, user.ID, repository.PasswordChange{HashedPassword: hashedPassword})
 }
 
 func (s *userService) IncrementTokenVersion(ctx context.Context, userID uint) error {
@@ -345,16 +339,12 @@ func (s *userService) RevokeTokens(ctx context.Context, userID uint) error {
 }
 
 func (s *userService) Unlock(ctx context.Context, userID uint) error {
-	user, err := s.GetByID(ctx, userID)
-	if err != nil {
+	if _, err := s.GetByID(ctx, userID); err != nil {
 		return err
 	}
-
-	user.LockedUntil = nil
-	user.FailedLoginAttempts = 0
-	user.UpdatedAt = time.Now()
-
-	return s.repo.Update(ctx, user)
+	// Update does not write the lockout columns: clear them with the targeted
+	// statement the sign-in paths use.
+	return s.repo.ResetFailedLoginAttempts(ctx, userID)
 }
 
 func (s *userService) Block(ctx context.Context, userID uint) error {

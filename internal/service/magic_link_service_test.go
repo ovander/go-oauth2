@@ -552,6 +552,10 @@ func (*fakeMagicLinkUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool
 	return false, nil
 }
 
+func (*fakeMagicLinkUserRepo) SetPassword(context.Context, uint, repository.PasswordChange) error {
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // VerifyMagicLink: the checks of the other sign-in paths
 // ---------------------------------------------------------------------------

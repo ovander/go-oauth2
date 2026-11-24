@@ -12,6 +12,19 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **Saving a user can no longer undo a session revocation or a lockout change.**
+  `UserRepository.Update` (a full-row save) now leaves out `token_version`,
+  `failed_login_attempts` and `locked_until`, which only their targeted statements write. A path
+  that loaded a user before a concurrent logout, password change, failed sign-in, lock or reset
+  (for example a sign-in saving its last-login time) used to write the old values back: revoked
+  sessions became valid again, a lock was lifted, or a successful sign-in's counter reset was
+  undone. Password changes (`ResetPassword`, `ChangePassword`, the admin `UpdatePassword`) now
+  store the new hash and increment the token version in one statement (new
+  `UserRepository.SetPassword`), so the password and the revocation are saved together or not at
+  all. Unlocking a user uses the targeted reset, and `cmd/seed -force` increments the token
+  version in the database. Deploy note: no migration, no environment variable, no change of
+  default.
+
 - **Creating or changing an OAuth client and deleting a user require step-up.**
   `POST /api/admin/apps`, `PUT /api/admin/apps/{id}` (redirect URIs, `allow_impersonation`,
   `allow_token_exchange`, claim mappings, allowed scopes…) and `DELETE /api/admin/users/{id}`

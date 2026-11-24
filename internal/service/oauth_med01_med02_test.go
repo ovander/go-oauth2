@@ -380,3 +380,7 @@ func (*trackIncrUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, er
 func (*trackIncrUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
 	return false, nil
 }
+
+func (*trackIncrUserRepo) SetPassword(context.Context, uint, repository.PasswordChange) error {
+	return nil
+}

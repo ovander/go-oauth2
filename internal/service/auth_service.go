@@ -938,19 +938,13 @@ func (s *authService) ResetPassword(ctx context.Context, token, newPassword stri
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
 
+	// The new password, the cleared forced-change flag and the revocation of
+	// every existing token are one write.
 	now := time.Now()
-	user.HashedPassword = hashedPassword
-	user.MustChangePassword = false // Clear the forced password change flag
-	user.PasswordChangedAt = &now
-	user.UpdatedAt = now
-
-	if err := s.userRepo.Update(ctx, user); err != nil {
+	if err := s.userRepo.SetPassword(ctx, user.ID, repository.PasswordChange{
+		HashedPassword: hashedPassword, ClearMustChangePassword: true, ChangedAt: &now,
+	}); err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
-	}
-
-	// Invalidate all existing tokens
-	if err := s.userRepo.IncrementTokenVersion(ctx, user.ID); err != nil {
-		return fmt.Errorf("failed to revoke tokens: %w", err)
 	}
 
 	// Log password change
@@ -989,19 +983,13 @@ func (s *authService) ChangePassword(ctx context.Context, userID uint, currentPa
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
 
+	// The new password and the revocation of every existing token (the user
+	// must sign in again) are one write.
 	now := time.Now()
-	user.HashedPassword = hashedPassword
-	user.MustChangePassword = false
-	user.PasswordChangedAt = &now
-	user.UpdatedAt = now
-
-	if err := s.userRepo.Update(ctx, user); err != nil {
+	if err := s.userRepo.SetPassword(ctx, user.ID, repository.PasswordChange{
+		HashedPassword: hashedPassword, ClearMustChangePassword: true, ChangedAt: &now,
+	}); err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
-	}
-
-	// Invalidate all existing tokens (user must re-login)
-	if err := s.userRepo.IncrementTokenVersion(ctx, user.ID); err != nil {
-		return fmt.Errorf("failed to revoke tokens: %w", err)
 	}
 	if err := s.userRepo.ResetFailedLoginAttempts(ctx, user.ID); err != nil {
 		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)

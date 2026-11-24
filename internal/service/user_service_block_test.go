@@ -176,3 +176,5 @@ func (*memUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
 func (*memUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
 	return false, nil
 }
+
+func (*memUserRepo) SetPassword(context.Context, uint, repository.PasswordChange) error { return nil }

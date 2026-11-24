@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/repository"
 	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
 
@@ -288,3 +289,5 @@ func (*new03UserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error)
 func (*new03UserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
 	return false, nil
 }
+
+func (*new03UserRepo) SetPassword(context.Context, uint, repository.PasswordChange) error { return nil }

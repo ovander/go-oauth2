@@ -474,6 +474,12 @@ func (*callTrackingUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool,
 func (*stubUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
 	return false, nil
 }
+
+func (*stubUserRepo) SetPassword(context.Context, uint, repository.PasswordChange) error { return nil }
 func (*callTrackingUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
 	return false, nil
+}
+
+func (*callTrackingUserRepo) SetPassword(context.Context, uint, repository.PasswordChange) error {
+	return nil
 }

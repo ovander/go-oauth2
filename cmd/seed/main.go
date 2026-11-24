@@ -12,6 +12,7 @@ import (
 	"github.com/ovander/go-oauth2/internal/shared/auth"
 	"github.com/ovander/go-oauth2/pkg/database"
 	"github.com/ovander/go-oauth2/pkg/logger"
+	"gorm.io/gorm"
 )
 
 func main() {
@@ -78,9 +79,19 @@ func main() {
 		existingUser.MustChangePassword = true
 		existingUser.ConfirmedAt = &now
 		existingUser.UpdatedAt = now
-		existingUser.TokenVersion++ // Invalidate existing tokens
 
-		if err := db.Save(&existingUser).Error; err != nil {
+		// Save the account without its token version and lockout columns,
+		// and increment the token version in the database (invalidating
+		// existing tokens) in the same transaction: incrementing the value
+		// read above could undo a revocation made since.
+		err := db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Omit("token_version", "failed_login_attempts", "locked_until").Save(&existingUser).Error; err != nil {
+				return err
+			}
+			return tx.Model(&model.User{}).Where("id = ?", existingUser.ID).
+				UpdateColumn("token_version", gorm.Expr("token_version + 1")).Error
+		})
+		if err != nil {
 			logger.Fatalf("Failed to update admin user: %v", err)
 		}
 

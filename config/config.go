@@ -182,6 +182,13 @@ type Config struct {
 	// "off" (default — policy stored but not applied), "observe" (audit
 	// scope_denied, still issue), "enforce" (refuse with invalid_scope).
 	ScopePolicyMode string
+	// PrivilegedScopeMode governs who may obtain the privileged scopes
+	// (admin, monitoring:read, monitoring:write), whatever ScopePolicyMode
+	// says: "off" (default, unchanged), "observe" (allow but audit
+	// scope_denied), or "enforce" (only a client that lists the scope in its
+	// allowed_scopes, or an operator console, gets it; others invalid_scope).
+	// PRIVILEGED_SCOPE_MODE.
+	PrivilegedScopeMode string
 	// AudienceMode controls how an access token's `aud` is built from the client
 	// and its registered audiences (RFC-001 / EPIC-7): "off" (default — aud is
 	// the client_id, unchanged) or "dual" (the client's registered audiences are
@@ -397,6 +404,7 @@ func Load() *Config {
 		DelegationStepUpMode:     normalizeStepUpMode(getEnv("DELEGATION_STEPUP_MODE", "off")),
 		RefreshReuseMode:         normalizeStepUpMode(getEnv("REFRESH_REUSE_MODE", "off")),
 		ScopePolicyMode:          normalizeStepUpMode(getEnv("SCOPE_POLICY_MODE", "off")),
+		PrivilegedScopeMode:      normalizeStepUpMode(getEnv("PRIVILEGED_SCOPE_MODE", "off")),
 		AudienceMode:             normalizeAudienceMode(getEnv("AUDIENCE_MODE", "off")),
 		ClaimsNamespace:          getEnv("CLAIMS_NAMESPACE", ""),
 		WebhooksEnabled:          strings.EqualFold(strings.TrimSpace(getEnv("WEBHOOKS_MODE", "off")), "on"),

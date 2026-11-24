@@ -13,6 +13,7 @@ import (
 	"github.com/ovander/go-oauth2/internal/repository"
 	"github.com/ovander/go-oauth2/internal/shared/auth"
 	"github.com/ovander/go-oauth2/internal/shared/auth/tokenexchange"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // newShadowExchangeSvc builds an oauthService in shadow mode with a real token
@@ -80,13 +81,16 @@ func (r *exchangeUserRepo) FindByID(_ context.Context, id uint) (*model.User, er
 // exchangeTestSecret is the client secret of the exchange tests' client.
 const exchangeTestSecret = "exchange-test-client-secret"
 
-// exchangeTestSecretHash hashes exchangeTestSecret once (bcrypt is slow).
+// exchangeTestSecretHash hashes exchangeTestSecret once, with bcrypt at its
+// minimum cost: the exchange still checks it through the production bcrypt
+// path (auth.CheckClientSecret), without the deliberate cost of
+// auth.HashClientSecret, which every exchange test would pay again under -race.
 var exchangeTestSecretHash = sync.OnceValue(func() string {
-	h, err := auth.HashClientSecret(exchangeTestSecret)
+	h, err := bcrypt.GenerateFromPassword([]byte(exchangeTestSecret), bcrypt.MinCost)
 	if err != nil {
 		panic(err)
 	}
-	return h
+	return string(h)
 })
 
 func mintToken(t *testing.T, ts *auth.TokenService, userID uint, scope string) string {

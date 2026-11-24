@@ -439,17 +439,22 @@ func (s *userService) UpdateSuperadmin(ctx context.Context, id uint, req dto.Upd
 		return nil, ErrNotAdmin
 	}
 
+	// A change of sign-in identifier or password revokes the account's
+	// existing sessions, as a password change does.
+	credentialsChanged := false
 	if req.Name != nil {
 		user.Name = *req.Name
 	}
-	if req.Email != nil {
+	if req.Email != nil && *req.Email != user.Email {
 		// Check if new email already exists
 		existing, err := s.repo.FindByEmail(ctx, *req.Email)
 		if err == nil && existing != nil && existing.ID != id {
 			return nil, ErrEmailAlreadyExists
 		}
 		user.Email = *req.Email
+		credentialsChanged = true
 	}
+	now := time.Now()
 	if req.Password != nil {
 		// Validate password
 		if err := auth.ValidatePassword(*req.Password); err != nil {
@@ -461,12 +466,23 @@ func (s *userService) UpdateSuperadmin(ctx context.Context, id uint, req dto.Upd
 			return nil, err
 		}
 		user.HashedPassword = hashedPassword
+		user.PasswordChangedAt = &now
+		credentialsChanged = true
 	}
 
-	user.UpdatedAt = time.Now()
+	user.UpdatedAt = now
 
-	if err := s.repo.Update(ctx, user); err != nil {
+	// Only the edited columns are written, and the sessions are revoked in
+	// the same transaction as the new credentials: either both are saved or
+	// neither is, and a concurrent revocation is never overwritten.
+	if err := s.repo.UpdateProfile(ctx, user, credentialsChanged); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrUserNotFound // deleted since it was read
+		}
 		return nil, err
+	}
+	if credentialsChanged {
+		user.TokenVersion++
 	}
 
 	return user, nil

@@ -1108,6 +1108,13 @@ func (h *AdminHandler) UpdateSuperadmin(w http.ResponseWriter, r *http.Request) 
 		writeError(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
+	// An admin changes their own password through POST
+	// /api/admin/change-password, which asks for the current one and applies
+	// the account lockout.
+	if uint(userID) == adminID && req.Password != nil {
+		writeError(w, "use /api/admin/change-password to change your own password", http.StatusBadRequest)
+		return
+	}
 
 	user, err := h.userService.UpdateSuperadmin(r.Context(), uint(userID), req)
 	if err != nil {
@@ -1129,8 +1136,21 @@ func (h *AdminHandler) UpdateSuperadmin(w http.ResponseWriter, r *http.Request) 
 
 	// Log the action
 	if h.adminLogService != nil {
+		// The target's email identifies the account, as in the other entries;
+		// "changed" lists which fields the request set, never their values.
+		changed := []string{}
+		if req.Name != nil {
+			changed = append(changed, "name")
+		}
+		if req.Email != nil {
+			changed = append(changed, "email")
+		}
+		if req.Password != nil {
+			changed = append(changed, "password")
+		}
 		_ = h.adminLogService.LogAction(r.Context(), adminID, nil, &user.ID, model.AdminActionUpdateSuperadmin, map[string]interface{}{
-			"email": user.Email,
+			"email":   user.Email,
+			"changed": changed,
 		})
 	}
 

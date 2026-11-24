@@ -16,6 +16,12 @@ type UserRepository interface {
 	CountByRole(ctx context.Context, role model.UserRole) (int64, error)
 	Create(ctx context.Context, user *model.User) error
 	Update(ctx context.Context, user *model.User) error
+	// UpdateProfile writes the user's name, email, password hash,
+	// password-change time and update time, and no other column, so it cannot
+	// overwrite a concurrent change to the others (token version, lockout).
+	// With revokeSessions it also increments the token version in the same
+	// transaction, ending the user's existing sessions.
+	UpdateProfile(ctx context.Context, user *model.User, revokeSessions bool) error
 	Delete(ctx context.Context, id uint) error
 	IncrementTokenVersion(ctx context.Context, userID uint) error
 	IncrementFailedLoginAttempts(ctx context.Context, userID uint) error
@@ -95,6 +101,31 @@ func (r *userRepository) Create(ctx context.Context, user *model.User) error {
 
 func (r *userRepository) Update(ctx context.Context, user *model.User) error {
 	return r.db.WithContext(ctx).Save(user).Error
+}
+
+func (r *userRepository) UpdateProfile(ctx context.Context, user *model.User, revokeSessions bool) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&model.User{}).Where("id = ?", user.ID).
+			Select("name", "email", "hashed_password", "password_changed_at", "updated_at").
+			Updates(&model.User{
+				Name:              user.Name,
+				Email:             user.Email,
+				HashedPassword:    user.HashedPassword,
+				PasswordChangedAt: user.PasswordChangedAt,
+				UpdatedAt:         user.UpdatedAt,
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		if !revokeSessions {
+			return nil
+		}
+		return tx.Model(&model.User{}).Where("id = ?", user.ID).
+			UpdateColumn("token_version", gorm.Expr("token_version + 1")).Error
+	})
 }
 
 func (r *userRepository) Delete(ctx context.Context, id uint) error {

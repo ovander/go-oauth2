@@ -20,6 +20,7 @@ var StepUpActions = []string{
 	"DELETE /api/admin/webhooks/{id}",
 	"POST /api/admin/webhooks/{id}/rotate-secret",
 	"POST /api/admin/superadmins",
+	"PUT /api/admin/superadmins/{id}",
 	"DELETE /api/admin/superadmins/{id}",
 	"POST /api/admin/security/blocked-ips",
 	"DELETE /api/admin/security/blocked-ips/{id}",

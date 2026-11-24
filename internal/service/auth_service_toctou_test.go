@@ -477,3 +477,7 @@ func (*stubUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) 
 func (*callTrackingUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
 	return false, nil
 }
+
+func (*stubUserRepo) UpdateProfile(context.Context, *model.User, bool) error { return nil }
+
+func (*callTrackingUserRepo) UpdateProfile(context.Context, *model.User, bool) error { return nil }

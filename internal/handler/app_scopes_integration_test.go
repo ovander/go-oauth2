@@ -175,3 +175,28 @@ func TestIntegration_TokenExchange_InvalidScopeMapping(t *testing.T) {
 		t.Fatalf("status %d body %s, want 400 invalid_scope", rr.Code, rr.Body.String())
 	}
 }
+
+// The token-exchange error mapping answers a deactivated client and a missing
+// DPoP proof like the other grants, not with server_error.
+func TestIntegration_TokenExchange_ClientErrorMapping(t *testing.T) {
+	for _, tc := range []struct {
+		err        error
+		wantStatus int
+		wantCode   string
+	}{
+		{fmt.Errorf("%w: client_id=c", service.ErrAppInactive), http.StatusBadRequest, `"unauthorized_client"`},
+		{service.ErrDPoPRequired, http.StatusBadRequest, `"invalid_dpop_proof"`},
+		{service.ErrExchangeNotAllowed, http.StatusForbidden, `"unauthorized_client"`},
+		{service.ErrInvalidCredentials, http.StatusUnauthorized, `"invalid_client"`},
+	} {
+		r := buildOAuthTestRouter(&fakeOAuthSvc{tokenErr: tc.err})
+		body := strings.NewReader("grant_type=urn:ietf:params:oauth:grant-type:token-exchange&subject_token=x&subject_token_type=urn:ietf:params:oauth:token-type:access_token&audience=https://api")
+		req := httptest.NewRequest(http.MethodPost, "/oauth/token", body)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+		r.ServeHTTP(rr, req)
+		if rr.Code != tc.wantStatus || !strings.Contains(rr.Body.String(), tc.wantCode) {
+			t.Errorf("%v: status %d body %s, want %d %s", tc.err, rr.Code, rr.Body.String(), tc.wantStatus, tc.wantCode)
+		}
+	}
+}

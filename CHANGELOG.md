@@ -10,6 +10,22 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Security
+
+- **Token exchange authenticates the client first, and only an active, confidential client may
+  exchange.** With `TOKEN_EXCHANGE_MODE=enforce` (default `off`), the token-exchange grant now
+  checks the requesting client before it looks at any presented token: a client without a secret
+  (a public client) is refused with `403 unauthorized_client` even when it has
+  `allow_token_exchange`, a wrong or missing secret with `401 invalid_client`, a deactivated
+  client with `400 unauthorized_client`, and a client registered with `require_dpop` without a
+  DPoP proof with `400 invalid_dpop_proof`, as on the other grants. Before, a public client was
+  never authenticated and the deactivation and DPoP checks were not applied, and the subject token
+  was verified before the client. The audit row records the refusal (`deny_reason`
+  `public_client`, `invalid_client`, `inactive_client` or `dpop_required`). In `shadow` mode
+  every refusal still answers `unsupported_grant_type`. Deploy note: no migration, no environment
+  variable, no change of default; a public client that had `allow_token_exchange` must become a
+  confidential client to keep exchanging.
+
 ### Changed
 
 - Tests: the TOTP single-use tests (#374) fail on every database or lookup error instead of

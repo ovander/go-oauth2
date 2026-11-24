@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -33,6 +34,15 @@ func newShadowExchangeSvc(t *testing.T, app *model.App) (*oauthService, *capture
 		AccessTokenTTL:  time.Hour,
 		RefreshTokenTTL: 24 * time.Hour,
 	})
+	// The requesting client is an authenticated, active, confidential client
+	// (the exchange refuses any other), with exchangeTestSecret unless the
+	// test set its own secret. Tests change app afterwards to cover the rest.
+	if app != nil {
+		if app.ClientSecretHash == "" {
+			app.ClientSecretHash = exchangeTestSecretHash()
+		}
+		app.Active = true
+	}
 	audit := &captureAuditRepo{}
 	svc := &oauthService{
 		appRepo:           &crit02AppRepo{app: app},
@@ -44,6 +54,18 @@ func newShadowExchangeSvc(t *testing.T, app *model.App) (*oauthService, *capture
 	}
 	return svc, audit, ts
 }
+
+// exchangeTestSecret is the client secret of the exchange tests' client.
+const exchangeTestSecret = "exchange-test-client-secret"
+
+// exchangeTestSecretHash hashes exchangeTestSecret once (bcrypt is slow).
+var exchangeTestSecretHash = sync.OnceValue(func() string {
+	h, err := auth.HashClientSecret(exchangeTestSecret)
+	if err != nil {
+		panic(err)
+	}
+	return h
+})
 
 func mintToken(t *testing.T, ts *auth.TokenService, userID uint, scope string) string {
 	t.Helper()
@@ -77,7 +99,7 @@ func TestExchangeToken_OffIsUnsupportedAndNotAudited(t *testing.T) {
 	svc.tokenExchangeMode = TokenExchangeModeOff
 
 	form := exForm(mintToken(t, ts, 100, "read write"), "", "read", "https://api")
-	if _, err := svc.ExchangeToken(context.Background(), form, "c", ""); !errors.Is(err, ErrInvalidGrantType) {
+	if _, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret); !errors.Is(err, ErrInvalidGrantType) {
 		t.Fatalf("off mode: want ErrInvalidGrantType, got %v", err)
 	}
 	if audit.last != nil {
@@ -92,7 +114,7 @@ func TestExchangeToken_ShadowDelegationAllow(t *testing.T) {
 	actor := mintToken(t, ts, 200, "read")
 	form := exForm(subj, actor, "read", "https://api.example.com")
 
-	if _, err := svc.ExchangeToken(context.Background(), form, "c", ""); !errors.Is(err, ErrInvalidGrantType) {
+	if _, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret); !errors.Is(err, ErrInvalidGrantType) {
 		t.Fatalf("shadow must report unsupported, got %v", err)
 	}
 	d := audit.last.Details
@@ -114,7 +136,7 @@ func TestExchangeToken_ShadowImpersonationDeniedWithoutFlag(t *testing.T) {
 	svc, audit, ts := newShadowExchangeSvc(t, &model.App{ID: 7, ClientID: "c", AllowTokenExchange: true, AllowImpersonation: false})
 
 	form := exForm(mintToken(t, ts, 100, "read write"), "", "read", "https://api")
-	if _, err := svc.ExchangeToken(context.Background(), form, "c", ""); !errors.Is(err, ErrInvalidGrantType) {
+	if _, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret); !errors.Is(err, ErrInvalidGrantType) {
 		t.Fatalf("want ErrInvalidGrantType, got %v", err)
 	}
 	d := audit.last.Details
@@ -131,7 +153,7 @@ func TestExchangeToken_ShadowDeniedScopeEscalation(t *testing.T) {
 
 	// subject has "read"; request "admin" -> escalation denied.
 	form := exForm(mintToken(t, ts, 100, "read"), mintToken(t, ts, 200, "read"), "admin", "https://api")
-	if _, err := svc.ExchangeToken(context.Background(), form, "c", ""); !errors.Is(err, ErrInvalidGrantType) {
+	if _, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret); !errors.Is(err, ErrInvalidGrantType) {
 		t.Fatalf("want ErrInvalidGrantType, got %v", err)
 	}
 	if audit.last.Details["deny_reason"] != ErrScopeNotSubset.Error() {
@@ -143,7 +165,7 @@ func TestExchangeToken_ShadowInvalidSubjectToken(t *testing.T) {
 	svc, audit, _ := newShadowExchangeSvc(t, &model.App{ID: 7, ClientID: "c", AllowTokenExchange: true})
 
 	form := exForm("not-a-jwt", "", "read", "https://api")
-	if _, err := svc.ExchangeToken(context.Background(), form, "c", ""); !errors.Is(err, ErrInvalidGrantType) {
+	if _, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret); !errors.Is(err, ErrInvalidGrantType) {
 		t.Fatalf("want ErrInvalidGrantType, got %v", err)
 	}
 	if audit.last.Details["outcome"] != "invalid_subject_token" {
@@ -156,7 +178,7 @@ func TestExchangeToken_ShadowParseError(t *testing.T) {
 
 	bad := url.Values{}
 	bad.Set("grant_type", tokenexchange.GrantType) // missing subject_token
-	if _, err := svc.ExchangeToken(context.Background(), bad, "c", ""); !errors.Is(err, ErrInvalidGrantType) {
+	if _, err := svc.ExchangeToken(context.Background(), bad, "c", exchangeTestSecret); !errors.Is(err, ErrInvalidGrantType) {
 		t.Fatalf("want ErrInvalidGrantType, got %v", err)
 	}
 	if audit.last.Details["outcome"] != "parse_error" {

@@ -1478,6 +1478,32 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 		return nil, ErrInvalidGrantType
 	}
 
+	// Authenticate the requesting client first (default-deny), before any
+	// presented token is examined: an unknown client, a client without a
+	// secret (a public client cannot authenticate), a wrong secret or a
+	// deactivated client may not exchange, and a client that requires DPoP
+	// must present a proof, as on the other grants.
+	if app == nil {
+		details["deny_reason"] = "unknown_client"
+		return fail("denied", ErrInvalidCredentials)
+	}
+	if app.ClientSecretHash == "" {
+		details["deny_reason"] = "public_client"
+		return fail("denied", ErrExchangeNotAllowed)
+	}
+	if !auth.CheckClientSecret(clientSecret, app.ClientSecretHash) {
+		details["deny_reason"] = "invalid_client"
+		return fail("denied", ErrInvalidCredentials)
+	}
+	if !app.Active {
+		details["deny_reason"] = "inactive_client"
+		return fail("denied", fmt.Errorf("%w: client_id=%s", ErrAppInactive, clientID))
+	}
+	if err := requireDPoP(ctx, app); err != nil {
+		details["deny_reason"] = "dpop_required"
+		return fail("denied", err)
+	}
+
 	req, perr := tokenexchange.Parse(form)
 	if perr != nil {
 		details["error"] = perr.Error()
@@ -1506,17 +1532,6 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 		}
 		actorSub, actorAmr = as, aamr
 		details["actor_sub"] = actorSub
-	}
-
-	// Authenticate the requesting client (default-deny): an unknown client, or a
-	// confidential client with a bad secret, may not exchange.
-	if app == nil {
-		details["deny_reason"] = "unknown_client"
-		return fail("denied", ErrInvalidCredentials)
-	}
-	if app.ClientSecretHash != "" && !auth.CheckClientSecret(clientSecret, app.ClientSecretHash) {
-		details["deny_reason"] = "invalid_client"
-		return fail("denied", ErrInvalidCredentials)
 	}
 
 	// Authorization policy (default-deny, downscope-only, audience-bound).

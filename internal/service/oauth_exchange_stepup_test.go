@@ -35,7 +35,7 @@ func TestExchangeToken_StepUpEnforceDeniesStaleSubject(t *testing.T) {
 	svc, _, ts := stepUpImpSvc(t, stepUpModeEnforce, 15*time.Minute)
 
 	form := exForm(mintTokenAt(t, ts, 100, "read write", time.Hour), "", "read", "https://api")
-	if _, err := svc.ExchangeToken(context.Background(), form, "c", ""); !errors.Is(err, ErrStepUpRequired) {
+	if _, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret); !errors.Is(err, ErrStepUpRequired) {
 		t.Fatalf("want ErrStepUpRequired for a stale subject, got %v", err)
 	}
 }
@@ -45,7 +45,7 @@ func TestExchangeToken_StepUpEnforceAllowsFreshSubject(t *testing.T) {
 	svc, audit, ts := stepUpImpSvc(t, stepUpModeEnforce, 15*time.Minute)
 
 	form := exForm(mintTokenAt(t, ts, 100, "read write", time.Minute), "", "read", "https://api")
-	resp, err := svc.ExchangeToken(context.Background(), form, "c", "")
+	resp, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret)
 	if err != nil {
 		t.Fatalf("fresh subject should issue: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestExchangeToken_StepUpEnforceDeniesMissingAuthTime(t *testing.T) {
 		t.Fatalf("GenerateBoundAccessToken: %v", err)
 	}
 	form := exForm(subj, "", "read", "https://api")
-	if _, err := svc.ExchangeToken(context.Background(), form, "c", ""); !errors.Is(err, ErrStepUpRequired) {
+	if _, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret); !errors.Is(err, ErrStepUpRequired) {
 		t.Fatalf("want ErrStepUpRequired when auth_time is absent, got %v", err)
 	}
 }
@@ -78,7 +78,7 @@ func TestExchangeToken_StepUpObserveIssuesAndAudits(t *testing.T) {
 	svc, audit, ts := stepUpImpSvc(t, stepUpModeObserve, 15*time.Minute)
 
 	form := exForm(mintTokenAt(t, ts, 100, "read write", time.Hour), "", "read", "https://api")
-	resp, err := svc.ExchangeToken(context.Background(), form, "c", "")
+	resp, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret)
 	if err != nil {
 		t.Fatalf("observe must still issue: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestExchangeToken_StepUpOffSkipsCheck(t *testing.T) {
 	svc, audit, ts := stepUpImpSvc(t, stepUpModeOff, 15*time.Minute)
 
 	form := exForm(mintTokenAt(t, ts, 100, "read write", time.Hour), "", "read", "https://api")
-	if _, err := svc.ExchangeToken(context.Background(), form, "c", ""); err != nil {
+	if _, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret); err != nil {
 		t.Fatalf("off must not deny: %v", err)
 	}
 	if _, ok := audit.last.Details["stepup_mode"]; ok {
@@ -113,7 +113,7 @@ func TestExchangeToken_StepUpDoesNotApplyToDelegation(t *testing.T) {
 	svc, _, ts := stepUpImpSvc(t, stepUpModeEnforce, 15*time.Minute)
 
 	form := exForm(mintTokenAt(t, ts, 100, "read write", time.Hour), mintTokenAt(t, ts, 200, "read", time.Hour), "read", "https://api")
-	if _, err := svc.ExchangeToken(context.Background(), form, "c", ""); err != nil {
+	if _, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret); err != nil {
 		t.Fatalf("delegation must not be gated by impersonation step-up: %v", err)
 	}
 }

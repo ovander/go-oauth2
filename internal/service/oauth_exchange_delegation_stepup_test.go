@@ -37,7 +37,7 @@ func TestExchangeToken_DelegationStepUpEnforceDeniesNonMFAActor(t *testing.T) {
 	subj := mintToken(t, ts, 100, "read write")
 	actor := mintTokenWithAmr(t, ts, 200, "read", []string{"pwd"}) // no mfa
 	form := exForm(subj, actor, "read", "https://api")
-	if _, err := svc.ExchangeToken(context.Background(), form, "c", ""); !errors.Is(err, ErrDelegationStepUpRequired) {
+	if _, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret); !errors.Is(err, ErrDelegationStepUpRequired) {
 		t.Fatalf("want ErrDelegationStepUpRequired for a non-MFA actor, got %v", err)
 	}
 }
@@ -49,7 +49,7 @@ func TestExchangeToken_DelegationStepUpEnforceAllowsMFAActor(t *testing.T) {
 	subj := mintToken(t, ts, 100, "read write")
 	actor := mintTokenWithAmr(t, ts, 200, "read", []string{"pwd", "otp", "mfa"})
 	form := exForm(subj, actor, "read", "https://api")
-	resp, err := svc.ExchangeToken(context.Background(), form, "c", "")
+	resp, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret)
 	if err != nil {
 		t.Fatalf("MFA actor should issue: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestExchangeToken_DelegationStepUpObserveIssuesAndAudits(t *testing.T) {
 	subj := mintToken(t, ts, 100, "read write")
 	actor := mintTokenWithAmr(t, ts, 200, "read", []string{"pwd"})
 	form := exForm(subj, actor, "read", "https://api")
-	resp, err := svc.ExchangeToken(context.Background(), form, "c", "")
+	resp, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret)
 	if err != nil {
 		t.Fatalf("observe must still issue: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestExchangeToken_DelegationStepUpOffSkips(t *testing.T) {
 	subj := mintToken(t, ts, 100, "read write")
 	actor := mintTokenWithAmr(t, ts, 200, "read", []string{"pwd"})
 	form := exForm(subj, actor, "read", "https://api")
-	if _, err := svc.ExchangeToken(context.Background(), form, "c", ""); err != nil {
+	if _, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret); err != nil {
 		t.Fatalf("off must not deny: %v", err)
 	}
 	if _, ok := audit.last.Details["delegation_stepup_mode"]; ok {
@@ -102,7 +102,7 @@ func TestExchangeToken_DelegationStepUpDoesNotApplyToImpersonation(t *testing.T)
 	svc.delegationStepUpMode = stepUpModeEnforce
 
 	form := exForm(mintToken(t, ts, 100, "read write"), "", "read", "https://api")
-	if _, err := svc.ExchangeToken(context.Background(), form, "c", ""); err != nil {
+	if _, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret); err != nil {
 		t.Fatalf("impersonation must not be gated by delegation step-up: %v", err)
 	}
 }

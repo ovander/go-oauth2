@@ -18,7 +18,7 @@ func TestExchangeToken_EnforceDelegationIssuesScopedActorBoundToken(t *testing.T
 	actor := mintToken(t, ts, 200, "read")
 	form := exForm(subj, actor, "read", "https://api.example.com")
 
-	resp, err := svc.ExchangeToken(context.Background(), form, "c", "")
+	resp, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret)
 	if err != nil {
 		t.Fatalf("enforce delegation: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestExchangeToken_EnforceDPoPBindsWhenProofPresent(t *testing.T) {
 	ctx := context.WithValue(context.Background(), contextkeys.DPoPJKTKey, "jkt-exch")
 	form := exForm(mintToken(t, ts, 100, "read write"), mintToken(t, ts, 200, "read"), "read", "https://api")
 
-	resp, err := svc.ExchangeToken(ctx, form, "c", "")
+	resp, err := svc.ExchangeToken(ctx, form, "c", exchangeTestSecret)
 	if err != nil {
 		t.Fatalf("enforce dpop: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestExchangeToken_EnforceUnboundWhenNoProof(t *testing.T) {
 	svc.tokenExchangeMode = TokenExchangeModeEnforce
 
 	form := exForm(mintToken(t, ts, 100, "read write"), mintToken(t, ts, 200, "read"), "read", "https://api")
-	resp, err := svc.ExchangeToken(context.Background(), form, "c", "")
+	resp, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret)
 	if err != nil {
 		t.Fatalf("enforce: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestExchangeToken_EnforceImpersonationActorIsClient(t *testing.T) {
 	svc.tokenExchangeMode = TokenExchangeModeEnforce
 
 	form := exForm(mintToken(t, ts, 100, "read write"), "", "read", "https://api")
-	resp, err := svc.ExchangeToken(context.Background(), form, "c", "")
+	resp, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret)
 	if err != nil {
 		t.Fatalf("enforce impersonation: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestExchangeToken_EnforceImpersonationDeniedSurfacesError(t *testing.T) {
 	svc.tokenExchangeMode = TokenExchangeModeEnforce
 
 	form := exForm(mintToken(t, ts, 100, "read write"), "", "read", "https://api")
-	if _, err := svc.ExchangeToken(context.Background(), form, "c", ""); !errors.Is(err, ErrImpersonationNotAllowed) {
+	if _, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret); !errors.Is(err, ErrImpersonationNotAllowed) {
 		t.Fatalf("enforce must surface the policy error, got %v", err)
 	}
 }
@@ -126,7 +126,7 @@ func TestExchangeToken_EnforceScopeEscalationSurfacesError(t *testing.T) {
 	svc.tokenExchangeMode = TokenExchangeModeEnforce
 
 	form := exForm(mintToken(t, ts, 100, "read"), mintToken(t, ts, 200, "read"), "admin", "https://api")
-	if _, err := svc.ExchangeToken(context.Background(), form, "c", ""); !errors.Is(err, ErrScopeNotSubset) {
+	if _, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret); !errors.Is(err, ErrScopeNotSubset) {
 		t.Fatalf("want ErrScopeNotSubset, got %v", err)
 	}
 }
@@ -136,7 +136,7 @@ func TestExchangeToken_EnforceInvalidSubjectTokenSurfacesError(t *testing.T) {
 	svc.tokenExchangeMode = TokenExchangeModeEnforce
 
 	form := exForm("not-a-jwt", "", "read", "https://api")
-	if _, err := svc.ExchangeToken(context.Background(), form, "c", ""); !errors.Is(err, ErrInvalidToken) {
+	if _, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret); !errors.Is(err, ErrInvalidToken) {
 		t.Fatalf("want ErrInvalidToken, got %v", err)
 	}
 }
@@ -164,7 +164,7 @@ func TestExchangeToken_EnforceParseErrorSurfacesError(t *testing.T) {
 	svc.tokenExchangeMode = TokenExchangeModeEnforce
 
 	bad := exForm("", "", "", "") // missing subject_token etc.
-	if _, err := svc.ExchangeToken(context.Background(), bad, "c", ""); !errors.Is(err, ErrInvalidExchangeRequest) {
+	if _, err := svc.ExchangeToken(context.Background(), bad, "c", exchangeTestSecret); !errors.Is(err, ErrInvalidExchangeRequest) {
 		t.Fatalf("want ErrInvalidExchangeRequest, got %v", err)
 	}
 }

@@ -26,6 +26,13 @@ Capabilities**, non-breaking).
   exists and is active (`deny_reason` `…_unknown_app` / `…_inactive_app` otherwise), and the
   revocation and DPoP checks apply to it too. Deploy note: no migration, no environment variable, no change of default.
 
+- Dependencies: `github.com/go-chi/chi/v5` 5.3.2 → 5.5.0 (GHSA-j6qf-3m9c-vwj3, client IP from
+  `X-Forwarded-For` in chi's `ClientIPFromXFF`) and `golang.org/x/crypto` 0.57.0 → 0.59.0
+  (GO-2026-5932, the deprecated `openpgp` package), with `x/sync`, `x/sys` and `x/text` following.
+  Socrate uses neither affected code path (client IPs come from its own `ClientIP` middleware since
+  P3-2, and nothing imports `openpgp`; govulncheck reported neither as reachable); the bump closes
+  OpenSSF Scorecard's Vulnerabilities alert. No code change; rebuild to pick it up.
+
 ### Changed
 
 - CI and image supply chain: every GitHub Action is pinned to a commit SHA (the tag kept as a
@@ -34,6 +41,15 @@ Capabilities**, non-breaking).
   the pins current. The `Release` workflow is read-only by default and only its release job may
   write. Closes OpenSSF Scorecard's Pinned-Dependencies and Token-Permissions alerts. No change to
   the server.
+
+### Security
+
+- **Email header values cannot carry a line break.** Outgoing emails are built so that no header
+  takes a raw line break from its input: the recipient must be a single valid address
+  (`net/mail`), the sender's display name is encoded, and the subject (which includes the
+  application name) becomes a MIME encoded-word (RFC 2047) when it holds a control or non-ASCII
+  character, which also makes non-ASCII application names display correctly. An email to an
+  invalid address is refused instead of being sent. No migration, no environment variable.
 
 ### Security
 

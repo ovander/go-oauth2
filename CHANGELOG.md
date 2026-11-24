@@ -10,6 +10,12 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Changed
+
+- Tests: `TestPostgresRateLimitStore_WindowsAreSeparate` no longer fails during the first minute
+  of every hour (when a 1-minute and a 1-hour window both start at hh:00:00). The Postgres
+  rate-limit store reads its clock through a field that the test pins. No runtime change.
+
 ### Security
 
 - **Token exchange targets only the client's registered audiences, and the actor must be the

@@ -25,6 +25,9 @@ type PostgresRateLimitStore struct {
 	// timeout bounds a single store round trip so a slow database degrades
 	// the limiter rather than the request path.
 	timeout time.Duration
+	// now is the clock the windows are computed from; time.Now unless a test
+	// sets it.
+	now func() time.Time
 }
 
 // NewPostgresRateLimitStore builds the Postgres-backed counter store.
@@ -32,14 +35,14 @@ func NewPostgresRateLimitStore(db *gorm.DB, timeout time.Duration) *PostgresRate
 	if timeout <= 0 {
 		timeout = 2 * time.Second
 	}
-	return &PostgresRateLimitStore{db: db, timeout: timeout}
+	return &PostgresRateLimitStore{db: db, timeout: timeout, now: time.Now}
 }
 
 // Incr counts one request. The insert-or-bump is a single statement, so two
 // instances racing on the same key cannot lose a count: Postgres serializes the
 // conflicting upserts on the primary key and each gets its own RETURNING value.
 func (s *PostgresRateLimitStore) Incr(ctx context.Context, key string, window time.Duration) (int, time.Time, error) {
-	start := windowStart(time.Now(), window)
+	start := windowStart(s.now(), window)
 	reset := start.Add(window)
 
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
@@ -63,7 +66,7 @@ func (s *PostgresRateLimitStore) Incr(ctx context.Context, key string, window ti
 // Peek reads the current count without recording a request. A key with no row
 // yet has a count of zero.
 func (s *PostgresRateLimitStore) Peek(ctx context.Context, key string, window time.Duration) (int, time.Time, error) {
-	start := windowStart(time.Now(), window)
+	start := windowStart(s.now(), window)
 	reset := start.Add(window)
 
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)

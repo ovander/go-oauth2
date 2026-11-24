@@ -102,6 +102,11 @@ func TestPostgresRateLimitStore_IncrCountsAndResets(t *testing.T) {
 func TestPostgresRateLimitStore_WindowsAreSeparate(t *testing.T) {
 	db := testDB(t)
 	store := NewPostgresRateLimitStore(db, 2*time.Second)
+	// A fixed time whose minute and hour boundaries differ (15:04 vs 15:00).
+	// With the real clock this test failed during the first minute of every
+	// hour, when both windows start at hh:00:00 and share a row.
+	fixed := time.Date(2026, 11, 24, 15, 4, 30, 0, time.UTC)
+	store.now = func() time.Time { return fixed }
 	ctx := context.Background()
 	key := uniqueKey(t)
 

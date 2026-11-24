@@ -355,7 +355,7 @@ Two halves, by design:
    ```json
    { "token": "RAW_MAGIC_TOKEN", "client_id": "YOUR_CLIENT_ID" }
    ```
-   Success returns a full login token set (same shape as §5.3). `422` if the link was already used, `401` if invalid/expired, `403` if locked, and (since v1.14.7) `403` when the account has MFA enabled (a link is one factor: such a user signs in with the password and code), when the client is deactivated, or when a Socrate admin is refused by `ADMIN_MFA_POLICY` / `ADMIN_APP_SIGNIN_POLICY`, as on the other sign-in paths. **POST-only** so email scanners don't consume the token: the landing page should ask for a click (or post on a user action) rather than on load, remove the token from the address bar (`history.replaceState`) and send `Referrer-Policy: no-referrer`.
+   Success returns a full login token set (same shape as §5.3). `422` if the link was already used, `401` if invalid/expired, `403` if locked, and (since v1.14.7) `403` when the account has MFA enabled (a link is one factor: such a user signs in with the password and code), when the client is deactivated, or when a Socrate admin is refused by `ADMIN_MFA_POLICY`, as on the other sign-in paths. **POST-only** so email scanners don't consume the token: the landing page should ask for a click (or post on a user action) rather than on load, remove the token from the address bar (`history.replaceState`) and send `Referrer-Policy: no-referrer`.
 
 ### 5.8 Invitations
 - `GET /api/auth/invite?token=...` → `{ "valid": true, "email": "...", "app_name": "...", "expires_at": "..." }`

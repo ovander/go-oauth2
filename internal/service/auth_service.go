@@ -104,16 +104,16 @@ func (s *authService) checkAdminAppSignIn(ctx context.Context, user *model.User,
 }
 
 // checkMagicLinkSignIn implements MagicLinkSignInPolicy: a Socrate admin
-// signing in with a magic link gets the admin MFA-enrollment policy and the
-// admin app sign-in policy, as on the password paths.
-func (s *authService) checkMagicLinkSignIn(ctx context.Context, user *model.User, app *model.App) error {
+// signing in with a magic link gets the admin MFA-enrollment policy, as on the
+// password paths. ADMIN_APP_SIGNIN_POLICY does not apply: it covers an admin
+// signing in to an app without a membership, and a magic link always requires
+// one (VerifyMagicLink checks the user's role in the app), so a member admin
+// signs in as with a password.
+func (s *authService) checkMagicLinkSignIn(ctx context.Context, user *model.User, _ *model.App) error {
 	if !user.IsGlobalAdmin() {
 		return nil
 	}
-	if err := s.enforceAdminMFAPolicy(ctx, user, "magic_link"); err != nil {
-		return err
-	}
-	return s.checkAdminAppSignIn(ctx, user, app, "magic_link")
+	return s.enforceAdminMFAPolicy(ctx, user, "magic_link")
 }
 
 // enforceAdminMFAPolicy applies the admin-enrollment MFA policy when a Socrate

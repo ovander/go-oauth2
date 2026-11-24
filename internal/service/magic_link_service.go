@@ -67,9 +67,9 @@ type MagicLinkService interface {
 // the password and the second factor instead.
 var ErrMagicLinkSecondFactor = errors.New("account uses a second factor: magic-link sign-in is not available")
 
-// MagicLinkSignInPolicy applies to a magic-link sign-in the admin policies the
-// other sign-in paths apply (ADMIN_MFA_POLICY, ADMIN_APP_SIGNIN_POLICY). The
-// auth service implements it; bootstrap wires it with SetSignInPolicy.
+// MagicLinkSignInPolicy applies to a magic-link sign-in the admin policy the
+// other sign-in paths apply to a member admin (ADMIN_MFA_POLICY). The auth
+// service implements it; bootstrap wires it with SetSignInPolicy.
 type MagicLinkSignInPolicy interface {
 	checkMagicLinkSignIn(ctx context.Context, user *model.User, app *model.App) error
 }
@@ -289,8 +289,8 @@ func (s *magicLinkService) VerifyMagicLink(ctx context.Context, req dto.MagicLin
 		return nil, ErrMagicLinkSecondFactor
 	}
 
-	// Socrate admins: the admin MFA-enrollment and app sign-in policies apply
-	// as on the other sign-in paths. Without the policy wired, refuse.
+	// Socrate admins: the admin MFA-enrollment policy applies as on the other
+	// sign-in paths. Without the policy wired, refuse.
 	if user.IsGlobalAdmin() {
 		if s.signInPolicy == nil {
 			return nil, ErrAdminAppSignInRefused

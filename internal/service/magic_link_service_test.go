@@ -642,5 +642,12 @@ func TestAuthService_CheckMagicLinkSignIn(t *testing.T) {
 	if err := s.checkMagicLinkSignIn(context.Background(), &model.User{ID: 2, Role: model.UserRoleUser}, &model.App{ID: 1}); err != nil {
 		t.Fatalf("regular user: %v", err)
 	}
+	// ADMIN_APP_SIGNIN_POLICY covers admins without a membership; a magic link
+	// always has one, so a member admin with MFA policy satisfied signs in to a
+	// non-console app as with a password.
+	member := &authService{adminAppSignIn: NewAdminAppSignInPolicy(AdminAppSignInEnforce, []string{"admin-console"}), auditRepo: &captureAuditRepo{}}
+	if err := member.checkMagicLinkSignIn(context.Background(), &model.User{ID: 3, Role: model.UserRoleAdmin}, &model.App{ID: 1, ClientID: "member-app"}); err != nil {
+		t.Fatalf("member admin, app sign-in policy enforce: %v, want allowed", err)
+	}
 	var _ MagicLinkSignInPolicy = s
 }

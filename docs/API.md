@@ -607,10 +607,12 @@ public PKCE client auto-registered from `ADMIN_CONSOLE_CLIENT_ID` +
 `ADMIN_CONSOLE_REDIRECT_URIS`.
 
 **Step-up for destructive operations (Tier-0).** The most destructive admin
-routes — **delete OAuth client** (`DELETE /api/admin/apps/{id}`), **rotate client
-secret** (`POST /api/admin/apps/{id}/rotate-secret`), **create/delete superadmin**
-(`POST /api/admin/superadmins`, `DELETE /api/admin/superadmins/{id}`), **block
-user** (`POST /api/admin/users/{id}/block`), **revoke a user's tokens**, **block /
+routes — **create / update / delete an OAuth client** (`POST /api/admin/apps`,
+`PUT` and `DELETE /api/admin/apps/{id}`; create and update since v1.14.7), **rotate
+client secret** (`POST /api/admin/apps/{id}/rotate-secret`), **create/delete
+superadmin** (`POST /api/admin/superadmins`, `DELETE /api/admin/superadmins/{id}`),
+**block / delete a user** (`POST /api/admin/users/{id}/block`, `DELETE
+/api/admin/users/{id}` since v1.14.7), **revoke a user's tokens**, **block /
 unblock an IP**, **create / update / delete an alert rule**, every webhook write
 (§8.3.1) and every policy write (§8.3.2) — require a *recent* authentication.
 If the access token's `auth_time` is older than `ADMIN_ELEVATION_MAX_AGE`

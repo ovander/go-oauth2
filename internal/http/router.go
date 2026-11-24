@@ -529,11 +529,14 @@ func newAdminRouter(
 		r.Route("/apps", func(r chi.Router) {
 			r.Use(adminScope)
 			r.Get("/", adminHandler.ListApps)
-			r.Post("/", adminHandler.CreateApp)
+			// Step-up: a new client, or a change to an existing one (redirect
+			// URIs, allow_impersonation, allow_token_exchange, claim mappings,
+			// allowed scopes), is as sensitive as rotating its secret.
+			r.With(freshAuth).Post("/", adminHandler.CreateApp)
 
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", adminHandler.GetApp)
-				r.Put("/", adminHandler.UpdateApp)
+				r.With(freshAuth).Put("/", adminHandler.UpdateApp)
 				// Destructive: require fresh step-up.
 				r.With(freshAuth).Delete("/", adminHandler.DeleteApp)
 				r.With(freshAuth).Post("/rotate-secret", adminHandler.RotateSecret)
@@ -546,7 +549,8 @@ func newAdminRouter(
 
 			r.Route("/{id}", func(r chi.Router) {
 				r.With(adminScope).Get("/", adminHandler.GetUser)
-				r.With(adminScope).Delete("/", adminHandler.DeleteUser)
+				// Destructive: require fresh step-up.
+				r.With(freshAuth, adminScope).Delete("/", adminHandler.DeleteUser)
 				r.With(adminScope).Get("/apps", adminHandler.GetUserApps)
 				// A2: free-form attributes a client can project into its
 				// tokens via a claim mapping. Global-admin only, audited.

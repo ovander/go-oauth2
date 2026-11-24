@@ -12,6 +12,16 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **A locked account no longer reveals that it exists.** The password check answered "account
+  locked" to any password, before the hash comparison: the answer and its speed told apart an
+  existing account from an unknown email. A locked account's password is now checked as any
+  other, and only the right password gets `ErrAccountLocked` (`403`), so the owner still learns
+  why they cannot sign in. A wrong one gets `ErrInvalidCredentials` (`401`), as an unknown email
+  does; it is audited as `login_failed` with `account_locked: true` and does not move the counter.
+  This applies to every password check: `/api/auth/login`, the hosted login, admin login,
+  `/elevate` and change-password. Deploy note: no migration, no environment variable; a client that
+  sends a wrong password to a locked account now gets `401`, not `403`.
+
 - **IP blocks and alert-rule changes are audited.** A manual block, an unblock, and creating,
   changing or deleting an alert rule now record a security event naming the admin:
   `ip_blocked` and `ip_unblocked` (the block's address, reason, author and dates, read before

@@ -130,6 +130,21 @@ func TestPasswordLockout_EveryPath(t *testing.T) {
 			if !repo.users[5].IsLocked() {
 				t.Fatal("account not locked")
 			}
+			// While locked, a wrong password gets the answer an unknown
+			// email gets: the lock is not revealed to someone without the
+			// password. It is audited, and does not move the counter.
+			audit := s.auditRepo.(*captureAuditRepo)
+			counter := repo.users[5].FailedLoginAttempts
+			if err := tc.try(s, "wrong"); !errors.Is(err, ErrInvalidCredentials) || errors.Is(err, ErrAccountLocked) {
+				t.Fatalf("wrong password on a locked account: %v, want ErrInvalidCredentials", err)
+			}
+			if repo.users[5].FailedLoginAttempts != counter {
+				t.Fatalf("counter moved while locked: %d → %d", counter, repo.users[5].FailedLoginAttempts)
+			}
+			if audit.last == nil || audit.last.EventType != model.SecurityEventLoginFailed || audit.last.Details["account_locked"] != true {
+				t.Fatalf("the attempt on a locked account was not audited: %+v", audit.last)
+			}
+			// The right password learns about the lock.
 			if err := tc.try(s, lockoutTestPassword); !errors.Is(err, ErrAccountLocked) {
 				t.Fatalf("right password on a locked account: %v, want ErrAccountLocked", err)
 			}

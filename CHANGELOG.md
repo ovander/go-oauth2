@@ -12,6 +12,13 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **A revoked service-account token is refused.** The service-account routes
+  (`/api/apps/{app_id}/service/*`) now check a `client_credentials` token's `jti` against the
+  revoked list that `POST /oauth/revoke` writes, as `AuthMiddleware` does for user tokens, and
+  answer `401` for a revoked token (and for one without a `jti`, which could never be revoked).
+  Before, a revoked service token stayed usable until it expired. Deploy note: no migration, no
+  environment variable.
+
 - **Saving a user can no longer clear an invite claim.** `UserRepository.Update` now also leaves
   out `invite_app_id`, which only account creation and `ClaimInviteApp` set. A save of a pending
   account loaded before another app claimed it (an admin edit racing the claim) used to write the

@@ -155,7 +155,7 @@ func okHandler(called *bool) http.Handler {
 
 func TestServiceAccountMiddleware_MissingHeader(t *testing.T) {
 	b := newTestBundle(t)
-	mw := ServiceAccountMiddleware(&stubAppRepo{}, b.ts)
+	mw := ServiceAccountMiddleware(&stubAppRepo{}, b.ts, nil)
 
 	called := false
 	rr := httptest.NewRecorder()
@@ -171,7 +171,7 @@ func TestServiceAccountMiddleware_MissingHeader(t *testing.T) {
 
 func TestServiceAccountMiddleware_MalformedHeader(t *testing.T) {
 	b := newTestBundle(t)
-	mw := ServiceAccountMiddleware(&stubAppRepo{}, b.ts)
+	mw := ServiceAccountMiddleware(&stubAppRepo{}, b.ts, nil)
 
 	req := saRequest("1", "")
 	req.Header.Set("Authorization", "Token abc123") // not "Bearer …"
@@ -187,7 +187,7 @@ func TestServiceAccountMiddleware_MalformedHeader(t *testing.T) {
 
 func TestServiceAccountMiddleware_ExpiredToken(t *testing.T) {
 	b := newTestBundle(t)
-	mw := ServiceAccountMiddleware(&stubAppRepo{}, b.ts)
+	mw := ServiceAccountMiddleware(&stubAppRepo{}, b.ts, nil)
 
 	token := makeExpiredServiceToken(t, b, 1)
 	called := false
@@ -203,7 +203,7 @@ func TestServiceAccountMiddleware_UserTokenRejected(t *testing.T) {
 	b := newTestBundle(t)
 	// User token has sub = "42" (numeric) — not "app:…"
 	userToken := makeUserToken(t, b, 42)
-	mw := ServiceAccountMiddleware(&stubAppRepo{}, b.ts)
+	mw := ServiceAccountMiddleware(&stubAppRepo{}, b.ts, nil)
 
 	called := false
 	rr := httptest.NewRecorder()
@@ -219,7 +219,7 @@ func TestServiceAccountMiddleware_AppIDMismatch(t *testing.T) {
 	// Token is for app 2, but route says app_id=1
 	app := &model.App{ID: 2, ClientID: "client-2", Active: true}
 	token := makeServiceToken(t, b, app)
-	mw := ServiceAccountMiddleware(&stubAppRepo{}, b.ts)
+	mw := ServiceAccountMiddleware(&stubAppRepo{}, b.ts, nil)
 
 	called := false
 	rr := httptest.NewRecorder()
@@ -240,7 +240,7 @@ func TestServiceAccountMiddleware_AppNotFound(t *testing.T) {
 			return nil, errors.New("not found")
 		},
 	}
-	mw := ServiceAccountMiddleware(repo, b.ts)
+	mw := ServiceAccountMiddleware(repo, b.ts, nil)
 
 	called := false
 	rr := httptest.NewRecorder()
@@ -261,7 +261,7 @@ func TestServiceAccountMiddleware_InactiveApp(t *testing.T) {
 			return &model.App{ID: 1, Active: false}, nil // inactive in DB
 		},
 	}
-	mw := ServiceAccountMiddleware(repo, b.ts)
+	mw := ServiceAccountMiddleware(repo, b.ts, nil)
 
 	called := false
 	rr := httptest.NewRecorder()
@@ -285,7 +285,7 @@ func TestServiceAccountMiddleware_ValidToken_StoresAppInContext(t *testing.T) {
 			return nil, errors.New("not found")
 		},
 	}
-	mw := ServiceAccountMiddleware(repo, b.ts)
+	mw := ServiceAccountMiddleware(repo, b.ts, nil)
 
 	var appFromCtx *model.App
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

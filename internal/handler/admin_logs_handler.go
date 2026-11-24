@@ -94,7 +94,7 @@ func (h *AdminLogsHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 
 // GetLog returns a single audit-log entry by ID.
 func (h *AdminLogsHandler) GetLog(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid log ID", http.StatusBadRequest)
 		return
@@ -206,7 +206,7 @@ func (h *AdminLogsHandler) applyFilters(r *http.Request) func(*gorm.DB) *gorm.DB
 	return func(db *gorm.DB) *gorm.DB {
 		// admin_id
 		if v := r.URL.Query().Get("admin_id"); v != "" {
-			if id, err := strconv.ParseUint(v, 10, 64); err == nil {
+			if id, err := strconv.ParseUint(v, 10, strconv.IntSize); err == nil {
 				db = db.Where("admin_id = ?", id)
 			}
 		}

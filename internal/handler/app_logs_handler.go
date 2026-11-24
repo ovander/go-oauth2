@@ -21,7 +21,7 @@ func NewAppLogsHandler(appActivityLogService service.AppActivityLogService) *App
 
 // GET /api/apps/:app_id/logs
 func (h *AppLogsHandler) GetLogs(w http.ResponseWriter, r *http.Request) {
-	appID, err := strconv.ParseUint(chi.URLParam(r, "app_id"), 10, 64)
+	appID, err := strconv.ParseUint(chi.URLParam(r, "app_id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid app ID", http.StatusBadRequest)
 		return

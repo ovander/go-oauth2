@@ -94,13 +94,13 @@ func (h *MonitoringHandler) GetSecurityEvents(w http.ResponseWriter, r *http.Req
 	}
 
 	if userID := r.URL.Query().Get("user_id"); userID != "" {
-		if id, err := strconv.ParseUint(userID, 10, 64); err == nil {
+		if id, err := strconv.ParseUint(userID, 10, strconv.IntSize); err == nil {
 			query = query.Where("user_id = ?", id)
 		}
 	}
 
 	if appID := r.URL.Query().Get("app_id"); appID != "" {
-		if id, err := strconv.ParseUint(appID, 10, 64); err == nil {
+		if id, err := strconv.ParseUint(appID, 10, strconv.IntSize); err == nil {
 			query = query.Where("app_id = ?", id)
 		}
 	}
@@ -509,7 +509,7 @@ func (h *MonitoringHandler) CreateAlertRule(w http.ResponseWriter, r *http.Reque
 func (h *MonitoringHandler) UpdateAlertRule(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid rule ID", http.StatusBadRequest)
 		return
@@ -568,7 +568,7 @@ func (h *MonitoringHandler) UpdateAlertRule(w http.ResponseWriter, r *http.Reque
 func (h *MonitoringHandler) DeleteAlertRule(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid rule ID", http.StatusBadRequest)
 		return
@@ -637,7 +637,7 @@ func (h *MonitoringHandler) AcknowledgeAlert(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid alert ID", http.StatusBadRequest)
 		return
@@ -738,7 +738,7 @@ func (h *MonitoringHandler) BlockIP(w http.ResponseWriter, r *http.Request) {
 func (h *MonitoringHandler) UnblockIP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid blocked IP ID", http.StatusBadRequest)
 		return
@@ -1000,7 +1000,7 @@ func (h *MonitoringHandler) StreamEvents(w http.ResponseWriter, r *http.Request)
 	// MAX(id) so only genuinely new events are streamed.
 	var lastEventID uint
 	if lastID := r.URL.Query().Get("last_event_id"); lastID != "" {
-		if id, err := strconv.ParseUint(lastID, 10, 64); err == nil {
+		if id, err := strconv.ParseUint(lastID, 10, strconv.IntSize); err == nil {
 			lastEventID = uint(id)
 		}
 	} else if h.db != nil {
@@ -1118,12 +1118,12 @@ func (h *MonitoringHandler) ListSessions(w http.ResponseWriter, r *http.Request)
 
 	// Apply filters
 	if userID := r.URL.Query().Get("user_id"); userID != "" {
-		if id, err := strconv.ParseUint(userID, 10, 64); err == nil {
+		if id, err := strconv.ParseUint(userID, 10, strconv.IntSize); err == nil {
 			query = query.Where("user_id = ?", id)
 		}
 	}
 	if appID := r.URL.Query().Get("app_id"); appID != "" {
-		if id, err := strconv.ParseUint(appID, 10, 64); err == nil {
+		if id, err := strconv.ParseUint(appID, 10, strconv.IntSize); err == nil {
 			query = query.Where("app_id = ?", id)
 		}
 	}
@@ -1192,7 +1192,7 @@ func (h *MonitoringHandler) ListSessions(w http.ResponseWriter, r *http.Request)
 // GET /api/admin/users/:id/sessions
 func (h *MonitoringHandler) GetUserSessions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid user ID", http.StatusBadRequest)
 		return

@@ -86,7 +86,7 @@ func VerifyUserToken(ctx context.Context, tokenService *auth.TokenService, userR
 		return nil, nil, &UserTokenError{Reason: AuthRejectInvalid, Detail: "verify_failed", Message: "invalid or expired token", Status: http.StatusUnauthorized}
 	}
 
-	userID, err := strconv.ParseUint(claims.Subject, 10, 64)
+	userID, err := strconv.ParseUint(claims.Subject, 10, strconv.IntSize)
 	if err != nil {
 		return nil, nil, &UserTokenError{Reason: AuthRejectInvalid, Detail: "bad_subject_claim", Message: "invalid token claims", Status: http.StatusUnauthorized}
 	}
@@ -206,7 +206,7 @@ func OptionalAuthMiddleware(tokenService *auth.TokenService, userRepo repository
 				return
 			}
 
-			userID, err := strconv.ParseUint(claims.Subject, 10, 64)
+			userID, err := strconv.ParseUint(claims.Subject, 10, strconv.IntSize)
 			if err != nil {
 				next.ServeHTTP(w, r)
 				return

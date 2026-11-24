@@ -215,7 +215,7 @@ func (h *AdminHandler) GetApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	appID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	appID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid app ID", http.StatusBadRequest)
 		return
@@ -308,7 +308,7 @@ func (h *AdminHandler) UpdateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	appID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	appID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid app ID", http.StatusBadRequest)
 		return
@@ -365,7 +365,7 @@ func (h *AdminHandler) DeleteApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	appID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	appID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid app ID", http.StatusBadRequest)
 		return
@@ -413,7 +413,7 @@ func (h *AdminHandler) RotateSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	appID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	appID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid app ID", http.StatusBadRequest)
 		return
@@ -569,7 +569,7 @@ func (h *AdminHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid user ID", http.StatusBadRequest)
 		return
@@ -608,7 +608,7 @@ func (h *AdminHandler) GetUserApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid user ID", http.StatusBadRequest)
 		return
@@ -665,7 +665,7 @@ func (h *AdminHandler) RevokeUserTokens(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid user ID", http.StatusBadRequest)
 		return
@@ -711,7 +711,7 @@ func (h *AdminHandler) UnlockUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid user ID", http.StatusBadRequest)
 		return
@@ -762,7 +762,7 @@ func (h *AdminHandler) UpdateUserAttributes(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid user ID", http.StatusBadRequest)
 		return
@@ -831,7 +831,7 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid user ID", http.StatusBadRequest)
 		return
@@ -884,7 +884,7 @@ func (h *AdminHandler) BlockUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid user ID", http.StatusBadRequest)
 		return
@@ -1008,7 +1008,7 @@ func (h *AdminHandler) GetSuperadmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid superadmin ID", http.StatusBadRequest)
 		return
@@ -1097,7 +1097,7 @@ func (h *AdminHandler) UpdateSuperadmin(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid superadmin ID", http.StatusBadRequest)
 		return
@@ -1155,7 +1155,7 @@ func (h *AdminHandler) DeleteSuperadmin(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	userID, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid superadmin ID", http.StatusBadRequest)
 		return

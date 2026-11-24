@@ -69,7 +69,7 @@ func (h *WebhookHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	var appID *uint
 	if raw := r.URL.Query().Get("app_id"); raw != "" {
-		id, err := strconv.ParseUint(raw, 10, 64)
+		id, err := strconv.ParseUint(raw, 10, strconv.IntSize)
 		if err != nil {
 			writeError(w, "invalid app_id", http.StatusBadRequest)
 			return
@@ -244,7 +244,7 @@ func (h *WebhookHandler) ListDeliveries(w http.ResponseWriter, r *http.Request) 
 
 	var subID *uint
 	if raw := r.URL.Query().Get("subscription_id"); raw != "" {
-		id, err := strconv.ParseUint(raw, 10, 64)
+		id, err := strconv.ParseUint(raw, 10, strconv.IntSize)
 		if err != nil {
 			writeError(w, "invalid subscription_id", http.StatusBadRequest)
 			return
@@ -354,7 +354,7 @@ func subAppID(sub *model.WebhookSubscription) *uint {
 }
 
 func webhookIDParam(w http.ResponseWriter, r *http.Request) (uint, bool) {
-	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, 64)
+	id, err := strconv.ParseUint(chi.URLParam(r, "id"), 10, strconv.IntSize)
 	if err != nil {
 		writeError(w, "invalid webhook ID", http.StatusBadRequest)
 		return 0, false

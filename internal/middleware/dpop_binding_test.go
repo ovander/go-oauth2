@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -167,8 +168,8 @@ func TestDPoPBinding_Enforce(t *testing.T) {
 			if rr.Code != tc.want {
 				t.Fatalf("status %d, want %d (%s)", rr.Code, tc.want, rr.Body.String())
 			}
-			if tc.want == http.StatusUnauthorized && rr.Header().Get("WWW-Authenticate") == "" {
-				t.Error("no WWW-Authenticate: DPoP challenge")
+			if got := rr.Header().Get("WWW-Authenticate"); tc.want == http.StatusUnauthorized && !strings.HasPrefix(got, "DPoP ") {
+				t.Errorf("WWW-Authenticate %q, want a DPoP challenge", got)
 			}
 		})
 	}

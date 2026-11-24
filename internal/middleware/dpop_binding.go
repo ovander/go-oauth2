@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -96,7 +97,18 @@ func (b *DPoPBinding) allow(w http.ResponseWriter, r *http.Request, token string
 	if !b.enforce {
 		return true
 	}
-	w.Header().Set("WWW-Authenticate", `DPoP error="invalid_token", algs="ES256"`)
-	writeAuthError(w, "a DPoP-bound token needs a valid DPoP proof", http.StatusUnauthorized)
+	writeDPoPChallenge(w)
 	return false
+}
+
+// writeDPoPChallenge answers 401 with the RFC 9449 §7.1 challenge for a bound
+// token without a valid proof. It does not use writeAuthError, which sets a
+// Bearer challenge.
+func writeDPoPChallenge(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("WWW-Authenticate", `DPoP error="invalid_token", error_description="a DPoP-bound token needs a valid DPoP proof", algs="ES256"`)
+	w.WriteHeader(http.StatusUnauthorized)
+	_ = json.NewEncoder(w).Encode(struct {
+		Error string `json:"error"`
+	}{Error: "a DPoP-bound token needs a valid DPoP proof"})
 }

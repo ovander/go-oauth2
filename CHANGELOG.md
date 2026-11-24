@@ -12,6 +12,12 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **Saving a user can no longer clear an invite claim.** `UserRepository.Update` now also leaves
+  out `invite_app_id`, which only account creation and `ClaimInviteApp` set. A save of a pending
+  account loaded before another app claimed it (an admin edit racing the claim) used to write the
+  empty value back, so a third app could claim the account and its invite set the password.
+  Deploy note: no migration, no environment variable.
+
 - **Saving a user can no longer restore an old password.** `UserRepository.Update` now also leaves
   out `hashed_password`, `password_changed_at` and `must_change_password`: a path that loaded a
   user before a password change (a sign-in saving its last-login time racing a change or a

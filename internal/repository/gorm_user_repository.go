@@ -68,11 +68,14 @@ type PasswordChange struct {
 // changed only by a targeted statement (an increment, a reset, a lock, a
 // password change), so a full-row save of a user loaded earlier would move it
 // back. The password columns are among them: a save racing a password change
-// would otherwise restore the old password. mfa_last_step is guarded the same
-// way by its read-only GORM tag (model.User.MFALastStep).
+// would otherwise restore the old password. So is invite_app_id, set at
+// creation or by ClaimInviteApp: a save racing a claim would otherwise clear
+// it and let another app's invite activate the account. mfa_last_step is
+// guarded the same way by its read-only GORM tag (model.User.MFALastStep).
 var userGuardedColumns = []string{
 	"token_version", "failed_login_attempts", "locked_until",
 	"hashed_password", "password_changed_at", "must_change_password",
+	"invite_app_id",
 }
 
 type userRepository struct {

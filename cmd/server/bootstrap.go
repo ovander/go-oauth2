@@ -675,6 +675,7 @@ func Bootstrap(cfg *config.Config) *App {
 	// cleared at logout). Secure in production. Empty client id leaves it off.
 	if cfg.AdminConsoleClientID != "" {
 		oauthHandler.SetRefreshCookie(cfg.AdminConsoleClientID, cfg.RefreshTokenTTL, cfg.IsProduction())
+		oauthHandler.SetRefreshCookieOrigins(splitCSV(cfg.AdminConsoleRedirectURIs))
 		authHandler.SetRefreshCookie(true, cfg.IsProduction())
 	}
 	// Advertise the RFC 8693 token-exchange grant in discovery only when it can

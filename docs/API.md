@@ -511,6 +511,21 @@ invalid_dpop_proof`; a client registered with `require_dpop` gets no token
 without a valid proof (so it needs DPoP on). The token response keeps
 `token_type: "Bearer"`.
 
+**Bound tokens on Socrate's own APIs (since v1.14.7).** The same mode covers a
+token carrying `cnf.jkt` presented to `/oauth/userinfo`, `/api/*` and the admin
+API (RFC 9449 §7.1). Send it with `Authorization: DPoP <token>` (or `Bearer`,
+since the token response says `Bearer`) and a fresh `DPoP` proof for that
+request: signed by the bound key, with `htm`, `htu` (the issuer's
+`scheme://host` plus the path) and `ath`, the base64url SHA-256 of the token.
+Each proof is used once. Under `enforce`, a missing or invalid proof gets `401`
+with `WWW-Authenticate: DPoP error="invalid_token"`; under `observe` it is
+logged and audited as `dpop_validation_failed`, and the request proceeds. An
+unbound token is unaffected; under `off` nothing changes and only the `Bearer`
+scheme is accepted. `/oauth/revoke` and logout (optional authentication) do
+not check the binding: a bound token there can only end its own session. The
+policy decision endpoint receives the user's token as data from the
+application, which cannot hold the user's key, and does not check it either.
+
 ---
 
 ## 7. OpenID Connect Discovery

@@ -12,6 +12,16 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **A DPoP-bound token presented to Socrate's own APIs needs its proof.** Under `DPOP_MODE`
+  `observe` or `enforce`, a token carrying `cnf.jkt` sent to `/oauth/userinfo`, `/api/*`, the
+  app routes or the admin API must come with a fresh DPoP proof of the bound key for that request,
+  carrying `ath` (RFC 9449 §7.1; new `dpop.VerifyForResource`, `middleware.DPoPBinding`). The
+  `DPoP` authorization scheme is accepted next to `Bearer`. `enforce` answers `401` with a
+  `WWW-Authenticate: DPoP` challenge; `observe` logs and audits `dpop_validation_failed` and lets
+  the request through. Before, a bound token was accepted as a plain bearer token there. Unbound
+  tokens, and `DPOP_MODE=off`, are unchanged. Deploy note: no migration, no new variable; run
+  `observe` first and check `dpop_validation_failed` events before `enforce`.
+
 - **The admin-API audience check covers the app-management routes.** Under
   `ADMIN_API_AUDIENCE_MODE` `observe` or `enforce`, `/api/apps/{app_id}/*` (app users and app
   logs) now accepts a token issued to an operator console, to Socrate's admin portal, or to that

@@ -23,6 +23,19 @@ Capabilities**, non-breaking).
   under `POLICY_MODE` `shadow`, an admin's refused attempt is recorded as a divergence (the
   decision point does not know which clients are consoles).
 
+- **Saving a user can no longer undo a session revocation or a lockout change.**
+  `UserRepository.Update` (a full-row save) now leaves out `token_version`,
+  `failed_login_attempts` and `locked_until`, which only their targeted statements write. A path
+  that loaded a user before a concurrent logout, password change, failed sign-in, lock or reset
+  (for example a sign-in saving its last-login time) used to write the old values back: revoked
+  sessions became valid again, a lock was lifted, or a successful sign-in's counter reset was
+  undone. Password changes (`ResetPassword`, `ChangePassword`, the admin `UpdatePassword`) now
+  store the new hash and increment the token version in one statement (new
+  `UserRepository.SetPassword`), so the password and the revocation are saved together or not at
+  all. Unlocking a user uses the targeted reset, and `cmd/seed -force` increments the token
+  version in the database. Deploy note: no migration, no environment variable, no change of
+  default.
+
 - **User attributes that policy rules read are protected.** `PUT /api/admin/users/{id}/attributes`
   now requires fresh step-up (it joins `policy.StepUpActions`); an admin cannot change their own
   attributes (`400`), and only a superadmin changes a superadmin's (`403`). The audit entry

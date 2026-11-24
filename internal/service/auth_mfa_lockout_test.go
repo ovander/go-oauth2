@@ -17,6 +17,8 @@ type lockoutUserRepo struct {
 	repository.UserRepository
 	users map[uint]*model.User
 	locks int
+	// setPasswordErr makes SetPassword fail without changing anything.
+	setPasswordErr error
 }
 
 func newLockoutUserRepo(us ...*model.User) *lockoutUserRepo {

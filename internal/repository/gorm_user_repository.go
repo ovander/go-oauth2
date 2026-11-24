@@ -15,7 +15,18 @@ type UserRepository interface {
 	FindByRole(ctx context.Context, role model.UserRole) ([]model.User, error)
 	CountByRole(ctx context.Context, role model.UserRole) (int64, error)
 	Create(ctx context.Context, user *model.User) error
+	// Update saves the user's row, except the columns that targeted
+	// statements own (userGuardedColumns): the token version and the
+	// lockout state. Saving a user loaded before a concurrent session
+	// revocation or failed sign-in therefore cannot undo it. Those columns
+	// change only through IncrementTokenVersion, SetPassword,
+	// IncrementFailedLoginAttempts, ResetFailedLoginAttempts and LockAccount.
 	Update(ctx context.Context, user *model.User) error
+	// SetPassword stores a new password hash and increments the token
+	// version in the same statement, so the user's existing sessions end
+	// with the old password: both are saved or neither is. It returns
+	// gorm.ErrRecordNotFound when no such user exists.
+	SetPassword(ctx context.Context, userID uint, change PasswordChange) error
 	// UpdateProfile writes the user's name, email, password hash,
 	// password-change time and update time, and no other column, so it cannot
 	// overwrite a concurrent change to the others (token version, lockout).
@@ -36,6 +47,23 @@ type UserRepository interface {
 	// (false: that step or a later one was already used).
 	AdvanceMFAStep(ctx context.Context, userID uint, step int64) (bool, error)
 }
+
+// PasswordChange is a new password hash and what is recorded with it.
+type PasswordChange struct {
+	HashedPassword string
+	// ClearMustChangePassword clears must_change_password: the user chose
+	// this password.
+	ClearMustChangePassword bool
+	// ChangedAt, when set, is stored as password_changed_at.
+	ChangedAt *time.Time
+}
+
+// userGuardedColumns are the users columns that Update never writes: each is
+// changed only by a targeted statement that reads and writes it in the
+// database (an increment, a reset, a lock), so a full-row save of a user
+// loaded earlier would move it back. mfa_last_step is guarded the same way by
+// its read-only GORM tag (model.User.MFALastStep).
+var userGuardedColumns = []string{"token_version", "failed_login_attempts", "locked_until"}
 
 type userRepository struct {
 	db *gorm.DB
@@ -100,7 +128,30 @@ func (r *userRepository) Create(ctx context.Context, user *model.User) error {
 }
 
 func (r *userRepository) Update(ctx context.Context, user *model.User) error {
-	return r.db.WithContext(ctx).Save(user).Error
+	return r.db.WithContext(ctx).Omit(userGuardedColumns...).Save(user).Error
+}
+
+func (r *userRepository) SetPassword(ctx context.Context, userID uint, change PasswordChange) error {
+	columns := map[string]interface{}{
+		"hashed_password": change.HashedPassword,
+		"token_version":   gorm.Expr("token_version + 1"),
+	}
+	if change.ClearMustChangePassword {
+		columns["must_change_password"] = false
+	}
+	if change.ChangedAt != nil {
+		columns["password_changed_at"] = *change.ChangedAt
+	}
+	// One UPDATE statement (updated_at is set with it): the new hash and the
+	// revocation cannot be saved apart.
+	res := r.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", userID).Updates(columns)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (r *userRepository) UpdateProfile(ctx context.Context, user *model.User, revokeSessions bool) error {

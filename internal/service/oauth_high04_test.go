@@ -299,4 +299,7 @@ func (*high04UserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error
 	return false, nil
 }
 
+func (*high04UserRepo) SetPassword(context.Context, uint, repository.PasswordChange) error {
+	return nil
+}
 func (*high04UserRepo) UpdateProfile(context.Context, *model.User, bool) error { return nil }

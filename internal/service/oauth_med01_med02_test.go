@@ -381,4 +381,7 @@ func (*trackIncrUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, er
 	return false, nil
 }
 
+func (*trackIncrUserRepo) SetPassword(context.Context, uint, repository.PasswordChange) error {
+	return nil
+}
 func (*trackIncrUserRepo) UpdateProfile(context.Context, *model.User, bool) error { return nil }

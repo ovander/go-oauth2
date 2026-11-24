@@ -8,6 +8,7 @@ import (
 
 	"github.com/ovander/go-oauth2/internal/dto"
 	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/repository"
 	"github.com/ovander/go-oauth2/internal/shared/auth"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -37,9 +38,36 @@ func (r *lockoutUserRepo) ResetFailedLoginAttempts(_ context.Context, id uint) e
 	return nil
 }
 
+// Update saves the row except the columns the GORM repository leaves to
+// targeted statements (token version, lockout, last TOTP step).
 func (r *lockoutUserRepo) Update(_ context.Context, u *model.User) error {
 	cp := *u
+	if s, ok := r.users[u.ID]; ok {
+		cp.TokenVersion, cp.FailedLoginAttempts, cp.LockedUntil, cp.MFALastStep =
+			s.TokenVersion, s.FailedLoginAttempts, s.LockedUntil, s.MFALastStep
+	}
 	r.users[u.ID] = &cp
+	return nil
+}
+
+// SetPassword stores the hash and increments the token version together, or
+// fails with setPasswordErr and changes nothing.
+func (r *lockoutUserRepo) SetPassword(_ context.Context, id uint, c repository.PasswordChange) error {
+	if r.setPasswordErr != nil {
+		return r.setPasswordErr
+	}
+	u, ok := r.users[id]
+	if !ok {
+		return errors.New("record not found")
+	}
+	u.HashedPassword = c.HashedPassword
+	if c.ClearMustChangePassword {
+		u.MustChangePassword = false
+	}
+	if c.ChangedAt != nil {
+		u.PasswordChangedAt = c.ChangedAt
+	}
+	u.TokenVersion++
 	return nil
 }
 

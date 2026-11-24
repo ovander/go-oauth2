@@ -708,7 +708,12 @@ login limiter (`429`), as is `/elevate`.
   scope listed here is what makes it valid for this client, in every mode;
   note that a non-empty list also restricts the client's global scopes once
   `SCOPE_POLICY_MODE=enforce`, so list the global scopes it needs too (`api`
-  for a `client_credentials` client that sends no `scope`). `claim_mappings` (optional, A2) declares the custom claims
+  for a `client_credentials` client that sends no `scope`). The privileged scopes
+  `admin`, `monitoring:read` and `monitoring:write` follow `PRIVILEGED_SCOPE_MODE`
+  (since v1.14.7) whatever `SCOPE_POLICY_MODE` says: under `enforce` a client gets
+  one only if it lists it here or is an operator console (`invalid_scope`
+  otherwise; an empty list does not grant them); `observe` audits `scope_denied`
+  with `reason: privileged_scope`. `claim_mappings` (optional, A2) declares the custom claims
   this client's tokens carry, keyed by the unqualified claim name; each value is
   either a source string or `{"source": …, "target": "access"|"id"|"both"}`
   (default `access`). Sources are a closed set: `user.attributes.<key>`,

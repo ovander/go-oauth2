@@ -589,6 +589,13 @@ and `POST /api/admin/elevate`. Any other token, such as the same admin's token
 from an application, gets `403 { "error": "invalid_audience" }`. `observe`
 allows it and audits `admin_api_audience`.
 
+The same mode covers the app-management routes `/api/apps/{app_id}/*` (§8.5,
+since v1.14.7), with one difference: a token issued to that app is accepted
+too, since an application's backend forwards its app admins' tokens there. A
+token issued to another application gets `403 invalid_audience` under
+`enforce`. The service-account routes `/api/apps/{app_id}/service/*` keep their
+own authentication and are not affected.
+
 **Forced password change (Tier-0).** If the admin's account is flagged
 `must_change_password` (returned in the login response), **every** `/api/admin/*`
 route returns `403 { "error": "password_change_required" }` — except

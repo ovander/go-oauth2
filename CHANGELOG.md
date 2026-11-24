@@ -18,6 +18,17 @@ Capabilities**, non-breaking).
   empty value back, so a third app could claim the account and its invite set the password.
   Deploy note: no migration, no environment variable.
 
+- **The admin-API audience check covers the app-management routes.** Under
+  `ADMIN_API_AUDIENCE_MODE` `observe` or `enforce`, `/api/apps/{app_id}/*` (app users and app
+  logs) now accepts a token issued to an operator console, to Socrate's admin portal, or to that
+  same app (its backend forwards its app admins' tokens), and reports or refuses
+  (`403 invalid_audience`) a token issued to another application. Before, a global admin's token
+  held by any application's backend managed every app's users there, whatever the mode. The
+  service-account routes `/api/apps/{app_id}/service/*` are unchanged. A mismatch is audited as
+  `admin_api_audience`, as on the admin API. Deploy note: no migration, no new variable or
+  default; with the mode in `observe`, check the audit for `admin_api_audience` events on
+  `/api/apps/` paths before `enforce`.
+
 - **Saving a user can no longer restore an old password.** `UserRepository.Update` now also leaves
   out `hashed_password`, `password_changed_at` and `must_change_password`: a path that loaded a
   user before a password change (a sign-in saving its last-login time racing a change or a

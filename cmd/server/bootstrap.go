@@ -1002,7 +1002,7 @@ func Bootstrap(cfg *config.Config) *App {
 	{
 		repo := securityAuditRepo
 		accepted := append(cfg.ConsoleClientIDs(), service.AdminPortalClientID)
-		routerConfig.AdminAudience = middleware.RequireAdminAudience(cfg.AdminAPIAudienceMode, accepted,
+		audit := middleware.AdminAudienceFunc(
 			func(r *http.Request, clientID string, refused bool) {
 				var userID *uint
 				if id, ok := middleware.GetUserIDFromContext(r.Context()); ok {
@@ -1024,6 +1024,17 @@ func Bootstrap(cfg *config.Config) *App {
 					CreatedAt: time.Now(),
 				})
 			})
+		routerConfig.AdminAudience = middleware.RequireAdminAudience(cfg.AdminAPIAudienceMode, accepted, audit)
+		// The app-management routes take the same check; a token issued to
+		// the app in the path is accepted there too.
+		routerConfig.AppAudience = middleware.RequireAppAudience(cfg.AdminAPIAudienceMode, accepted,
+			func(ctx context.Context, appID uint) (string, error) {
+				app, err := appRepo.FindByID(ctx, appID)
+				if err != nil {
+					return "", err
+				}
+				return app.ClientID, nil
+			}, audit)
 	}
 
 	// ==========================================

@@ -23,6 +23,23 @@ Capabilities**, non-breaking).
   `enforce` (see `docs/EXTENSIBILITY.md`), or every app-route request is a divergence, and in
   `enforce` a `403`. With `POLICY_MODE=off` (the default) nothing changes.
 
+- **`REFRESH_REUSE_MODE=enforce` revokes only the reused token's family.** Under `enforce`, a
+  rotated refresh token presented again raised the user's token version (every session, the
+  consoles included) before the client was authenticated, on every replay, and also for a token
+  a logout had revoked; a concurrent replay was neither audited nor revoked. Now:
+  - each refresh token carries a family id (`fam`, kept across rotations; refresh tokens are
+    opaque to clients), and `enforce` revokes that family only: that sign-in's tokens at that
+    client;
+  - reuse is checked after client authentication and the token-version check;
+  - a token revoked by `/oauth/revoke` or a logout is rejected without a reuse signal;
+  - each token signals once;
+  - the concurrent replay is audited (`concurrent: true`) and handled like any other reuse.
+
+  A refresh token issued before this release has no family; under `enforce`, its reuse still
+  revokes all the user's tokens. Audit details gain `revoked` (`family` or `all_user_tokens`).
+  Deploy note: no migration; the records live in `used_tokens`. `off` (the default) is
+  unchanged, except that a replayed token is now rejected after client authentication.
+
 - **The audit chain detects removed or blanked newest rows.** The newest rows could be deleted, or
   have their hash blanked, without breaking the chain: what remained still linked up, the next
   row linked to the newest row still carrying a hash, and the scanner skipped rows without one.

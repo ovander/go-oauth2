@@ -221,6 +221,11 @@ type RefreshTokenClaims struct {
 	// token is sender-constrained: a refresh request must present a DPoP proof
 	// for the same key (RFC 9449 §5). Absent for ordinary bearer refresh tokens.
 	Cnf *Confirmation `json:"cnf,omitempty"`
+	// Family identifies the chain of refresh tokens one sign-in produced: a
+	// random id set when the first refresh token is issued and kept by every
+	// rotation (#365). A reused token revokes its family only. Absent on refresh
+	// tokens issued before it existed. Refresh tokens are opaque to clients.
+	Family string `json:"fam,omitempty"`
 }
 
 // IDTokenClaims represents ID token claims (OpenID Connect)
@@ -319,8 +324,9 @@ type TokenSet struct {
 // on the access and ID tokens. The zero value omits both claims, so flows that
 // don't know how the user authenticated produce tokens identical to before.
 type authnContext struct {
-	amr []string
-	acr string
+	amr    []string
+	acr    string
+	family string // refresh-token family to carry over; empty starts one
 }
 
 // GenerateTokenSet generates a complete token set for a user.
@@ -352,7 +358,7 @@ func (ts *TokenService) GenerateTokenSetWithDPoP(user *model.User, app *model.Ap
 // AuthTime falls back to now, as GenerateTokenSet does. jkt binds the access
 // and refresh tokens to a DPoP key when non-empty.
 func (ts *TokenService) GenerateTokenSetWithEvidence(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, nonce string, ev AuthnEvidence, jkt string) (*TokenSet, error) {
-	return ts.generateTokenSet(user, app, role, scope, appRoles, nonce, ev.AuthTime, jkt, authnContext{amr: ev.AMR, acr: ev.ACR})
+	return ts.generateTokenSet(user, app, role, scope, appRoles, nonce, ev.AuthTime, jkt, authnContext{amr: ev.AMR, acr: ev.ACR, family: ev.Family})
 }
 
 func (ts *TokenService) generateTokenSet(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, nonce string, authTime int64, jkt string, ac authnContext) (*TokenSet, error) {
@@ -494,6 +500,10 @@ func (ts *TokenService) generateRefreshToken(user *model.User, app *model.App, r
 		roles = append(roles, role)
 	}
 
+	family := ac.family
+	if family == "" {
+		family = uuid.New().String()
+	}
 	claims := RefreshTokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    ts.issuer,
@@ -513,6 +523,7 @@ func (ts *TokenService) generateRefreshToken(user *model.User, app *model.App, r
 		Type:     "refresh",
 		AppRoles: appRoles,
 		Roles:    roles,
+		Family:   family,
 	}
 	if jkt != "" {
 		claims.Cnf = &Confirmation{JKT: jkt}

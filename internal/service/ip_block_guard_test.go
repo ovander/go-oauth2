@@ -79,3 +79,19 @@ func TestAutoDefense_NeverBlocksAProtectedAddress(t *testing.T) {
 		t.Fatal("an ordinary address was not blocked: the test does not reach the blocking path")
 	}
 }
+
+// A skipped block resets the address's attempts, as a block does, so a burst
+// of failures from a protected address keeps a bounded list.
+func TestAutoDefense_SkippedBlockResetsAttempts(t *testing.T) {
+	svc, _ := newTestAutoDefense()
+	defer svc.Stop()
+	for i := 0; i < 500; i++ {
+		svc.RecordFailedLogin(context.Background(), "127.0.0.1", "test-agent")
+	}
+	svc.mu.RLock()
+	n := len(svc.ipRecords["127.0.0.1"].FailedAttempts)
+	svc.mu.RUnlock()
+	if n >= svc.config.FailedLoginThreshold {
+		t.Fatalf("%d attempts kept for a protected address, want fewer than the threshold (%d)", n, svc.config.FailedLoginThreshold)
+	}
+}

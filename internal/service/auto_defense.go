@@ -180,6 +180,9 @@ func (s *AutoDefenseService) blockIPUnlocked(ctx context.Context, ip, reason str
 	// (every request seen from 127.0.0.1) would otherwise lock everyone out.
 	if _, err := s.blockGuard.Check(ip); err != nil {
 		logger.Warnf("AUTO-DEFENSE: not blocking %s (%s): %v", ip, reason, err)
+		// Reset as a block would: the attempts list stays bounded, and the
+		// warning comes once per threshold of failures, not on every one.
+		record.FailedAttempts = nil
 		return
 	}
 	// Calculate block duration with escalation

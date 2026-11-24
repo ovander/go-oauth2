@@ -16,11 +16,12 @@ type UserRepository interface {
 	CountByRole(ctx context.Context, role model.UserRole) (int64, error)
 	Create(ctx context.Context, user *model.User) error
 	// Update saves the user's row, except the columns that targeted
-	// statements own (userGuardedColumns): the token version and the
-	// lockout state. Saving a user loaded before a concurrent session
-	// revocation or failed sign-in therefore cannot undo it. Those columns
-	// change only through IncrementTokenVersion, SetPassword,
-	// IncrementFailedLoginAttempts, ResetFailedLoginAttempts and LockAccount.
+	// statements own (userGuardedColumns): the token version, the lockout
+	// state and the password. Saving a user loaded before a concurrent session
+	// revocation, failed sign-in or password change therefore cannot undo it.
+	// Those columns change only through IncrementTokenVersion, SetPassword,
+	// IncrementFailedLoginAttempts, ResetFailedLoginAttempts, LockAccount and
+	// UpdateProfile.
 	Update(ctx context.Context, user *model.User) error
 	// SetPassword stores a new password hash and increments the token
 	// version in the same statement, so the user's existing sessions end
@@ -56,14 +57,21 @@ type PasswordChange struct {
 	ClearMustChangePassword bool
 	// ChangedAt, when set, is stored as password_changed_at.
 	ChangedAt *time.Time
+	// ConfirmedAt, when set, also marks the user verified and stores it as
+	// confirmed_at (an invited account choosing its first password).
+	ConfirmedAt *time.Time
 }
 
 // userGuardedColumns are the users columns that Update never writes: each is
-// changed only by a targeted statement that reads and writes it in the
-// database (an increment, a reset, a lock), so a full-row save of a user
-// loaded earlier would move it back. mfa_last_step is guarded the same way by
-// its read-only GORM tag (model.User.MFALastStep).
-var userGuardedColumns = []string{"token_version", "failed_login_attempts", "locked_until"}
+// changed only by a targeted statement (an increment, a reset, a lock, a
+// password change), so a full-row save of a user loaded earlier would move it
+// back. The password columns are among them: a save racing a password change
+// would otherwise restore the old password. mfa_last_step is guarded the same
+// way by its read-only GORM tag (model.User.MFALastStep).
+var userGuardedColumns = []string{
+	"token_version", "failed_login_attempts", "locked_until",
+	"hashed_password", "password_changed_at", "must_change_password",
+}
 
 type userRepository struct {
 	db *gorm.DB
@@ -141,6 +149,10 @@ func (r *userRepository) SetPassword(ctx context.Context, userID uint, change Pa
 	}
 	if change.ChangedAt != nil {
 		columns["password_changed_at"] = *change.ChangedAt
+	}
+	if change.ConfirmedAt != nil {
+		columns["is_verified"] = true
+		columns["confirmed_at"] = *change.ConfirmedAt
 	}
 	// One UPDATE statement (updated_at is set with it): the new hash and the
 	// revocation cannot be saved apart.

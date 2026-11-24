@@ -147,6 +147,7 @@ func LogStartupSummary(cfg *config.Config) {
 		"admin_mfa_policy":        cfg.AdminMFAPolicy,
 		"admin_app_signin_policy": cfg.AdminAppSignInPolicy,
 		"admin_api_audience_mode": cfg.AdminAPIAudienceMode,
+		"privileged_scope_mode":   cfg.PrivilegedScopeMode,
 		"service_user_scope_mode": cfg.ServiceUserScopeMode,
 		"audit_write_mode":        cfg.AuditWriteMode,
 		"policy_mode":             cfg.PolicyMode,
@@ -625,6 +626,15 @@ func Bootstrap(cfg *config.Config) *App {
 		}
 		ps.SetAdminAppSignInPolicy(adminAppSignIn)
 	}
+	// PRIVILEGED_SCOPE_MODE: admin and monitoring:* go only to a client that
+	// lists them in allowed_scopes, or to an operator console.
+	if ps, ok := oauthService.(interface {
+		SetPrivilegedScopePolicy(string, []string)
+	}); ok {
+		ps.SetPrivilegedScopePolicy(cfg.PrivilegedScopeMode, cfg.ConsoleClientIDs())
+	} else {
+		logger.Fatalf("bootstrap: %T does not support SetPrivilegedScopePolicy", oauthService)
+	}
 
 	// ==========================================
 	// Template Service
@@ -662,6 +672,7 @@ func Bootstrap(cfg *config.Config) *App {
 	// cleared at logout). Secure in production. Empty client id leaves it off.
 	if cfg.AdminConsoleClientID != "" {
 		oauthHandler.SetRefreshCookie(cfg.AdminConsoleClientID, cfg.RefreshTokenTTL, cfg.IsProduction())
+		oauthHandler.SetRefreshCookieOrigins(splitCSV(cfg.AdminConsoleRedirectURIs))
 		authHandler.SetRefreshCookie(true, cfg.IsProduction())
 	}
 	// Advertise the RFC 8693 token-exchange grant in discovery only when it can

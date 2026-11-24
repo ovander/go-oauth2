@@ -70,18 +70,17 @@ func VerifyAuditRows(secret []byte, logs []model.SecurityAuditLog) []uint {
 }
 
 // VerifyAuditChain checks the hash chain over a slice of audit rows and returns
-// the IDs of rows whose backward link is broken — i.e. a row that carries a
-// PrevHash which does not equal the RowHash of the immediately preceding chained
-// row in the slice. A break is what deletion, insertion, or reordering of rows
-// produces.
+// the IDs of the rows that break it: a row whose PrevHash does not equal the
+// RowHash of the row before it (what deletion, insertion or reordering
+// produces), and a row without a RowHash after the chain has started (what
+// blanking a row's hash produces, #364).
 //
-// The slice is sorted by ID ascending first (callers may pass any order). Only
-// rows that carry a RowHash participate; rows with an empty RowHash (written
-// before integrity stamping) are skipped and do not break the chain. The first
-// participating row is the anchor and is not link-checked, since its
-// predecessor may lie outside the provided range. Returns nil for an empty
-// secret. VerifyAuditChain checks links only; pair it with VerifyAuditRows to
-// also catch in-place mutation.
+// The slice is sorted by ID ascending first (callers may pass any order). Rows
+// without a RowHash before the first stamped row predate integrity stamping and
+// are skipped. The first stamped row is the anchor and is not link-checked,
+// since its predecessor may lie outside the provided range. Returns nil for an
+// empty secret. VerifyAuditChain checks links only; pair it with
+// VerifyAuditRows to also catch in-place mutation.
 func VerifyAuditChain(secret []byte, logs []model.SecurityAuditLog) []uint {
 	if len(secret) == 0 {
 		return nil
@@ -92,18 +91,61 @@ func VerifyAuditChain(secret []byte, logs []model.SecurityAuditLog) []uint {
 	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].ID < ordered[j].ID })
 
 	var broken []uint
-	var prev *model.SecurityAuditLog
+	walker := NewAuditChainWalker(nil, false)
 	for i := range ordered {
-		row := &ordered[i]
-		if row.RowHash == "" {
-			continue // unchained (pre-integrity) row
+		if walker.Next(&ordered[i]) != "" {
+			broken = append(broken, ordered[i].ID)
 		}
-		if prev != nil && row.PrevHash != prev.RowHash {
-			broken = append(broken, row.ID)
-		}
-		prev = row
 	}
 	return broken
+}
+
+// Reasons AuditChainWalker.Next gives for a row that breaks the chain.
+const (
+	// ChainBreakLink: the row's PrevHash is not the previous row's RowHash.
+	ChainBreakLink = "link"
+	// ChainBreakUnstamped: the row has no RowHash although the chain had
+	// already started.
+	ChainBreakUnstamped = "unstamped"
+)
+
+// AuditChainWalker checks the chain one row at a time, in ascending id order,
+// so a scan can carry the state across pages (#364).
+type AuditChainWalker struct {
+	started bool   // a stamped row has been seen: an unstamped one now breaks the chain
+	known   bool   // prev is the hash the next row must link to
+	prev    string // RowHash of the previous row
+}
+
+// NewAuditChainWalker starts a walk. before is the row just before the first
+// row to be walked (nil when none or unknown); started says whether the chain
+// had already started before it.
+func NewAuditChainWalker(before *model.SecurityAuditLog, started bool) *AuditChainWalker {
+	w := &AuditChainWalker{started: started}
+	if before != nil && before.RowHash != "" {
+		w.started, w.known, w.prev = true, true, before.RowHash
+	}
+	return w
+}
+
+// Next checks the next row and returns "" when it keeps the chain, or
+// ChainBreakLink or ChainBreakUnstamped. After an unstamped row the next link
+// cannot be checked (the hash it pointed to is gone), so it is not reported a
+// second time.
+func (w *AuditChainWalker) Next(row *model.SecurityAuditLog) string {
+	if row.RowHash == "" {
+		if !w.started {
+			return "" // predates integrity stamping
+		}
+		w.known = false
+		return ChainBreakUnstamped
+	}
+	reason := ""
+	if w.known && row.PrevHash != w.prev {
+		reason = ChainBreakLink
+	}
+	w.started, w.known, w.prev = true, true, row.RowHash
+	return reason
 }
 
 // canonicalAuditPayload builds a deterministic, DB-round-trip-stable byte

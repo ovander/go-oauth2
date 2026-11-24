@@ -17,7 +17,7 @@ Capabilities**, non-breaking).
   one of the server's network addresses or any address in `TRUSTED_PROXIES`, and anything that
   is not an IP address; it stores an IPv4-mapped address as IPv4, the form the block list is
   matched against. The automatic defence (failed sign-ins, brute force) skips the same addresses
-  and logs it. Blocking one of them cut off the consoles, which reach the admin API through a
+  and logs it, and a block already stored for one of them is not enforced. Blocking one of them cut off the consoles, which reach the admin API through a
   local proxy, and with them the route that lifts the block; behind a proxy missing from
   `TRUSTED_PROXIES`, every request appears to come from it, so one burst of failed sign-ins
   locked everyone out. Deploy note: no migration, no environment variable.

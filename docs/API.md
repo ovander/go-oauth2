@@ -848,7 +848,7 @@ policy-decisions), `/events/stream` (SSE), `/sessions`, `/reports/*`,
 (`400`), since v1.14.7, loopback and unspecified addresses, the server's own
 addresses and any address in `TRUSTED_PROXIES`: blocking one would cut off the
 consoles and the route that lifts the block. The automatic defence never
-blocks them either. An IPv4-mapped IPv6 address is stored as IPv4.
+blocks them either, and a block already stored for one of them is not enforced. An IPv4-mapped IPv6 address is stored as IPv4.
 With `ADMIN_SCOPE_MODE=enforce` the monitoring routes also need
 `monitoring:read` (reads) or `monitoring:write` (writes), the others `admin`
 (`403 insufficient_scope`). `GET /metrics` (Prometheus) is served on the admin

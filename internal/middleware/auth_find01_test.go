@@ -34,6 +34,7 @@ import (
 
 	"github.com/ovander/go-oauth2/internal/contextkeys"
 	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/repository"
 	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
 
@@ -407,4 +408,7 @@ func (*find01UserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error
 	return false, nil
 }
 
+func (*find01UserRepo) SetPassword(context.Context, uint, repository.PasswordChange) error {
+	return nil
+}
 func (*find01UserRepo) UpdateProfile(context.Context, *model.User, bool) error { return nil }

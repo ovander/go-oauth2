@@ -177,4 +177,5 @@ func (*memUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
 	return false, nil
 }
 
-func (*memUserRepo) UpdateProfile(context.Context, *model.User, bool) error { return nil }
+func (*memUserRepo) SetPassword(context.Context, uint, repository.PasswordChange) error { return nil }
+func (*memUserRepo) UpdateProfile(context.Context, *model.User, bool) error             { return nil }

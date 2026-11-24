@@ -12,6 +12,17 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **The operator-console clients are protected objects.** Changing, deleting or rotating the
+  secret of a client listed in `OPERATOR_CONSOLE_CLIENT_IDS` or `ADMIN_CONSOLE_CLIENT_ID`
+  (`PUT`, `DELETE`, `POST …/rotate-secret` on `/api/admin/apps/{id}`) needs a superadmin
+  (`403` otherwise), on top of the step-up these routes already require. Every change to one,
+  and every refused attempt, is audited with `console_client: true` at `critical` severity
+  (new `SecurityEvent.MinSeverity`, which raises an event's severity and never lowers it). Other
+  clients are unchanged. Deploy note: no migration; set `OPERATOR_CONSOLE_CLIENT_IDS` (and
+  `ADMIN_CONSOLE_CLIENT_ID`) to the consoles' client_ids, without them no client is protected;
+  under `POLICY_MODE` `shadow`, an admin's refused attempt is recorded as a divergence (the
+  decision point does not know which clients are consoles).
+
 - **User attributes that policy rules read are protected.** `PUT /api/admin/users/{id}/attributes`
   now requires fresh step-up (it joins `policy.StepUpActions`); an admin cannot change their own
   attributes (`400`), and only a superadmin changes a superadmin's (`403`). The audit entry

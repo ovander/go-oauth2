@@ -148,6 +148,23 @@ func (SecurityAuditLog) TableName() string {
 	return "security_audit_logs"
 }
 
+// severityRank orders the severities from the least to the most serious; an
+// unknown or empty severity ranks lowest.
+var severityRank = map[SecuritySeverity]int{
+	SecuritySeverityInfo:     1,
+	SecuritySeverityWarning:  2,
+	SecuritySeverityError:    3,
+	SecuritySeverityCritical: 4,
+}
+
+// MaxSeverity returns the more serious of a and b.
+func MaxSeverity(a, b SecuritySeverity) SecuritySeverity {
+	if severityRank[b] > severityRank[a] {
+		return b
+	}
+	return a
+}
+
 // GetSeverityForEvent returns the appropriate severity for an event type
 func GetSeverityForEvent(eventType SecurityEventType, success bool) SecuritySeverity {
 	switch eventType {

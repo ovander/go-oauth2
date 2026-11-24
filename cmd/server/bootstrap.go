@@ -675,6 +675,9 @@ func Bootstrap(cfg *config.Config) *App {
 	// events; give it a security audit service over the same repo.
 	adminSecurityAuditService := service.NewSecurityAuditService(securityAuditRepo)
 	adminHandler := handler.NewAdminHandler(appService, userService, userAppRoleService, adminLogService, appActivityLogService, emailService, adminSecurityAuditService)
+	// The operator consoles' clients are changed by a superadmin only, and
+	// every change is audited at critical severity.
+	adminHandler.SetConsoleClientIDs(cfg.ConsoleClientIDs())
 	adminAuthHandler := handler.NewAdminAuthHandler(authService, userService)
 	// Tier-0 step-up: wire the re-authentication backend for POST /api/admin/elevate.
 	if ra, ok := authService.(service.Reauthenticator); ok {

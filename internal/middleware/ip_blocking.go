@@ -21,7 +21,17 @@ type IPBlockChecker struct {
 	stopCh      chan struct{}
 	wg          sync.WaitGroup
 	refreshChan chan struct{}
+
+	// exempt reports an address that is never treated as blocked (loopback,
+	// the server's own addresses, TRUSTED_PROXIES), so a block stored for one
+	// of them before they were refused cannot lock the consoles out. Set at
+	// startup with SetExempt; nil exempts nothing.
+	exempt func(ip string) bool
 }
+
+// SetExempt sets the addresses that are never treated as blocked, whatever
+// the block list holds. Call it before the checker serves requests.
+func (c *IPBlockChecker) SetExempt(exempt func(ip string) bool) { c.exempt = exempt }
 
 type cacheEntry struct {
 	blocked   bool
@@ -78,6 +88,9 @@ func NewIPBlockChecker(repo repository.BlockedIPRepository, config IPBlockChecke
 //     exists.  The caller MUST treat this as a service-unavailable condition
 //     and deny the request rather than silently allowing it through.
 func (c *IPBlockChecker) IsBlocked(ctx context.Context, ip string) (bool, error) {
+	if c.exempt != nil && c.exempt(ip) {
+		return false, nil
+	}
 	c.mu.RLock()
 	entry, exists := c.cache[ip]
 	c.mu.RUnlock()

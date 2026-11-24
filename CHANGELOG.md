@@ -23,6 +23,13 @@ Capabilities**, non-breaking).
   default; with the mode in `observe`, check the audit for `admin_api_audience` events on
   `/api/apps/` paths before `enforce`.
 
+- **Saving a user no longer brings back a user deleted in the meantime.** `UserRepository.Update`
+  used GORM's `Save`, which retries an update that matches no row as an insert that clears
+  `deleted_at`: a path that loaded a user before an admin deleted it (a sign-in saving its
+  last-login time, an MFA change) restored the account. `Update` is now a plain update of the
+  live row and reports a deleted or missing user as not found. Deploy note: no migration, no
+  environment variable.
+
 - **The operator-console clients are protected objects.** Changing, deleting or rotating the
   secret of a client listed in `OPERATOR_CONSOLE_CLIENT_IDS` or `ADMIN_CONSOLE_CLIENT_ID`
   (`PUT`, `DELETE`, `POST …/rotate-secret` on `/api/admin/apps/{id}`) needs a superadmin

@@ -281,9 +281,32 @@ func (rl *RateLimiter) cleanupExpired() {
 // X-Real-IP headers.  Pass nil (or an empty slice) to always use RemoteAddr
 // directly and never trust proxy headers — the safe default.
 func RateLimitMiddleware(limiter Limiter, trustedCIDRs []*net.IPNet) func(http.Handler) http.Handler {
+	return rateLimitBy(limiter, func(r *http.Request) string { return GetClientIPSafe(r, trustedCIDRs) })
+}
+
+// UserRateLimitMiddleware is RateLimitMiddleware keyed on the authenticated
+// user (set by AuthMiddleware) instead of the client IP. It suits authenticated
+// routes that the operator consoles reach through their BFF, where every
+// request comes from the same address and a per-IP budget would be shared by
+// all admins. A request without a user falls back to the client IP. A nil
+// limiter applies no limit.
+func UserRateLimitMiddleware(limiter Limiter, trustedCIDRs []*net.IPNet) func(http.Handler) http.Handler {
+	return rateLimitBy(limiter, func(r *http.Request) string {
+		if uid, ok := GetUserIDFromContext(r.Context()); ok {
+			return fmt.Sprintf("user:%d", uid)
+		}
+		return GetClientIPSafe(r, trustedCIDRs)
+	})
+}
+
+// rateLimitBy is the rate-limiting middleware for the key keyOf returns.
+func rateLimitBy(limiter Limiter, keyOf func(*http.Request) string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
+		if limiter == nil {
+			return next
+		}
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			key := GetClientIPSafe(r, trustedCIDRs)
+			key := keyOf(r)
 
 			if !limiter.Allow(key) {
 				metrics.RateLimited(r)

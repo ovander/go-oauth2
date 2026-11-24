@@ -190,6 +190,8 @@ func (h *AdminAuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request
 		switch {
 		case errors.Is(err, service.ErrInvalidCredentials):
 			writeError(w, "current password is incorrect", http.StatusUnauthorized)
+		case errors.Is(err, service.ErrAccountLocked):
+			writeError(w, "account is locked", http.StatusForbidden)
 		default:
 			// Validation failures (weak password, same-as-current) are client
 			// errors; never leak raw internal error strings beyond their message.

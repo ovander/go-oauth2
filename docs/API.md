@@ -626,8 +626,8 @@ obtain a **fresh-`auth_time` access token** for destructive operations. Returns
 the same shape as login but **no refresh token** (elevation proves presence; it
 does not start a new session — the existing refresh token / cookie is untouched).
 `401` on bad credentials / `mfa_required` / invalid MFA code; `403` `account is locked`
-(a wrong MFA code counts toward the account lockout, as on login); `501` if step-up is
-not configured.
+(a wrong password or MFA code counts toward the account lockout, as on login); `429` past the
+per-admin rate limit; `501` if step-up is not configured.
 
 ### 8.1.1 Change password — `POST /api/admin/change-password`
 `{ "current_password": "...", "new_password": "..." }`. Requires a Bearer token;
@@ -635,6 +635,9 @@ not configured.
 admin's tokens are revoked (token-version bump) and they must log in again
 (`200 { "message": "Password changed successfully; please log in again" }`).
 `401` if the current password is wrong; `400` on a weak or unchanged new password.
+A wrong current password counts toward the account lockout like a failed sign-in, and a
+locked account gets `403 account is locked` (since v1.14.7). Rate-limited per admin with the
+login limiter (`429`), as is `/elevate`.
 
 ### 8.2 App (client) management — `/api/admin/apps`
 - `GET /` — list apps → `{ "apps": [AppResponse], "total_count": n }`

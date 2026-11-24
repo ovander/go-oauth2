@@ -53,6 +53,15 @@ func TestChangePassword_WrongCurrent_401(t *testing.T) {
 	}
 }
 
+// Wrong current passwords count toward the account lockout; a locked account
+// gets 403, as on the sign-in endpoints.
+func TestChangePassword_AccountLocked_403(t *testing.T) {
+	rr := postChangePw(newChangePwHandler(service.ErrAccountLocked), `{"current_password":"bad","new_password":"new-Str0ng!"}`, true)
+	if rr.Code != http.StatusForbidden || !strings.Contains(rr.Body.String(), "account is locked") {
+		t.Errorf("locked account should be 403 account is locked, got %d %s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestChangePassword_MissingFields_400(t *testing.T) {
 	rr := postChangePw(newChangePwHandler(nil), `{"current_password":""}`, true)
 	if rr.Code != http.StatusBadRequest {

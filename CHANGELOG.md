@@ -12,6 +12,16 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **Every password check counts failures and honours the lockout; `/elevate` and
+  `/change-password` are rate-limited.** `POST /api/admin/elevate` (re-authentication) and
+  `POST /api/admin/change-password` used to check the password without counting a wrong one or
+  refusing a locked account; they now go through the same check as sign-in, which also replaces
+  `POST /api/admin/login`'s own copy of the lockout. A locked account gets `403 account is
+  locked` on both; a successful re-authentication or password change resets the counter. Both
+  routes are rate-limited with the login limiter, keyed per admin (the consoles reach them
+  through their BFF, from one address), falling back to the client IP. Deploy note: no
+  migration, no environment variable, no change of default.
+
 - **Magic-link sign-in applies the checks of the other sign-in paths.**
   `POST /api/auth/magic-link/verify` now refuses (`403`) an account with MFA enabled — a link
   proves one factor, so such a user signs in with the password and code — and a deactivated

@@ -62,6 +62,8 @@ type ipRecord struct {
 type AutoDefenseService struct {
 	config            AutoDefenseConfig
 	blockedIPRepo     repository.BlockedIPRepository
+	// blockGuard: addresses never blocked automatically (see IPBlockGuard).
+	blockGuard *IPBlockGuard
 	securityAuditRepo repository.SecurityAuditLogRepository
 
 	// In-memory tracking for real-time detection
@@ -106,6 +108,11 @@ func NewAutoDefenseService(
 }
 
 // SetOnBlockCallback sets a callback to be called when an IP is blocked
+// SetIPBlockGuard sets the addresses the automatic defence never blocks
+// (loopback, the server's own addresses, TRUSTED_PROXIES). Without it,
+// loopback and unspecified addresses are still never blocked.
+func (s *AutoDefenseService) SetIPBlockGuard(g *IPBlockGuard) { s.blockGuard = g }
+
 func (s *AutoDefenseService) SetOnBlockCallback(callback func(ip string)) {
 	s.onBlock = callback
 }
@@ -169,6 +176,12 @@ func (s *AutoDefenseService) RecordFailedLogin(ctx context.Context, ip string, u
 
 // blockIPUnlocked blocks an IP (caller must hold lock)
 func (s *AutoDefenseService) blockIPUnlocked(ctx context.Context, ip, reason string, record *ipRecord, isBruteForce bool) {
+	// Never block an address the consoles depend on: a misconfigured proxy
+	// (every request seen from 127.0.0.1) would otherwise lock everyone out.
+	if _, err := s.blockGuard.Check(ip); err != nil {
+		logger.Warnf("AUTO-DEFENSE: not blocking %s (%s): %v", ip, reason, err)
+		return
+	}
 	// Calculate block duration with escalation
 	blockDuration := s.config.InitialBlockDuration
 	for i := 0; i < record.BlockCount; i++ {

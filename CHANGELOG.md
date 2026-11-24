@@ -12,6 +12,16 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **Loopback, the server's own addresses and trusted proxies can no longer be blocked.**
+  `POST /api/admin/security/blocked-ips` now refuses (`400`) a loopback or unspecified address,
+  one of the server's network addresses or any address in `TRUSTED_PROXIES`, and anything that
+  is not an IP address; it stores an IPv4-mapped address as IPv4, the form the block list is
+  matched against. The automatic defence (failed sign-ins, brute force) skips the same addresses
+  and logs it. Blocking one of them cut off the consoles, which reach the admin API through a
+  local proxy, and with them the route that lifts the block; behind a proxy missing from
+  `TRUSTED_PROXIES`, every request appears to come from it, so one burst of failed sign-ins
+  locked everyone out. Deploy note: no migration, no environment variable.
+
 - **A revoked service-account token is refused.** The service-account routes
   (`/api/apps/{app_id}/service/*`) now check a `client_credentials` token's `jti` against the
   revoked list that `POST /oauth/revoke` writes, as `AuthMiddleware` does for user tokens, and

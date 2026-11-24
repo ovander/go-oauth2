@@ -760,6 +760,14 @@ func Bootstrap(cfg *config.Config) *App {
 		securityAuditRepo,
 		service.DefaultAutoDefenseConfig(),
 	)
+	// Neither the automatic defence nor an admin may block loopback, the
+	// server's own addresses or a trusted proxy: that would cut off the
+	// consoles and the route that lifts the block.
+	// An invalid TRUSTED_PROXIES stops the server below (mustParseTrustedProxies).
+	guardProxies, _ := middleware.ParseTrustedProxyCIDRs(cfg.TrustedProxies)
+	ipBlockGuard := service.NewIPBlockGuard(guardProxies, service.LocalAddrs())
+	autoDefense.SetIPBlockGuard(ipBlockGuard)
+	monitoringHandler.SetIPBlockGuard(ipBlockGuard)
 	logger.Debug("✅ Auto-defense system initialized")
 
 	// IP Block Checker (middleware cache)

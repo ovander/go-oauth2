@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"gorm.io/gorm"
 
 	"github.com/ovander/go-oauth2/internal/contextkeys"
 	"github.com/ovander/go-oauth2/internal/model"
@@ -22,6 +23,7 @@ type defenceBlocks struct {
 	repository.BlockedIPRepository
 	rows    map[uint]*model.BlockedIP
 	deletes int
+	findErr error // when set, FindByID fails with it (an unavailable database)
 }
 
 func (r *defenceBlocks) IsBlocked(context.Context, string) (bool, error) { return false, nil }
@@ -31,10 +33,13 @@ func (r *defenceBlocks) Create(_ context.Context, b *model.BlockedIP) error {
 	return nil
 }
 func (r *defenceBlocks) FindByID(_ context.Context, id uint) (*model.BlockedIP, error) {
+	if r.findErr != nil {
+		return nil, r.findErr
+	}
 	if b, ok := r.rows[id]; ok {
 		return b, nil
 	}
-	return nil, errors.New("record not found")
+	return nil, gorm.ErrRecordNotFound
 }
 func (r *defenceBlocks) Delete(_ context.Context, id uint) error {
 	r.deletes++
@@ -47,6 +52,7 @@ type defenceRules struct {
 	repository.AlertRuleRepository
 	rows    map[uint]*model.AlertRule
 	deletes int
+	findErr error // when set, FindByID fails with it (an unavailable database)
 }
 
 func (r *defenceRules) Create(_ context.Context, rule *model.AlertRule) error {
@@ -56,11 +62,14 @@ func (r *defenceRules) Create(_ context.Context, rule *model.AlertRule) error {
 	return nil
 }
 func (r *defenceRules) FindByID(_ context.Context, id uint) (*model.AlertRule, error) {
+	if r.findErr != nil {
+		return nil, r.findErr
+	}
 	if rule, ok := r.rows[id]; ok {
 		cp := *rule
 		return &cp, nil
 	}
-	return nil, errors.New("record not found")
+	return nil, gorm.ErrRecordNotFound
 }
 func (r *defenceRules) Update(_ context.Context, rule *model.AlertRule) error {
 	cp := *rule
@@ -191,5 +200,25 @@ func TestDefenceAudit_Severities(t *testing.T) {
 		if got := model.GetSeverityForEvent(ev, true); got != want {
 			t.Errorf("%s: %s, want %s", ev, got, want)
 		}
+	}
+}
+
+// A failed lookup that is not "not found" (an unavailable database) is a
+// 500, not a 404, and nothing is deleted or recorded.
+func TestDefenceAudit_LookupFailureIsNotANotFound(t *testing.T) {
+	h, blocks, rules, audit := newDefenceHandler()
+	blocks.findErr = errors.New("connection refused")
+	rules.findErr = errors.New("connection refused")
+	for name, rr := range map[string]*httptest.ResponseRecorder{
+		"unblock":     call(h.UnblockIP, http.MethodDelete, "1", ""),
+		"delete rule": call(h.DeleteAlertRule, http.MethodDelete, "1", ""),
+		"update rule": call(h.UpdateAlertRule, http.MethodPut, "1", `{"enabled":false}`),
+	} {
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("%s with the database down: %d, want 500", name, rr.Code)
+		}
+	}
+	if blocks.deletes != 0 || rules.deletes != 0 || len(audit.events) != 0 {
+		t.Fatalf("deletes %d/%d, events %d; want none", blocks.deletes, rules.deletes, len(audit.events))
 	}
 }

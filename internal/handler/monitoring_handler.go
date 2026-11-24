@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -54,12 +55,26 @@ func (h *MonitoringHandler) auditDefenceChange(r *http.Request, eventType model.
 	if id, ok := middleware.GetUserIDFromContext(r.Context()); ok {
 		actor = &id
 	}
-	_ = h.securityAudit.LogFromRequest(r.Context(), r, service.SecurityEvent{
+	if err := h.securityAudit.LogFromRequest(r.Context(), r, service.SecurityEvent{
 		UserID:    actor,
 		EventType: eventType,
 		Success:   true,
 		Details:   details,
-	})
+	}); err != nil {
+		logger.Warnf("monitoring: could not record %s: %v", eventType, err)
+	}
+}
+
+// writeLookupError answers 404 when what (an alert rule, a blocked IP) does
+// not exist, and 500 for any other failure, such as an unavailable database,
+// so an outage is not reported as a missing record.
+func writeLookupError(w http.ResponseWriter, err error, what string) {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		writeError(w, what+" not found", http.StatusNotFound)
+		return
+	}
+	logger.Warnf("monitoring: look up %s: %v", what, err)
+	writeError(w, "failed to load "+what, http.StatusInternalServerError)
 }
 
 // blockDetails is what the audit records about a block.
@@ -595,7 +610,7 @@ func (h *MonitoringHandler) UpdateAlertRule(w http.ResponseWriter, r *http.Reque
 
 	rule, err := h.alertRuleRepo.FindByID(ctx, uint(id))
 	if err != nil {
-		writeError(w, "alert rule not found", http.StatusNotFound)
+		writeLookupError(w, err, "alert rule")
 		return
 	}
 
@@ -660,7 +675,7 @@ func (h *MonitoringHandler) DeleteAlertRule(w http.ResponseWriter, r *http.Reque
 
 	rule, err := h.alertRuleRepo.FindByID(ctx, uint(id))
 	if err != nil {
-		writeError(w, "alert rule not found", http.StatusNotFound)
+		writeLookupError(w, err, "alert rule")
 		return
 	}
 	if err := h.alertRuleRepo.Delete(ctx, uint(id)); err != nil {
@@ -841,7 +856,7 @@ func (h *MonitoringHandler) UnblockIP(w http.ResponseWriter, r *http.Request) {
 	// of what was lifted.
 	block, err := h.blockedIPRepo.FindByID(ctx, uint(id))
 	if err != nil {
-		writeError(w, "blocked IP not found", http.StatusNotFound)
+		writeLookupError(w, err, "blocked IP")
 		return
 	}
 	if err := h.blockedIPRepo.Delete(ctx, uint(id)); err != nil {

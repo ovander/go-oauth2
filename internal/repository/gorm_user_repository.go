@@ -22,6 +22,8 @@ type UserRepository interface {
 	// Those columns change only through IncrementTokenVersion, SetPassword,
 	// IncrementFailedLoginAttempts, ResetFailedLoginAttempts, LockAccount and
 	// UpdateProfile.
+	// It only updates an existing, non-deleted user: a user deleted since it
+	// was read stays deleted, and Update returns gorm.ErrRecordNotFound.
 	Update(ctx context.Context, user *model.User) error
 	// SetPassword stores a new password hash and increments the token
 	// version in the same statement, so the user's existing sessions end
@@ -135,8 +137,24 @@ func (r *userRepository) Create(ctx context.Context, user *model.User) error {
 	return r.db.WithContext(ctx).Create(user).Error
 }
 
+// userUpdateOmitted are the columns Update leaves alone: the guarded ones, the
+// identity and creation time, and the deletion state.
+var userUpdateOmitted = append([]string{"id", "created_at", "deleted_at"}, userGuardedColumns...)
+
 func (r *userRepository) Update(ctx context.Context, user *model.User) error {
-	return r.db.WithContext(ctx).Omit(userGuardedColumns...).Save(user).Error
+	// An UPDATE of every other column (Select("*") writes zero values too),
+	// not Save: when Save's UPDATE matches no row, GORM retries it as an
+	// INSERT ... ON CONFLICT that clears deleted_at, bringing back a user
+	// deleted since it was read. The soft-delete scope keeps this UPDATE off
+	// deleted rows.
+	res := r.db.WithContext(ctx).Model(user).Select("*").Omit(userUpdateOmitted...).Updates(user)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (r *userRepository) SetPassword(ctx context.Context, userID uint, change PasswordChange) error {

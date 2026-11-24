@@ -713,13 +713,13 @@ func (h *AppUsersHandler) requireAppMember(w http.ResponseWriter, r *http.Reques
 
 func getAppIDFromURL(r *http.Request) (uint, error) {
 	appIDStr := chi.URLParam(r, "app_id")
-	appID, err := strconv.ParseUint(appIDStr, 10, 64)
+	appID, err := strconv.ParseUint(appIDStr, 10, strconv.IntSize)
 	return uint(appID), err
 }
 
 func getUserIDFromURL(r *http.Request) (uint, error) {
 	userIDStr := chi.URLParam(r, "user_id")
-	userID, err := strconv.ParseUint(userIDStr, 10, 64)
+	userID, err := strconv.ParseUint(userIDStr, 10, strconv.IntSize)
 	return uint(userID), err
 }
 

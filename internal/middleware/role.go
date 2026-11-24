@@ -94,7 +94,7 @@ func RequireAppAdmin(userAppRoleRepo repository.UserAppRoleRepository) func(http
 			}
 
 			appIDStr := chi.URLParam(r, "app_id")
-			appID, err := strconv.ParseUint(appIDStr, 10, 64)
+			appID, err := strconv.ParseUint(appIDStr, 10, strconv.IntSize)
 			if err != nil {
 				http.Error(w, `{"error": "invalid app ID"}`, http.StatusBadRequest)
 				return
@@ -140,7 +140,7 @@ func RequireAppAccess(userAppRoleRepo repository.UserAppRoleRepository) func(htt
 			}
 
 			appIDStr := chi.URLParam(r, "app_id")
-			appID, err := strconv.ParseUint(appIDStr, 10, 64)
+			appID, err := strconv.ParseUint(appIDStr, 10, strconv.IntSize)
 			if err != nil {
 				http.Error(w, `{"error": "invalid app ID"}`, http.StatusBadRequest)
 				return

@@ -419,7 +419,7 @@ func (s *authService) VerifyEmail(ctx context.Context, token string) error {
 		return fmt.Errorf("%w: wrong token type", ErrInvalidToken)
 	}
 
-	userID, err := strconv.ParseUint(claims.Subject, 10, 64)
+	userID, err := strconv.ParseUint(claims.Subject, 10, strconv.IntSize)
 	if err != nil {
 		return fmt.Errorf("%w: invalid subject", ErrInvalidToken)
 	}
@@ -922,7 +922,7 @@ func (s *authService) ResetPassword(ctx context.Context, token, newPassword stri
 		return fmt.Errorf("password validation failed: %w", err)
 	}
 
-	userID, err := strconv.ParseUint(claims.Subject, 10, 64)
+	userID, err := strconv.ParseUint(claims.Subject, 10, strconv.IntSize)
 	if err != nil {
 		return fmt.Errorf("%w: invalid subject", ErrInvalidToken)
 	}

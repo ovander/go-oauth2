@@ -762,7 +762,7 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 			// (reject only). The token's signature + audience were already verified
 			// above, so the subject is trustworthy provenance for the revocation.
 			if s.refreshReuseMode != refreshReuseModeOff {
-				uid64, _ := strconv.ParseUint(claims.Subject, 10, 64)
+				uid64, _ := strconv.ParseUint(claims.Subject, 10, strconv.IntSize)
 				uid := uint(uid64)
 				reuseDetails := map[string]interface{}{
 					"jti":       jti,
@@ -814,7 +814,7 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 	// refresh never widens, and in enforce mode it also cannot keep a scope
 	// the operator has since withdrawn.
 	var scopeUID *uint
-	if uid64, perr := strconv.ParseUint(claims.Subject, 10, 64); perr == nil {
+	if uid64, perr := strconv.ParseUint(claims.Subject, 10, strconv.IntSize); perr == nil {
 		u := uint(uid64)
 		scopeUID = &u
 	}
@@ -832,7 +832,7 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 		return nil, err
 	}
 
-	userID, err := strconv.ParseUint(claims.Subject, 10, 64)
+	userID, err := strconv.ParseUint(claims.Subject, 10, strconv.IntSize)
 	if err != nil {
 		return nil, fmt.Errorf("%w: invalid subject claim", ErrInvalidToken)
 	}
@@ -1106,7 +1106,7 @@ func (s *oauthService) Introspect(ctx context.Context, token string, requestingC
 		return &dto.IntrospectResponse{Active: false}, nil
 	}
 
-	userID, _ := strconv.ParseUint(claims.Subject, 10, 64)
+	userID, _ := strconv.ParseUint(claims.Subject, 10, strconv.IntSize)
 	user, err := s.userRepo.FindByID(ctx, uint(userID))
 
 	// NEW-03 fix: check token version against the user's current TokenVersion.
@@ -1230,7 +1230,7 @@ func revokedTokenOwner(userID uint, subject string) *uint {
 	if userID != 0 {
 		return &userID
 	}
-	if id, err := strconv.ParseUint(subject, 10, 64); err == nil && id != 0 {
+	if id, err := strconv.ParseUint(subject, 10, strconv.IntSize); err == nil && id != 0 {
 		u := uint(id)
 		return &u
 	}

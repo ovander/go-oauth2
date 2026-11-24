@@ -28,6 +28,13 @@ Capabilities**, non-breaking).
 
 ### Changed
 
+- Numeric ids read from URLs, query strings and token subjects are parsed at the platform's
+  integer size (`strconv.IntSize`) before they become a `uint`, so an id too large for `uint` is
+  refused instead of wrapping on a 32-bit build. No change on the 64-bit builds Socrate ships;
+  closes CodeQL's "incorrect conversion between integer types" alerts.
+
+### Changed
+
 - Tests: the TOTP single-use tests (#374) fail on every database or lookup error instead of
   ignoring it, and `scratchDB` gets its doc comment back. No runtime change.
 

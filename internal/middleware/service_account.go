@@ -50,14 +50,14 @@ func ServiceAccountMiddleware(appRepo repository.AppRepository, tokenService *au
 			}
 
 			appIDStr := strings.TrimPrefix(claims.Subject, "app:")
-			appIDFromToken, err := strconv.ParseUint(appIDStr, 10, 64)
+			appIDFromToken, err := strconv.ParseUint(appIDStr, 10, strconv.IntSize)
 			if err != nil {
 				writeAuthError(w, "invalid token claims", http.StatusUnauthorized)
 				return
 			}
 
 			// Enforce: token must belong to the same app as the route's {app_id}
-			routeAppID, err := strconv.ParseUint(chi.URLParam(r, "app_id"), 10, 64)
+			routeAppID, err := strconv.ParseUint(chi.URLParam(r, "app_id"), 10, strconv.IntSize)
 			if err != nil {
 				writeAuthError(w, "invalid app ID in URL", http.StatusBadRequest)
 				return

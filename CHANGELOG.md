@@ -12,6 +12,18 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **Token exchange targets only the client's registered audiences, and the actor must be the
+  requesting client.** With `TOKEN_EXCHANGE_MODE=enforce` (default `off`), each requested
+  `audience` and `resource` must be one of the client's registered `audiences` (set by an
+  operator in the admin console), otherwise `400 invalid_target`; the exchanged token's `aud` is
+  the requested audiences and resources together (a `resource`-only request used to yield a token
+  without `aud`). In a delegation, the actor token must belong to the requesting client — issued
+  to it (`aud[0]` is its `client_id`) or its own service-account token — otherwise
+  `400 invalid_grant` (`deny_reason` `actor_not_requesting_client`). Before, any audience string
+  was accepted and any valid token could act as the actor. Deploy note: no migration, no
+  environment variable, no change of default; a client that exchanges tokens must have its
+  target audiences registered.
+
 - **Token exchange checks the presented tokens like the refresh grant.** With
   `TOKEN_EXCHANGE_MODE=enforce` (default `off`), a subject or actor token is now refused
   (`400 invalid_grant`) when its `jti` is on the used/revoked list (a rotated refresh token, a

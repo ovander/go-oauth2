@@ -16,7 +16,7 @@ func mintTokenWithAmr(t *testing.T, ts *auth.TokenService, userID uint, scope st
 	if amrContains(amr, "mfa") {
 		acr = "mfa"
 	}
-	set, err := ts.GenerateTokenSetWithAuth(&model.User{ID: userID, TokenVersion: 1}, &model.App{ClientID: "actor-app"}, "user", scope, nil, "", 0, amr, acr)
+	set, err := ts.GenerateTokenSetWithAuth(&model.User{ID: userID, TokenVersion: 1}, &model.App{ClientID: "c"}, "user", scope, nil, "", 0, amr, acr)
 	if err != nil {
 		t.Fatalf("GenerateTokenSetWithAuth: %v", err)
 	}

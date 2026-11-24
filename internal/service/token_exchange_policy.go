@@ -24,6 +24,9 @@ var (
 	// ErrAudienceRequired: no target audience/resource was given. Exchanged
 	// tokens must be bound to a specific audience, never general-purpose.
 	ErrAudienceRequired = errors.New("token exchange requires a target audience or resource")
+	// ErrAudienceNotAllowed: a requested audience or resource is not one of
+	// the requesting client's registered audiences.
+	ErrAudienceNotAllowed = errors.New("requested audience or resource is not registered for this client")
 )
 
 // ExchangeDecision is the result of an authorized token-exchange request: the
@@ -44,7 +47,10 @@ type ExchangeDecision struct {
 //   - impersonation (no actor_token) additionally requires allow_impersonation;
 //   - downscope-only: the requested scope must be a subset of the subject's
 //     scope (an empty request scope defaults to the subject's scope);
-//   - audience-bound: a target audience or resource must be present.
+//   - audience-bound: a target audience or resource must be present, and each
+//     one must be among the client's registered audiences (app.Audiences, set
+//     by an operator); the exchanged token's aud is the requested audiences
+//     and resources together.
 func authorizeExchange(app *model.App, req *tokenexchange.Request, subjectScope string) (*ExchangeDecision, error) {
 	if !app.AllowTokenExchange {
 		return nil, ErrExchangeNotAllowed
@@ -57,6 +63,21 @@ func authorizeExchange(app *model.App, req *tokenexchange.Request, subjectScope 
 	if len(req.Audience) == 0 && len(req.Resource) == 0 {
 		return nil, ErrAudienceRequired
 	}
+	registered := make(map[string]struct{}, len(app.Audiences))
+	for _, a := range app.Audiences {
+		registered[a] = struct{}{}
+	}
+	var targets []string
+	seen := make(map[string]struct{})
+	for _, t := range append(append([]string{}, req.Audience...), req.Resource...) {
+		if _, ok := registered[t]; !ok {
+			return nil, ErrAudienceNotAllowed
+		}
+		if _, dup := seen[t]; !dup {
+			seen[t] = struct{}{}
+			targets = append(targets, t)
+		}
+	}
 
 	granted := strings.TrimSpace(req.Scope)
 	if granted == "" {
@@ -67,7 +88,7 @@ func authorizeExchange(app *model.App, req *tokenexchange.Request, subjectScope 
 
 	return &ExchangeDecision{
 		GrantedScope:    granted,
-		Audience:        req.Audience,
+		Audience:        targets,
 		IsImpersonation: isImpersonation,
 	}, nil
 }

@@ -492,8 +492,12 @@ token, a DPoP-bound token without a proof for its key, a token issued before the
 tokens were revoked (token version), or one whose user is locked or unknown is
 `400 invalid_grant`. A service-account token (`sub` `app:<id>`) is accepted while its
 app exists and is active; an ID token is not accepted (it cannot be revoked). The exchanged access token is downscoped (`invalid_scope`
-beyond the subject's scope), audience-bound (`invalid_target` without a target)
-and carries the actor chain in `act`; an impersonation token lives at most
+beyond the subject's scope), audience-bound (`invalid_target` without a target, or
+— since v1.14.6 — when a requested `audience` or `resource` is not one of the
+client's registered `audiences`; the token's `aud` is the requested audiences and
+resources) and carries the actor chain in `act`. In a delegation the actor token
+must belong to the requesting client: a token issued to it (`aud[0]` is its
+`client_id`) or its own service-account token (`400 invalid_grant` otherwise); an impersonation token lives at most
 `IMPERSONATION_TOKEN_TTL`. `IMPERSONATION_STEPUP_MODE` and
 `DELEGATION_STEPUP_MODE` add freshness / MFA checks (`invalid_grant`).
 

@@ -214,3 +214,67 @@ func TestExchangeToken_IDTokenSubjectRefused(t *testing.T) {
 		t.Fatalf("deny_reason %v, want subject_id_token", audit.last.Details["deny_reason"])
 	}
 }
+
+// The actor of a delegation is the party doing the acting, so its token must
+// belong to the requesting client: issued to it, or its own service-account
+// token. A token issued to another client, or another client's service
+// token, is refused.
+func TestExchangeToken_ActorMustBelongToRequestingClient(t *testing.T) {
+	svc, audit, ts, _, _ := newCheckedExchangeSvc(t)
+	subject := mintToken(t, ts, 100, "read write")
+
+	other, err := ts.GenerateTokenSet(&model.User{ID: 200, TokenVersion: 1}, &model.App{ClientID: "other-client"}, "user", "read", nil, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectExchangeDenied(t, svc, audit, context.Background(), subject, other.AccessToken, "actor_not_requesting_client")
+
+	otherService, err := ts.GenerateClientCredentialsToken(&model.App{ID: 8, ClientID: "other-client"}, "read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// app 8 does not exist in this test's repository, so the state check
+	// refuses it first; either way it is not this client's actor.
+	if _, err := svc.ExchangeToken(context.Background(), exForm(subject, otherService, "read", "https://api"), "c", exchangeTestSecret); !errors.Is(err, ErrInvalidToken) {
+		t.Fatalf("another client's service token as actor: %v, want ErrInvalidToken", err)
+	}
+
+	// A user token issued to this client is accepted as actor.
+	if _, err := svc.ExchangeToken(context.Background(), exForm(subject, mintToken(t, ts, 200, "read"), "read", "https://api"), "c", exchangeTestSecret); err != nil {
+		t.Fatalf("actor token issued to the requesting client: %v", err)
+	}
+}
+
+// An exchange may only target the client's registered audiences.
+func TestExchangeToken_UnregisteredAudienceRefused(t *testing.T) {
+	svc, audit, ts, _, _ := newCheckedExchangeSvc(t)
+	form := exForm(mintToken(t, ts, 100, "read"), "", "read", "https://admin.example.com")
+	if _, err := svc.ExchangeToken(context.Background(), form, "c", exchangeTestSecret); !errors.Is(err, ErrAudienceNotAllowed) {
+		t.Fatalf("%v, want ErrAudienceNotAllowed", err)
+	}
+	if audit.last == nil || audit.last.Details["outcome"] != "denied" {
+		t.Fatalf("audit %+v, want a denied row", audit.last)
+	}
+}
+
+// actorBelongsToClient on its own: the client's own service-account token or a
+// token issued to it (aud[0] is its client_id) belongs to it; another client's
+// service token or a token issued to another client does not.
+func TestActorBelongsToClient(t *testing.T) {
+	app := &model.App{ID: 7, ClientID: "c"}
+	for _, tc := range []struct {
+		name string
+		tok  exchangeToken
+		want bool
+	}{
+		{"own service token", exchangeToken{sub: "app:7"}, true},
+		{"issued to the client", exchangeToken{sub: "200", aud: []string{"c", "https://api"}}, true},
+		{"another client's service token", exchangeToken{sub: "app:8", aud: []string{"other"}}, false},
+		{"issued to another client", exchangeToken{sub: "200", aud: []string{"other", "c"}}, false},
+		{"no audience", exchangeToken{sub: "200"}, false},
+	} {
+		if got := actorBelongsToClient(tc.tok, app); got != tc.want {
+			t.Errorf("%s: %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

@@ -814,6 +814,8 @@ func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 				// An application-defined scope the client does not register (#336),
 				// or one outside its allowed_scopes policy (A1).
 				writeOAuthError(w, "invalid_scope", "requested scope is not allowed for this client", http.StatusBadRequest)
+			case errors.Is(err, service.ErrAudienceNotAllowed):
+				writeOAuthError(w, "invalid_target", "the requested audience or resource is not allowed for this client", http.StatusBadRequest)
 			case errors.Is(err, service.ErrAudienceRequired):
 				writeOAuthError(w, "invalid_target", "a target audience or resource is required", http.StatusBadRequest)
 			case errors.Is(err, service.ErrExchangeNotAllowed), errors.Is(err, service.ErrImpersonationNotAllowed):

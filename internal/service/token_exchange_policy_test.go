@@ -37,7 +37,7 @@ func TestAuthorizeExchange_DeniedWithoutCapability(t *testing.T) {
 }
 
 func TestAuthorizeExchange_DelegationAllowed(t *testing.T) {
-	app := &model.App{AllowTokenExchange: true}
+	app := &model.App{AllowTokenExchange: true, Audiences: testExchangeAudiences}
 	dec, err := authorizeExchange(app, delegationReq("read", "https://api"), "read write")
 	if err != nil {
 		t.Fatalf("authorizeExchange: %v", err)
@@ -51,14 +51,14 @@ func TestAuthorizeExchange_DelegationAllowed(t *testing.T) {
 }
 
 func TestAuthorizeExchange_ImpersonationNeedsStrongerFlag(t *testing.T) {
-	app := &model.App{AllowTokenExchange: true, AllowImpersonation: false}
+	app := &model.App{AllowTokenExchange: true, AllowImpersonation: false, Audiences: testExchangeAudiences}
 	if _, err := authorizeExchange(app, impersonationReq("read", "aud"), "read write"); !errors.Is(err, ErrImpersonationNotAllowed) {
 		t.Fatalf("want ErrImpersonationNotAllowed, got %v", err)
 	}
 }
 
 func TestAuthorizeExchange_ImpersonationAllowedWithFlag(t *testing.T) {
-	app := &model.App{AllowTokenExchange: true, AllowImpersonation: true}
+	app := &model.App{AllowTokenExchange: true, AllowImpersonation: true, Audiences: testExchangeAudiences}
 	dec, err := authorizeExchange(app, impersonationReq("read", "aud"), "read write")
 	if err != nil {
 		t.Fatalf("authorizeExchange: %v", err)
@@ -69,7 +69,7 @@ func TestAuthorizeExchange_ImpersonationAllowedWithFlag(t *testing.T) {
 }
 
 func TestAuthorizeExchange_DownscopeOnly(t *testing.T) {
-	app := &model.App{AllowTokenExchange: true}
+	app := &model.App{AllowTokenExchange: true, Audiences: testExchangeAudiences}
 	// admin is not in the subject's scope -> escalation rejected.
 	if _, err := authorizeExchange(app, delegationReq("read admin", "aud"), "read write"); !errors.Is(err, ErrScopeNotSubset) {
 		t.Fatalf("want ErrScopeNotSubset, got %v", err)
@@ -77,7 +77,7 @@ func TestAuthorizeExchange_DownscopeOnly(t *testing.T) {
 }
 
 func TestAuthorizeExchange_EmptyScopeDefaultsToSubject(t *testing.T) {
-	app := &model.App{AllowTokenExchange: true}
+	app := &model.App{AllowTokenExchange: true, Audiences: testExchangeAudiences}
 	dec, err := authorizeExchange(app, delegationReq("", "aud"), "read write")
 	if err != nil {
 		t.Fatalf("authorizeExchange: %v", err)
@@ -88,18 +88,60 @@ func TestAuthorizeExchange_EmptyScopeDefaultsToSubject(t *testing.T) {
 }
 
 func TestAuthorizeExchange_AudienceRequired(t *testing.T) {
-	app := &model.App{AllowTokenExchange: true}
+	app := &model.App{AllowTokenExchange: true, Audiences: testExchangeAudiences}
 	if _, err := authorizeExchange(app, delegationReq("read"), "read write"); !errors.Is(err, ErrAudienceRequired) {
 		t.Fatalf("want ErrAudienceRequired, got %v", err)
 	}
 }
 
 func TestAuthorizeExchange_ResourceSatisfiesAudienceRequirement(t *testing.T) {
-	app := &model.App{AllowTokenExchange: true}
+	app := &model.App{AllowTokenExchange: true, Audiences: testExchangeAudiences}
 	req := delegationReq("read")                       // no audience...
 	req.Resource = []string{"https://api.example.com"} // ...but a resource is given
 	if _, err := authorizeExchange(app, req, "read write"); err != nil {
 		t.Fatalf("resource should satisfy the audience requirement: %v", err)
+	}
+}
+
+// testExchangeAudiences are the audiences the policy tests' client registers.
+var testExchangeAudiences = model.StringArray{"aud", "https://api", "https://api.example.com"}
+
+// Each requested audience and resource must be a registered audience of the
+// client; the decision's audience is the requested audiences and resources.
+func TestAuthorizeExchange_AudienceMustBeRegistered(t *testing.T) {
+	app := &model.App{AllowTokenExchange: true, Audiences: model.StringArray{"https://api"}}
+	if _, err := authorizeExchange(app, delegationReq("read", "https://admin.example.com"), "read"); !errors.Is(err, ErrAudienceNotAllowed) {
+		t.Fatalf("unregistered audience: %v, want ErrAudienceNotAllowed", err)
+	}
+	if _, err := authorizeExchange(app, delegationReq("read", "https://api", "https://other"), "read"); !errors.Is(err, ErrAudienceNotAllowed) {
+		t.Fatalf("one unregistered audience among several: %v, want ErrAudienceNotAllowed", err)
+	}
+	req := delegationReq("read")
+	req.Resource = []string{"https://other"}
+	if _, err := authorizeExchange(app, req, "read"); !errors.Is(err, ErrAudienceNotAllowed) {
+		t.Fatalf("unregistered resource: %v, want ErrAudienceNotAllowed", err)
+	}
+	none := &model.App{AllowTokenExchange: true}
+	if _, err := authorizeExchange(none, delegationReq("read", "https://api"), "read"); !errors.Is(err, ErrAudienceNotAllowed) {
+		t.Fatalf("client without registered audiences: %v, want ErrAudienceNotAllowed", err)
+	}
+}
+
+func TestAuthorizeExchange_AudienceIsRequestedAudiencesAndResources(t *testing.T) {
+	app := &model.App{AllowTokenExchange: true, Audiences: model.StringArray{"https://api", "https://files"}}
+	req := delegationReq("read", "https://api")
+	req.Resource = []string{"https://files", "https://api"}
+	dec, err := authorizeExchange(app, req, "read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dec.Audience) != 2 || dec.Audience[0] != "https://api" || dec.Audience[1] != "https://files" {
+		t.Fatalf("audience %v, want [https://api https://files]", dec.Audience)
+	}
+	resourceOnly := delegationReq("read")
+	resourceOnly.Resource = []string{"https://files"}
+	if dec, err := authorizeExchange(app, resourceOnly, "read"); err != nil || len(dec.Audience) != 1 || dec.Audience[0] != "https://files" {
+		t.Fatalf("resource-only: decision %+v (%v), want audience [https://files]", dec, err)
 	}
 }
 

@@ -44,6 +44,11 @@ func newShadowExchangeSvc(t *testing.T, app *model.App) (*oauthService, *capture
 			app.ClientSecretHash = exchangeTestSecretHash()
 		}
 		app.Active = true
+		// The exchange targets only registered audiences: register the ones
+		// the tests use unless the test set its own.
+		if len(app.Audiences) == 0 {
+			app.Audiences = model.StringArray{"https://api", "https://api.example.com"}
+		}
 	}
 	audit := &captureAuditRepo{}
 	svc := &oauthService{
@@ -95,7 +100,7 @@ var exchangeTestSecretHash = sync.OnceValue(func() string {
 
 func mintToken(t *testing.T, ts *auth.TokenService, userID uint, scope string) string {
 	t.Helper()
-	set, err := ts.GenerateTokenSet(&model.User{ID: userID, TokenVersion: 1}, &model.App{ClientID: "subject-app"}, "user", scope, nil, "", 0)
+	set, err := ts.GenerateTokenSet(&model.User{ID: userID, TokenVersion: 1}, &model.App{ClientID: "c"}, "user", scope, nil, "", 0)
 	if err != nil {
 		t.Fatalf("GenerateTokenSet: %v", err)
 	}

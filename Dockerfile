@@ -7,7 +7,7 @@
 # Pinned to the exact patch release in go.mod's toolchain line; CI fails if the
 # two drift. The golang images set GOTOOLCHAIN=local, so this tag — not go.mod —
 # is the Go that compiles the shipped binary.
-FROM golang:1.27.4-alpine AS build
+FROM golang:1.27.4-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS build
 WORKDIR /src
 RUN apk add --no-cache ca-certificates
 COPY go.mod go.sum ./
@@ -15,7 +15,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/socrate ./cmd/server
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 WORKDIR /opt/socrate
 COPY --from=build /out/socrate /usr/local/bin/socrate
 # Public OAuth :8080. Admin API :8081 (bind loopback in non-container deployments;

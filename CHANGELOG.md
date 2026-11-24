@@ -10,6 +10,15 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Changed
+
+- CI and image supply chain: every GitHub Action is pinned to a commit SHA (the tag kept as a
+  comment) and both `Dockerfile` base images to a digest, so a moved tag cannot change what CI or
+  the image build runs; Dependabot (already configured for `github-actions` and `docker`) keeps
+  the pins current. The `Release` workflow is read-only by default and only its release job may
+  write. Closes OpenSSF Scorecard's Pinned-Dependencies and Token-Permissions alerts. No change to
+  the server.
+
 ### Security
 
 - **Token exchange authenticates the client first, and only an active, confidential client may

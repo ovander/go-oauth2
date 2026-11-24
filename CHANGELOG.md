@@ -12,6 +12,17 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **The policy enforcement point also covers the app-management routes.** Under `POLICY_MODE`
+  (`shadow` / `enforce`), `/api/apps/{app_id}/users…` and `/api/apps/{app_id}/logs` are now
+  decided like the admin API, recorded with source `app_pep`, before `RequireAppAccess` and
+  `RequireAppAdmin`. The input carries `app.id` and the caller's role in that app
+  (`principal.app_role`, read server-side). A new baseline rule, `app-admins`, mirrors the two
+  gates, so shadow mode agrees with the code from the first request. The policy catalogue gains
+  `app_actions`. `/api/apps/{app_id}/service/*` is unchanged. Deploy note: no migration. A
+  policy stored before this release has no `app-admins` rule: add it before `shadow` or
+  `enforce` (see `docs/EXTENSIBILITY.md`), or every app-route request is a divergence, and in
+  `enforce` a `403`. With `POLICY_MODE=off` (the default) nothing changes.
+
 - **An app's service account can be kept away from accounts it did not create.** New
   `SERVICE_USER_SCOPE_MODE` (`off` default, `observe`, `enforce`). Under `enforce`, the service
   API (`/api/apps/{app_id}/service/users`) no longer enrols an existing account in the app unless

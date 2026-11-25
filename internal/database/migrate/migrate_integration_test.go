@@ -216,11 +216,13 @@ func TestMigration0036_AuditAppForeignKeyDropped(t *testing.T) {
 	if err := migrate.Run(db); err != nil {
 		t.Fatalf("run: %v", err)
 	}
+	// Every foreign key on app_id, whatever its name.
 	fk := func() int64 {
 		var n int64
-		if err := db.Raw(`SELECT count(*) FROM pg_constraint
-			WHERE conrelid = 'security_audit_logs'::regclass AND contype = 'f'
-			AND conname = 'fk_security_audit_logs_app'`).Scan(&n).Error; err != nil {
+		if err := db.Raw(`SELECT count(*) FROM pg_constraint con
+			JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = ANY (con.conkey)
+			WHERE con.conrelid = 'security_audit_logs'::regclass AND con.contype = 'f'
+			AND att.attname = 'app_id'`).Scan(&n).Error; err != nil {
 			t.Fatalf("look up the constraint: %v", err)
 		}
 		return n
@@ -229,10 +231,13 @@ func TestMigration0036_AuditAppForeignKeyDropped(t *testing.T) {
 		t.Fatal("fresh install: security_audit_logs.app_id has a foreign key")
 	}
 
-	// An upgraded database has the constraint a previous model created.
-	if err := db.Exec(`ALTER TABLE security_audit_logs ADD CONSTRAINT fk_security_audit_logs_app
-		FOREIGN KEY (app_id) REFERENCES apps(id)`).Error; err != nil {
-		t.Fatal(err)
+	// An upgraded database has the constraint a previous model created, and
+	// possibly the same key under another name.
+	for _, name := range []string{"fk_security_audit_logs_app", "security_audit_logs_app_id_fkey"} {
+		if err := db.Exec(`ALTER TABLE security_audit_logs ADD CONSTRAINT ` + name +
+			` FOREIGN KEY (app_id) REFERENCES apps(id)`).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := db.Exec("DELETE FROM schema_migrations WHERE id = '0036'").Error; err != nil {
 		t.Fatal(err)

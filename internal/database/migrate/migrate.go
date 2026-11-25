@@ -18,6 +18,7 @@ package migrate
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ovander/go-oauth2/internal/cluster"
 	"github.com/ovander/go-oauth2/internal/model"
@@ -775,8 +776,22 @@ var migrations = []Migration{
 			if !db.Migrator().HasTable("security_audit_logs") {
 				return nil
 			}
-			return db.Exec(`ALTER TABLE security_audit_logs
-				DROP CONSTRAINT IF EXISTS fk_security_audit_logs_app`).Error
+			// Every foreign key on app_id, whatever its name: GORM names it
+			// fk_security_audit_logs_app, but a database built otherwise may
+			// not, and a surviving key would make deleting an app fail.
+			var names []string
+			if err := db.Raw(`SELECT con.conname FROM pg_constraint con
+				JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = ANY (con.conkey)
+				WHERE con.conrelid = 'security_audit_logs'::regclass AND con.contype = 'f'
+				AND att.attname = 'app_id'`).Scan(&names).Error; err != nil {
+				return err
+			}
+			for _, name := range names {
+				if err := db.Exec(`ALTER TABLE security_audit_logs DROP CONSTRAINT ` + quoteIdent(name)).Error; err != nil {
+					return err
+				}
+			}
+			return nil
 		},
 	},
 }
@@ -834,4 +849,9 @@ func runWithList(db *gorm.DB, migs []Migration) error {
 	}
 
 	return nil
+}
+
+// quoteIdent quotes a PostgreSQL identifier read from the catalog.
+func quoteIdent(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }

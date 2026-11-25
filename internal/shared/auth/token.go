@@ -348,8 +348,8 @@ func (ts *TokenService) GenerateTokenSetWithAuth(user *model.User, app *model.Ap
 // sender-constrained to the DPoP key thumbprint jkt via the cnf.jkt claim
 // (RFC 9449). An empty jkt yields a set identical to GenerateTokenSet, so the
 // token endpoint can call this unconditionally and pass the thumbprint only when
-// a valid DPoP proof accompanied the request. The refresh and ID tokens are
-// unchanged (refresh-token binding is a later slice).
+// a valid DPoP proof accompanied the request. The refresh token is bound to the
+// same key; the ID token is not.
 func (ts *TokenService) GenerateTokenSetWithDPoP(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, nonce string, authTime int64, jkt string) (*TokenSet, error) {
 	return ts.generateTokenSet(user, app, role, scope, appRoles, nonce, authTime, jkt, authnContext{})
 }

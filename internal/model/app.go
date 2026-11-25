@@ -127,10 +127,13 @@ func (a *App) DeniedScopes(requested string) []string {
 	return denied
 }
 
-// IsConfidential returns true when the client has a stored secret hash,
-// i.e. it is a confidential client that must authenticate at the token endpoint.
+// IsConfidential reports whether the client has a stored secret, which it must
+// present wherever it authenticates (the token endpoint, the token exchange).
+// It is the one rule the server applies: a stored secret is always required,
+// whatever IsPublic says, and a client without one is treated as public — it
+// must use PKCE (PKCERequired) (#366).
 func (a *App) IsConfidential() bool {
-	return !a.IsPublic && a.ClientSecretHash != ""
+	return a.ClientSecretHash != ""
 }
 
 // PKCERequired reports whether PKCE (RFC 7636) must be used for this client.
@@ -138,21 +141,13 @@ func (a *App) IsConfidential() bool {
 // OAuth 2.1 mandates PKCE for public clients, so this enforces that invariant at
 // the point of use rather than relying solely on the create-time default (so a
 // public client can never authorize without PKCE even if its RequirePKCE flag
-// were somehow cleared).
+// were somehow cleared). A client without a stored secret is public too, flag
+// or not: it cannot authenticate at the token endpoint, so PKCE is the only
+// proof that the code is redeemed by whoever asked for it (#366).
 func (a *App) PKCERequired() bool {
-	return a.RequirePKCE || a.IsPublic
+	return a.RequirePKCE || a.IsPublic || !a.IsConfidential()
 }
 
 func (App) TableName() string {
 	return "apps"
-}
-
-func (a *App) HasRedirectURI(uri string) bool {
-	needle := strings.TrimSpace(uri)
-	for _, u := range a.RedirectURIs {
-		if strings.TrimSpace(u) == needle {
-			return true
-		}
-	}
-	return false
 }

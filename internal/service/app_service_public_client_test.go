@@ -9,8 +9,9 @@
 //   - RequirePKCE is automatically set to true regardless of the request field
 //   - the IsPublic flag is persisted on the model
 //
-// The App.IsConfidential() helper is the canonical way to check whether a
-// client must supply a secret at the token endpoint.
+// The App.IsConfidential() helper is the rule the server applies: a client
+// with a stored secret must supply it at the token endpoint, and a client
+// without one is public and must use PKCE (#366).
 package service
 
 import (
@@ -122,21 +123,26 @@ func TestApp_IsConfidential_PublicClient_EmptyHash(t *testing.T) {
 	}
 }
 
-func TestApp_IsConfidential_PublicFlag_TakesPrecedence(t *testing.T) {
-	// If IsPublic=true but somehow a hash exists, IsConfidential must
-	// still return false — IsPublic is the authoritative flag.
+func TestApp_IsConfidential_AStoredSecretIsAlwaysRequired(t *testing.T) {
+	// If IsPublic=true but somehow a hash exists, the token endpoint requires
+	// the secret (it always has): IsConfidential says so, so that one rule
+	// decides (#366). Failing closed, a stored secret is never optional.
 	app := &model.App{IsPublic: true, ClientSecretHash: "stale-hash"}
-	if app.IsConfidential() {
-		t.Error("IsConfidential() = true when IsPublic=true; IsPublic must take precedence")
+	if !app.IsConfidential() {
+		t.Error("IsConfidential() = false for a client with a stored secret; the secret must be required")
 	}
 }
 
 func TestApp_IsConfidential_NeitherFlagNorHash(t *testing.T) {
 	// A legacy client with no hash and IsPublic=false has an empty
-	// ClientSecretHash — IsConfidential() returns false (public by omission).
+	// ClientSecretHash — IsConfidential() returns false (public by omission),
+	// and so PKCE is required for it (#366).
 	app := &model.App{IsPublic: false, ClientSecretHash: ""}
 	if app.IsConfidential() {
 		t.Error("IsConfidential() = true for client with empty hash and IsPublic=false; want false")
+	}
+	if !app.PKCERequired() {
+		t.Error("PKCERequired() = false for a client without a secret; want true")
 	}
 }
 

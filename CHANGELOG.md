@@ -10,6 +10,22 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Added
+
+- **Alert rules are evaluated** (`ALERT_RULES_MODE`, default `off`, #258). Rules could be created in
+  the monitoring console, but nothing evaluated them, so no alert was ever raised. Under `observe`,
+  every `ALERT_RULES_INTERVAL_SECONDS` (default 60) each enabled rule counts its event type in its
+  window, per group of its `group_by`; a group that reaches the threshold records a triggered
+  alert (alert history, an `alert_triggered` security event), once per group and window. `enforce`
+  also sends the rule's notifications: email to its recipients (needs SMTP), its alert as JSON to
+  its `webhook_url`, or a Slack message, over `https` to a public address through the SSRF guard.
+  Each alert records the outcome of each notification. With several instances, one evaluates at a
+  time. `GET /api/admin/alerts/rules` reports the mode as `evaluation_mode`. `docs/ALERT-RULES.md`
+  no longer documents actions, severities and a condition field that never existed (`log`,
+  `block_ip`, `high`/`medium`/`low`/`info`, `match_value`). Deploy note: new variables
+  `ALERT_RULES_MODE` (default `off`) and `ALERT_RULES_INTERVAL_SECONDS`; run `observe` first and
+  read the alert history before `enforce`.
+
 ### Security
 
 - **A redirect URI can be required to match its registration exactly** (`REDIRECT_URI_MATCH_MODE`,

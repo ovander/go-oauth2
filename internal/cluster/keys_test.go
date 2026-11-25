@@ -13,6 +13,7 @@ func TestLockKeys_AreDistinct(t *testing.T) {
 		"LockAuditScan":           LockAuditScan,
 		"LockStateSweep":          LockStateSweep,
 		"LockPolicyDecisionSweep": LockPolicyDecisionSweep,
+		"LockAlertRules":          LockAlertRules,
 	}
 	seen := map[int64]string{}
 	for name, k := range keys {

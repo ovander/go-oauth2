@@ -766,3 +766,15 @@ func buildEmailMessage(fromName, fromEmail, to, subject, htmlBody string) (strin
 	msg.Write(qpBuf.Bytes())
 	return rcpt.Address, msg.Bytes(), nil
 }
+
+// SendAlertEmail sends a monitoring alert notification (#258): text, escaped,
+// in a preformatted block. It implements AlertMailer.
+func (s *smtpEmailService) SendAlertEmail(to, subject, text string) error {
+	subject = strings.Join(strings.Fields(subject), " ")
+	body := `<pre style="font-family: monospace; white-space: pre-wrap">` + template.HTMLEscapeString(text) + `</pre>`
+	if err := s.sendEmail(to, subject, body); err != nil {
+		logger.WithFields(logger.Fields{"error": err.Error()}).Warn("alert email not sent")
+		return err
+	}
+	return nil
+}

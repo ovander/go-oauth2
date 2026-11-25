@@ -230,6 +230,10 @@ type AlertRuleResponse struct {
 type AlertRulesListResponse struct {
 	Rules []AlertRuleResponse `json:"rules"`
 	Total int64               `json:"total"`
+	// EvaluationMode is ALERT_RULES_MODE (#258): "off" (rules are stored but
+	// not evaluated), "observe" (evaluated, alerts recorded, notifications not
+	// sent) or "enforce" (notifications sent too).
+	EvaluationMode string `json:"evaluation_mode"`
 }
 
 // ==========================================

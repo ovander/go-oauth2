@@ -884,7 +884,9 @@ Neither exposes the rules.
 `/api/admin/profile`, `/stats`, `/activity`, `/dashboard/*`, `/superadmins`,
 `/security/*` (events, threats, geo, audit-integrity, blocked-ips, ip-reputation,
 policy-decisions), `/events/stream` (SSE), `/sessions`, `/reports/*`,
-`/alerts/*` (rules, history, acknowledge; see [`ALERT-RULES.md`](ALERT-RULES.md)),
+`/alerts/*` (rules, history, acknowledge; see [`ALERT-RULES.md`](ALERT-RULES.md); the rules are
+evaluated only under `ALERT_RULES_MODE` observe or enforce, which `GET /alerts/rules` reports as
+`evaluation_mode`),
 `/tokens/stats`, `/logs` (audit logs, with `/export`), `/settings/*`.
 `POST /security/blocked-ips` takes one IP address (no range) and refuses
 (`400`), since v1.15.0, loopback and unspecified addresses, the server's own

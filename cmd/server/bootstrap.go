@@ -76,6 +76,9 @@ type App struct {
 	// policyDecisionSweepStop stops the A4 decision-log retention sweep.
 	// Nil when retention is disabled (POLICY_DECISION_RETENTION_DAYS=0).
 	policyDecisionSweepStop func()
+	// alertRulesStop stops the alert-rule evaluation (#258). Nil when
+	// ALERT_RULES_MODE=off.
+	alertRulesStop func()
 	// dpopReplayCache backs DPoP observe-mode replay detection; nil when DPoP is
 	// off. Stopped on shutdown.
 	dpopReplayCache *dpop.MemoryReplayCache
@@ -152,6 +155,7 @@ func LogStartupSummary(cfg *config.Config) {
 		"admin_api_audience_mode": cfg.AdminAPIAudienceMode,
 		"privileged_scope_mode":   cfg.PrivilegedScopeMode,
 		"redirect_uri_match_mode": cfg.RedirectURIMatchMode,
+		"alert_rules_mode":        cfg.AlertRulesMode,
 		"service_user_scope_mode": cfg.ServiceUserScopeMode,
 		"lockout_source_mode":     cfg.LockoutSourceMode,
 		"audit_write_mode":        cfg.AuditWriteMode,
@@ -257,6 +261,9 @@ func (a *App) Stop() {
 	}
 	if a.policyDecisionSweepStop != nil {
 		a.policyDecisionSweepStop()
+	}
+	if a.alertRulesStop != nil {
+		a.alertRulesStop()
 	}
 	if a.dpopReplayCache != nil {
 		a.dpopReplayCache.Stop()
@@ -779,6 +786,11 @@ func Bootstrap(cfg *config.Config) *App {
 	// Manual IP blocks and unblocks and alert-rule changes are security
 	// events (who changed the defences, and the values involved).
 	monitoringHandler.SetSecurityAuditService(adminSecurityAuditService)
+	monitoringHandler.SetAlertRulesMode(cfg.AlertRulesMode)
+	// ALERT_RULES_MODE (#258): evaluate the alert rules on one instance at a
+	// time, every ALERT_RULES_INTERVAL_SECONDS.
+	alertRulesStop := startAlertRules(cfg, jobDB, alertRuleRepo, triggeredAlertRepo,
+		repository.NewAlertEvaluationRepository(db), adminSecurityAuditService, emailService)
 	// So the audit-integrity endpoint reports "not_scanning" rather than
 	// "verified" when the background scanner is disabled (F8).
 	monitoringHandler.SetAuditScanningEnabled(cfg.AuditIntegrityScanInterval > 0)
@@ -1188,6 +1200,7 @@ func Bootstrap(cfg *config.Config) *App {
 			dpopReplayCache:      dpopReplayCache,
 
 			policyDecisionSweepStop: policyDecisionSweepStop,
+			alertRulesStop:          alertRulesStop,
 		}
 	}
 
@@ -1234,6 +1247,7 @@ func Bootstrap(cfg *config.Config) *App {
 		dpopReplayCache:      dpopReplayCache,
 
 		policyDecisionSweepStop: policyDecisionSweepStop,
+		alertRulesStop:          alertRulesStop,
 	}
 }
 
@@ -1253,4 +1267,32 @@ func redirectURICheckFor(mode string, oauthService any) (func(context.Context, *
 		return nil, fmt.Errorf("%T does not support CheckRedirectURIExact", oauthService)
 	}
 	return rc.CheckRedirectURIExact, nil
+}
+
+// startAlertRules starts the alert-rule evaluation for ALERT_RULES_MODE
+// observe or enforce (#258) and returns its stop function; nil when the mode
+// is off. Under shared state (jobDB set) one instance at a time runs a pass.
+func startAlertRules(cfg *config.Config, jobDB *gorm.DB, rules repository.AlertRuleRepository,
+	alerts repository.TriggeredAlertRepository, events repository.AlertEvaluationRepository,
+	audit service.SecurityAuditService, email service.EmailService) func() {
+	if cfg.AlertRulesMode != service.AlertRulesModeObserve && cfg.AlertRulesMode != service.AlertRulesModeEnforce {
+		return nil
+	}
+	evaluator := service.NewAlertEvaluator(rules, alerts, events, cfg.AlertRulesMode)
+	evaluator.SetAuditService(audit)
+	if mailer, ok := email.(service.AlertMailer); ok {
+		evaluator.SetMailer(mailer)
+	}
+	logger.WithFields(logger.Fields{
+		"mode":     cfg.AlertRulesMode,
+		"interval": cfg.AlertRulesInterval.String(),
+	}).Info("#258: alert-rule evaluation enabled")
+	return cluster.Every(jobDB, cluster.LockAlertRules, "alert_rules", cfg.AlertRulesInterval,
+		func(ctx context.Context) error {
+			n, err := evaluator.EvaluateOnce(ctx)
+			if n > 0 {
+				logger.WithFields(logger.Fields{"triggered": n}).Info("#258: alert rules triggered")
+			}
+			return err
+		})
 }

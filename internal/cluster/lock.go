@@ -52,6 +52,8 @@ const (
 	LockStateSweep int64 = 0x5343525354415445 // "SCRSTATE"
 	// LockPolicyDecisionSweep guards the A4 decision-log retention sweep.
 	LockPolicyDecisionSweep int64 = 0x534352504f4c4453 // "SCRPOLDS"
+	// LockAlertRules guards the evaluation of the monitoring alert rules.
+	LockAlertRules int64 = 0x534352414c525453 // "SCRALRTS"
 )
 
 // TryWithLock runs fn only if this instance can take the advisory lock without

@@ -31,7 +31,7 @@ ls -l /etc/socrate/*.env      # expect 0640, root:<service-user> per file
 - [ ] SMTP configured (`SMTP_HOST/PORT/SECURITY`, `FROM_EMAIL`) and reachable
 - [ ] Opt-in modes only if intended: `REFRESH_REUSE_MODE`, `CODE_REPLAY_MODE`, `SCOPE_POLICY_MODE`,
       `ADMIN_SCOPE_MODE`, `WEBHOOKS_MODE`, `TOKEN_EXCHANGE_MODE`, `DPOP_MODE`,
-      `AUDIENCE_MODE`, `REDIRECT_URI_MATCH_MODE`
+      `AUDIENCE_MODE`, `REDIRECT_URI_MATCH_MODE`, `ALERT_RULES_MODE`
 - [ ] `AUDIT_INTEGRITY_SCAN_INTERVAL_SECONDS` > 0 if you want tamper-evidence
       actually verified (0 = stamped but never scanned)
 

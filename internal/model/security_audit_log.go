@@ -56,6 +56,10 @@ const (
 	// matched a registered one only after normalization, not as the exact
 	// string (REDIRECT_URI_MATCH_MODE observe and enforce, #261).
 	SecurityEventRedirectURIInexact SecurityEventType = "redirect_uri_inexact_match"
+	// SecurityEventAlertTriggered: a monitoring alert rule's condition was met
+	// (ALERT_RULES_MODE observe or enforce, #258); details name the rule, the
+	// group and the count.
+	SecurityEventAlertTriggered SecurityEventType = "alert_triggered"
 
 	// Suspicious activity
 	SecurityEventSuspiciousActivity SecurityEventType = "suspicious_activity"

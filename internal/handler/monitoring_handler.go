@@ -41,7 +41,13 @@ type MonitoringHandler struct {
 	// securityAudit records block, unblock and alert-rule changes. Nil skips
 	// them (tests); bootstrap always sets it.
 	securityAudit service.SecurityAuditService
+	// alertRulesMode is ALERT_RULES_MODE, reported with the alert rules so
+	// the console can say whether they are evaluated (#258).
+	alertRulesMode string
 }
+
+// SetAlertRulesMode sets the ALERT_RULES_MODE the alert-rule list reports.
+func (h *MonitoringHandler) SetAlertRulesMode(mode string) { h.alertRulesMode = mode }
 
 // SetSecurityAuditService sets where block, unblock and alert-rule changes
 // are recorded.
@@ -546,9 +552,14 @@ func (h *MonitoringHandler) ListAlertRules(w http.ResponseWriter, r *http.Reques
 		response[i] = dto.FromAlertRule(&rule)
 	}
 
+	mode := h.alertRulesMode
+	if mode == "" {
+		mode = "off"
+	}
 	writeJSON(w, dto.AlertRulesListResponse{
-		Rules: response,
-		Total: int64(len(rules)),
+		Rules:          response,
+		Total:          int64(len(rules)),
+		EvaluationMode: mode,
 	})
 }
 

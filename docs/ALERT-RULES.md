@@ -4,13 +4,42 @@ This document explains how to create and manage security alert rules in the OAut
 
 ## Overview
 
-The alert system monitors security events in real-time and can trigger notifications based on configurable rules. Each alert rule defines:
+Alert rules watch the security audit log and raise an alert, and notifications, when a kind of
+event happens too often. Each alert rule defines:
 
-- **Event Type**: Which security events to monitor
-- **Condition**: Thresholds and criteria for triggering
-- **Severity**: Critical, high, medium, low, or info
-- **Actions**: What to do when triggered (log, email, webhook, block_ip)
-- **Recipients**: Who should be notified
+- **Event Type**: which security events to count
+- **Condition**: how many events (`threshold`) in how long (`window_minutes`), optionally per IP
+  address, user or application (`group_by`)
+- **Severity**: `warning`, `error` or `critical`
+- **Actions**: who is told when it triggers: `email`, `webhook` or `slack`
+- **Recipients** (for `email`) and **Webhook URL** (for `webhook` and `slack`)
+
+## Evaluation (`ALERT_RULES_MODE`)
+
+Rules are evaluated only when the server runs with `ALERT_RULES_MODE` set (#258):
+
+| Mode | Effect |
+|------|--------|
+| `off` (default) | Rules are stored and edited, but nothing evaluates them: no alert, no notification. |
+| `observe` | Rules are evaluated and triggered alerts are recorded (alert history, an `alert_triggered` security event), but no notification is sent. |
+| `enforce` | As `observe`, and each triggered alert's notifications are sent. |
+
+Run `observe` first: the alert history then shows what each rule would have sent, so thresholds
+can be tuned before anyone is paged.
+
+Every `ALERT_RULES_INTERVAL_SECONDS` (default 60, at least 10), each enabled rule counts its
+`event_type`'s events of the last `window_minutes`, per group of `group_by` (all together without
+it; an event with no value for `group_by`, such as no user, is not counted). A group whose count
+reaches `threshold` triggers one alert; the rule does not alert again for that group until its
+window has passed. With several Socrate instances, one evaluates at a time.
+
+A rule whose condition is invalid (a `threshold` under 1, a `window_minutes` outside 1–1440, an
+unknown `group_by`) is skipped and logged; the other rules still run.
+
+`GET /api/admin/alerts/rules` reports the mode in `evaluation_mode`. A triggered alert's
+`details` hold the `event_type`, `group_by`, `group`, `count`, `threshold` and `window_minutes`,
+and under `notifications` the outcome of each action: `sent`, `failed`, or why it was not sent
+(the mode is `observe`, no recipient or webhook URL, email not configured, unknown action).
 
 ## API Endpoints
 
@@ -44,9 +73,9 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
       "window_minutes": 15,
       "group_by": "ip_address"
     },
-    "severity": "high",
+    "severity": "error",
     "enabled": true,
-    "actions": ["log", "email", "block_ip"],
+    "actions": ["email"],
     "recipients": ["security@example.com"],
     "webhook_url": "https://slack.com/webhook/..."
   }'
@@ -88,26 +117,26 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
 | `threshold` | int | Number of events to trigger alert |
 | `window_minutes` | int | Time window for counting events |
 | `group_by` | string | Group events by: `ip_address`, `user_id`, `app_id` |
-| `match_value` | string | Specific value to match (optional) |
 
 ### Available Actions
 
 | Action | Description |
 |--------|-------------|
-| `log` | Log to security audit |
-| `email` | Send email notification |
-| `webhook` | Call webhook URL |
-| `block_ip` | Automatically block the IP address |
+| `email` | Email each address in `recipients` (needs SMTP configured) |
+| `webhook` | POST the alert as JSON to `webhook_url` (see [Webhook Integration](#webhook-integration)) |
+| `slack` | POST `{"text": "[severity] message"}` to `webhook_url`, a Slack incoming webhook |
+
+Every triggered alert is also recorded as an `alert_triggered` security event; there is no
+separate `log` action. Blocking an IP is not an alert action: block it with
+`POST /api/admin/security/blocked-ips` (the monitoring console's Blocked IPs page).
 
 ### Severity Levels
 
 | Severity | Description |
 |----------|-------------|
 | `critical` | Immediate action required |
-| `high` | Security incident |
-| `medium` | Potential threat |
-| `low` | Minor concern |
-| `info` | Informational |
+| `error` | Security incident |
+| `warning` | Potential threat (also used for any other value) |
 
 ---
 
@@ -134,7 +163,7 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
     },
     "severity": "critical",
     "enabled": true,
-    "actions": ["log", "email", "block_ip"],
+    "actions": ["email"],
     "recipients": ["security@example.com"]
   }'
 ```
@@ -156,9 +185,9 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
       "window_minutes": 10,
       "group_by": "user_id"
     },
-    "severity": "high",
+    "severity": "error",
     "enabled": true,
-    "actions": ["log", "email"],
+    "actions": ["email"],
     "recipients": ["security@example.com"]
   }'
 ```
@@ -179,9 +208,9 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
       "threshold": 1,
       "window_minutes": 1
     },
-    "severity": "high",
+    "severity": "error",
     "enabled": true,
-    "actions": ["log", "email"],
+    "actions": ["email"],
     "recipients": ["security@example.com", "helpdesk@example.com"]
   }'
 ```
@@ -203,9 +232,9 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
       "window_minutes": 5,
       "group_by": "ip_address"
     },
-    "severity": "high",
+    "severity": "error",
     "enabled": true,
-    "actions": ["log", "email", "block_ip"],
+    "actions": ["email"],
     "recipients": ["security@example.com"]
   }'
 ```
@@ -227,9 +256,9 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
       "window_minutes": 5,
       "group_by": "ip_address"
     },
-    "severity": "medium",
+    "severity": "warning",
     "enabled": true,
-    "actions": ["log", "email"],
+    "actions": ["email"],
     "recipients": ["security@example.com"]
   }'
 ```
@@ -253,7 +282,7 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
     },
     "severity": "critical",
     "enabled": true,
-    "actions": ["log", "email", "block_ip"],
+    "actions": ["email"],
     "recipients": ["security@example.com"]
   }'
 ```
@@ -275,9 +304,9 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
       "window_minutes": 5,
       "group_by": "ip_address"
     },
-    "severity": "medium",
+    "severity": "warning",
     "enabled": true,
-    "actions": ["log", "block_ip"],
+    "actions": ["email"],
     "recipients": ["security@example.com"]
   }'
 ```
@@ -299,9 +328,9 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
       "window_minutes": 15,
       "group_by": "ip_address"
     },
-    "severity": "medium",
+    "severity": "warning",
     "enabled": true,
-    "actions": ["log", "email"],
+    "actions": ["email"],
     "recipients": ["security@example.com"]
   }'
 ```
@@ -323,9 +352,9 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
       "window_minutes": 60,
       "group_by": "app_id"
     },
-    "severity": "medium",
+    "severity": "warning",
     "enabled": true,
-    "actions": ["log", "email"],
+    "actions": ["email"],
     "recipients": ["security@example.com"]
   }'
 ```
@@ -347,9 +376,9 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
       "window_minutes": 10,
       "group_by": "ip_address"
     },
-    "severity": "high",
+    "severity": "error",
     "enabled": true,
-    "actions": ["log", "email", "block_ip"],
+    "actions": ["email"],
     "recipients": ["security@example.com"]
   }'
 ```
@@ -389,26 +418,37 @@ curl -X POST "http://localhost:8081/api/admin/alerts/123/acknowledge" \
 
 ## Webhook Integration
 
-When an alert is triggered with the `webhook` action, a POST request is sent to the configured URL:
+Under `ALERT_RULES_MODE=enforce`, a triggered alert with the `webhook` action is POSTed as JSON
+(`Content-Type: application/json`) to the rule's `webhook_url`:
 
 ```json
 {
+  "type": "socrate.alert_triggered",
   "alert_id": 123,
+  "rule_id": 4,
   "rule_name": "Brute Force Attack",
   "severity": "critical",
-  "message": "10 failed login attempts from IP 192.168.1.100",
-  "triggered_at": "2024-01-15T10:30:00Z",
+  "message": "Brute Force Attack: 10 login_failed events in 5 min (ip_address 203.0.113.7)",
+  "triggered_at": "2026-11-25T10:30:00Z",
   "details": {
-    "ip_address": "192.168.1.100",
+    "event_type": "login_failed",
+    "group_by": "ip_address",
+    "group": "203.0.113.7",
     "count": 10,
+    "threshold": 10,
     "window_minutes": 5
   }
 }
 ```
 
+The URL must be `https` and reach a public address: it is called through the same SSRF guard as
+the outbound webhooks, checked when the connection is made. A 2xx answer counts as sent; anything
+else, or no answer within 10 seconds, as failed. There is no retry: the next alert is sent anew.
+
 ### Slack Webhook Example
 
-Configure a Slack incoming webhook and use it as the `webhook_url`:
+Configure a Slack incoming webhook, use it as the `webhook_url` and the `slack` action, which
+sends the alert's message as Slack expects it (`{"text": ...}`):
 
 ```bash
 curl -X POST http://localhost:8081/api/admin/alerts/rules \
@@ -419,7 +459,7 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
     "event_type": "brute_force_detected",
     "condition": {"threshold": 1, "window_minutes": 1},
     "severity": "critical",
-    "actions": ["webhook"],
+    "actions": ["slack"],
     "webhook_url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
   }'
 ```
@@ -428,9 +468,9 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
 
 ## Best Practices
 
-1. **Start with monitoring mode**: Enable rules with just the `log` action initially to tune thresholds
+1. **Start with `ALERT_RULES_MODE=observe`**: alerts are recorded without notifying anyone, so thresholds can be tuned
 2. **Set appropriate thresholds**: Too low causes alert fatigue, too high misses incidents
-3. **Use IP blocking carefully**: Only for clear attack patterns to avoid blocking legitimate users
+3. **Group by the attacker**: `group_by: ip_address` alerts once per source, not once for all of them
 4. **Review alerts regularly**: Acknowledge alerts and refine rules based on patterns
 5. **Layer your alerts**: Combine low-threshold warnings with high-threshold critical alerts
 6. **Test your webhooks**: Verify integration before relying on them for critical alerts
@@ -443,9 +483,13 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
 
 ### Alert Not Triggering
 
-1. Verify the rule is enabled: `GET /api/admin/alerts/rules/:id`
-2. Check event types are being logged: `GET /api/admin/security/events`
-3. Verify threshold and time window are appropriate
+1. Check that the server evaluates rules: `evaluation_mode` in `GET /api/admin/alerts/rules`
+   must be `observe` or `enforce` (`ALERT_RULES_MODE`)
+2. Verify the rule is enabled: `GET /api/admin/alerts/rules/:id`
+3. Check event types are being logged: `GET /api/admin/security/events`
+4. Verify threshold and time window are appropriate, and look in the server log for
+   `alert rule <id>`: a rule with an invalid condition is skipped
+5. A group that already alerted is not alerted again until its window has passed
 
 ### Too Many False Positives
 
@@ -455,9 +499,10 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
 
 ### Webhook Not Receiving Alerts
 
-1. Verify the webhook URL is accessible from the server
-2. Check server logs for HTTP errors
-3. Ensure the webhook endpoint returns 2xx status
+1. Check that `ALERT_RULES_MODE=enforce`: under `observe` nothing is sent
+2. Look at the alert's `details.notifications`: `failed`, or why it was not sent
+3. Verify the webhook URL is `https`, public and reachable from the server, and returns 2xx
+4. Check the server log for `alert rules: notification failed`
 
 ---
 
@@ -474,61 +519,61 @@ BASE_URL="http://localhost:8081"
 curl -s -X POST "$BASE_URL/api/admin/alerts/rules" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"name":"Brute Force Attack","event_type":"login_failed","condition":{"threshold":10,"window_minutes":5,"group_by":"ip_address"},"severity":"critical","actions":["log","email","block_ip"]}'
+  -d '{"name":"Brute Force Attack","event_type":"login_failed","condition":{"threshold":10,"window_minutes":5,"group_by":"ip_address"},"severity":"critical","actions":["email"]}'
 
 # 2. Account Takeover Attempt
 curl -s -X POST "$BASE_URL/api/admin/alerts/rules" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"name":"Account Takeover Attempt","event_type":"login_failed","condition":{"threshold":5,"window_minutes":10,"group_by":"user_id"},"severity":"high","actions":["log","email"]}'
+  -d '{"name":"Account Takeover Attempt","event_type":"login_failed","condition":{"threshold":5,"window_minutes":10,"group_by":"user_id"},"severity":"error","actions":["email"]}'
 
 # 3. Account Locked
 curl -s -X POST "$BASE_URL/api/admin/alerts/rules" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"name":"Account Locked","event_type":"account_locked","condition":{"threshold":1,"window_minutes":1},"severity":"high","actions":["log","email"]}'
+  -d '{"name":"Account Locked","event_type":"account_locked","condition":{"threshold":1,"window_minutes":1},"severity":"error","actions":["email"]}'
 
 # 4. Invalid Token Usage
 curl -s -X POST "$BASE_URL/api/admin/alerts/rules" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"name":"Invalid Token Usage","event_type":"invalid_token_used","condition":{"threshold":5,"window_minutes":5,"group_by":"ip_address"},"severity":"high","actions":["log","email","block_ip"]}'
+  -d '{"name":"Invalid Token Usage","event_type":"invalid_token_used","condition":{"threshold":5,"window_minutes":5,"group_by":"ip_address"},"severity":"error","actions":["email"]}'
 
 # 5. Unusual Token Refresh
 curl -s -X POST "$BASE_URL/api/admin/alerts/rules" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"name":"Unusual Token Refresh Activity","event_type":"token_refreshed","condition":{"threshold":50,"window_minutes":5,"group_by":"ip_address"},"severity":"medium","actions":["log","email"]}'
+  -d '{"name":"Unusual Token Refresh Activity","event_type":"token_refreshed","condition":{"threshold":50,"window_minutes":5,"group_by":"ip_address"},"severity":"warning","actions":["email"]}'
 
 # 6. PKCE Bypass Attempt
 curl -s -X POST "$BASE_URL/api/admin/alerts/rules" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"name":"PKCE Bypass Attempt","event_type":"pkce_validation_failed","condition":{"threshold":3,"window_minutes":10,"group_by":"ip_address"},"severity":"critical","actions":["log","email","block_ip"]}'
+  -d '{"name":"PKCE Bypass Attempt","event_type":"pkce_validation_failed","condition":{"threshold":3,"window_minutes":10,"group_by":"ip_address"},"severity":"critical","actions":["email"]}'
 
 # 7. Rate Limit Abuse
 curl -s -X POST "$BASE_URL/api/admin/alerts/rules" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"name":"Rate Limit Abuse","event_type":"rate_limit_exceeded","condition":{"threshold":10,"window_minutes":5,"group_by":"ip_address"},"severity":"medium","actions":["log","block_ip"]}'
+  -d '{"name":"Rate Limit Abuse","event_type":"rate_limit_exceeded","condition":{"threshold":10,"window_minutes":5,"group_by":"ip_address"},"severity":"warning","actions":["email"]}'
 
 # 8. Password Reset Abuse
 curl -s -X POST "$BASE_URL/api/admin/alerts/rules" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"name":"Password Reset Abuse","event_type":"password_reset_requested","condition":{"threshold":5,"window_minutes":15,"group_by":"ip_address"},"severity":"medium","actions":["log","email"]}'
+  -d '{"name":"Password Reset Abuse","event_type":"password_reset_requested","condition":{"threshold":5,"window_minutes":15,"group_by":"ip_address"},"severity":"warning","actions":["email"]}'
 
 # 9. High Volume Token Issuance
 curl -s -X POST "$BASE_URL/api/admin/alerts/rules" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"name":"High Volume Token Issuance","event_type":"token_issued","condition":{"threshold":1000,"window_minutes":60,"group_by":"app_id"},"severity":"medium","actions":["log","email"]}'
+  -d '{"name":"High Volume Token Issuance","event_type":"token_issued","condition":{"threshold":1000,"window_minutes":60,"group_by":"app_id"},"severity":"warning","actions":["email"]}'
 
 # 10. Registration Spike
 curl -s -X POST "$BASE_URL/api/admin/alerts/rules" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"name":"Registration Spike","event_type":"user_registered","condition":{"threshold":50,"window_minutes":10,"group_by":"ip_address"},"severity":"high","actions":["log","email","block_ip"]}'
+  -d '{"name":"Registration Spike","event_type":"user_registered","condition":{"threshold":50,"window_minutes":10,"group_by":"ip_address"},"severity":"error","actions":["email"]}'
 
 echo "All alert rules created!"
 ```

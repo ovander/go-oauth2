@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -61,6 +62,12 @@ func TestSuperadminTarget_SessionActions(t *testing.T) {
 			taken := len(action.done()) > before
 			if rr.Code != tc.want || taken != (tc.want == http.StatusOK) {
 				t.Errorf("%s, %s: %d %s (taken %v), want %d", action.name, tc.name, rr.Code, rr.Body.String(), taken, tc.want)
+			}
+			// The action was taken on the user in the path, not another.
+			if taken {
+				if got, want := action.done()[len(action.done())-1], tc.target; fmt.Sprint(got) != want {
+					t.Errorf("%s, %s: acted on user %d, want %s", action.name, tc.name, got, want)
+				}
 			}
 		}
 	}

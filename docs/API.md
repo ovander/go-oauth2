@@ -305,6 +305,11 @@ While an account is locked, only the right password gets `403` account locked; a
 `401` invalid credentials, like an unknown email, after the same password check, so the lock does
 not reveal that the account exists (since v1.14.7). The same holds wherever a password is checked:
 the hosted login, admin login, `/elevate` and change-password.
+With `LOCKOUT_SOURCE_MODE=enforce` (#403) the count is kept per account **and source** (the
+client's IPv4 address, or the /64 of its IPv6 address): reaching the limit locks that source out
+of that account for the lockout duration, and the owner signing in from elsewhere is unaffected.
+The answers are the same as for an account-wide lock (`401` for a wrong password, `403` for the
+right one from the locked source). An account-wide lock, such as an admin block, still applies.
 A TOTP code is accepted once (since v1.14.5): the same code again, or a code of an earlier
 30-second step, is refused as a wrong code, including the code that confirmed the enrollment.
 

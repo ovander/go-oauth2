@@ -131,6 +131,12 @@ type Config struct {
 	// account created for another app or by itself, 403).
 	// SERVICE_USER_SCOPE_MODE.
 	ServiceUserScopeMode string
+	// LockoutSourceMode counts failed sign-ins per account and source (#403):
+	// "off" (default, the account-wide lock), "observe" (also count per
+	// source, audit only) or "enforce" (a source reaching the limit is locked
+	// out of that account only, so a stranger cannot keep the owner locked).
+	// LOCKOUT_SOURCE_MODE.
+	LockoutSourceMode string
 	// AuditWriteMode is how security audit rows are written: "sync" (default —
 	// inside the request, as before) or "async" (queued and appended in batches
 	// by a background writer, so a token request no longer waits on the audit
@@ -397,6 +403,7 @@ func Load() *Config {
 		OperatorConsoleClientIDs: getEnv("OPERATOR_CONSOLE_CLIENT_IDS", ""),
 		AdminAPIAudienceMode:     normalizeStepUpMode(getEnv("ADMIN_API_AUDIENCE_MODE", "off")),
 		ServiceUserScopeMode:     normalizeStepUpMode(getEnv("SERVICE_USER_SCOPE_MODE", "off")),
+		LockoutSourceMode:        normalizeStepUpMode(getEnv("LOCKOUT_SOURCE_MODE", "off")),
 		AuditWriteMode:           normalizeAuditWriteMode(getEnv("AUDIT_WRITE_MODE", "sync")),
 		DPoPMode:                 normalizeDPoPMode(getEnv("DPOP_MODE", "off")),
 		TokenExchangeMode:        normalizeTokenExchangeMode(getEnv("TOKEN_EXCHANGE_MODE", "off")),

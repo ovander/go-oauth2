@@ -12,6 +12,20 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **A failed-sign-in lock no longer has to lock the owner out.** New `LOCKOUT_SOURCE_MODE` (`off`
+  default, `observe`, `enforce`). The lockout counted wrong passwords and codes per account, so
+  anyone who knew an email could keep the account locked, admins and superadmins included. Under
+  `enforce`, failures are counted per account and source (client IPv4 address, or IPv6 /64):
+  reaching `MAX_FAILED_ATTEMPTS` locks that source out of that account for
+  `LOCKOUT_DURATION_SECONDS`, audited `account_locked` with `lock_scope: source`, and the owner
+  signing in from elsewhere is unaffected. An account-wide lock (an admin block, or one set before
+  `enforce`) still applies. If the per-source count cannot be written, the attempt counts on the
+  account, as in `off` (`source_store_error` in the audit details). `observe` keeps the account-wide lock and adds `source`,
+  `source_failed_attempts` and `source_would_lock` to the audit details. Deploy note: migration
+  0034 (new table `login_source_failures`, swept with the used tokens); run `observe` first. An
+  attacker using many addresses gets `MAX_FAILED_ATTEMPTS` tries from each, so keep the per-IP
+  rate limits and automatic IP blocking on.
+
 - **The policy enforcement point also covers the app-management routes.** Under `POLICY_MODE`
   (`shadow` / `enforce`), `/api/apps/{app_id}/users…` and `/api/apps/{app_id}/logs` are now
   decided like the admin API, recorded with source `app_pep`, before `RequireAppAccess` and

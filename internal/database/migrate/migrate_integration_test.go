@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -336,5 +337,35 @@ func TestMigration0033_AuditChainHead(t *testing.T) {
 	var n int64
 	if err := db.Raw("SELECT count(*) FROM audit_chain_head").Scan(&n).Error; err != nil || n != 1 {
 		t.Fatalf("head rows after re-run = %d (%v), want 1", n, err)
+	}
+}
+
+func TestMigration0034_LoginSourceFailures(t *testing.T) {
+	db := scratchDB(t)
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	insert := `INSERT INTO login_source_failures (user_id, source, failed_attempts, updated_at) VALUES (1, '192.0.2.1', 1, now())`
+	if err := db.Exec(insert).Error; err != nil {
+		t.Fatalf("fresh install: %v", err)
+	}
+	if err := db.Exec(insert).Error; err == nil || !strings.Contains(err.Error(), "duplicate key") {
+		t.Fatalf("a second row for the same account and source: %v, want a unique violation", err)
+	}
+	if err := db.Exec(`INSERT INTO login_source_failures (user_id, source, failed_attempts, updated_at) VALUES (1, '192.0.2.2', 1, now())`).Error; err != nil {
+		t.Fatalf("a second source for the same account: %v", err)
+	}
+	if err := db.Exec("UPDATE login_source_failures SET failed_attempts = 4 WHERE source = '192.0.2.1'").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("DELETE FROM schema_migrations WHERE id = '0034'").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("re-run: %v", err)
+	}
+	var n int64
+	if err := db.Raw("SELECT count(*) FROM login_source_failures WHERE (source = '192.0.2.1' AND failed_attempts = 4) OR source = '192.0.2.2'").Scan(&n).Error; err != nil || n != 2 {
+		t.Fatalf("rows kept by the re-run = %d (%v), want both, unchanged", n, err)
 	}
 }

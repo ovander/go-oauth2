@@ -15,17 +15,19 @@ Capabilities**, non-breaking).
 Security release on the **v1.x** line. It closes the findings of the November 2026 review: account
 and session state that a concurrent save could undo, controls that failed open when the database
 erred, a locked account that revealed itself, consent and code-exchange gaps, client-IP attribution
-behind appending proxies, and timing that told which client_ids exist. Several controls are new
-and ship **off** (`LOCKOUT_SOURCE_MODE`, `PRIVILEGED_SCOPE_MODE`, `SERVICE_USER_SCOPE_MODE`,
-`CODE_REPLAY_MODE`), and existing modes cover more routes. Three migrations, no change of default,
-no change to discovery, claims or error codes.
+behind appending proxies, timing that told which client_ids exist, and app deletion breaking the
+audit log's integrity. Several controls are new and ship **off** (`LOCKOUT_SOURCE_MODE`,
+`PRIVILEGED_SCOPE_MODE`, `SERVICE_USER_SCOPE_MODE`, `CODE_REPLAY_MODE`), and existing modes cover
+more routes. Four migrations, no change of default, no change to discovery, claims or error codes.
 
 ### Upgrade notes
 
-- **Migrations 0033–0035** (`AUTO_MIGRATE=false`: run them deliberately, after a backup). 0033 adds
+- **Migrations 0033–0036** (`AUTO_MIGRATE=false`: run them deliberately, after a backup). 0033 adds
   `audit_chain_head` (the server anchors it on the existing log at startup), 0034 adds
-  `login_source_failures`, 0035 adds two nullable columns and an index to `authorization_codes`.
-  None rewrites data; all work on a fresh install.
+  `login_source_failures`, 0035 adds two nullable columns and an index to `authorization_codes`,
+  0036 drops the foreign key from `security_audit_logs.app_id` to `apps`. None rewrites data; all
+  work on a fresh install. Audit rows whose `app_id` an earlier app deletion nulled keep failing
+  the integrity scan: their attribution cannot be restored.
 - **Before deploying**, check that no client relies on omitting PKCE without a secret — this must
   return nothing, or those clients must send a `code_challenge`:
   `SELECT client_id FROM apps WHERE NOT is_public AND coalesce(client_secret_hash, '') = '';`

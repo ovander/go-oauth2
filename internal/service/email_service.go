@@ -767,6 +767,10 @@ func buildEmailMessage(fromName, fromEmail, to, subject, htmlBody string) (strin
 	return rcpt.Address, msg.Bytes(), nil
 }
 
+// The SMTP email service sends the alert emails: bootstrap hands it to the
+// alert-rule evaluator as its AlertMailer.
+var _ AlertMailer = (*smtpEmailService)(nil)
+
 // SendAlertEmail sends a monitoring alert notification (#258): text, escaped,
 // in a preformatted block. It implements AlertMailer.
 func (s *smtpEmailService) SendAlertEmail(to, subject, text string) error {

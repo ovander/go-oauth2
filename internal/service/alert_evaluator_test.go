@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,6 +30,10 @@ type alertFakes struct {
 	counts  map[string]map[string]map[string]int64
 	since   map[uint]time.Time
 	failFor uint // CountEventsByGroup fails for this rule's event type
+	// saved[alert ID] is the notification outcome Update stored.
+	saved map[uint]interface{}
+	// failCreateGroup makes Create fail for an alert of that group.
+	failCreateGroup string
 }
 
 type fakeRules struct {
@@ -52,12 +57,21 @@ func (r fakeRules) FindEnabled(context.Context) ([]model.AlertRule, error) {
 }
 
 func (s fakeAlerts) Create(_ context.Context, a *model.TriggeredAlert) error {
+	if s.f.failCreateGroup != "" && a.Details["group"] == s.f.failCreateGroup {
+		return errors.New("db down")
+	}
 	a.ID = uint(len(s.f.alerts) + 1)
 	s.f.alerts = append(s.f.alerts, a)
 	return nil
 }
 
-func (s fakeAlerts) Update(context.Context, *model.TriggeredAlert) error { return nil }
+func (s fakeAlerts) Update(_ context.Context, a *model.TriggeredAlert) error {
+	if s.f.saved == nil {
+		s.f.saved = map[uint]interface{}{}
+	}
+	s.f.saved[a.ID] = a.Details["notifications"]
+	return nil
+}
 
 func (f *alertFakes) CountEventsByGroup(_ context.Context, eventType string, _ time.Time, groupBy string) (map[string]int64, error) {
 	if f.failFor != 0 {
@@ -191,6 +205,9 @@ func TestAlertEvaluator_ObserveRecordsWithoutNotifying(t *testing.T) {
 	if notes["email"] != alertNotifyObserve || notes["webhook"] != alertNotifyObserve || len(mailer.sent) != 0 {
 		t.Errorf("observe notified: %v, mails %v", notes, mailer.sent)
 	}
+	if saved, _ := f.saved[a.ID].(map[string]interface{}); saved["email"] != alertNotifyObserve {
+		t.Errorf("the notification outcome was not saved: %v", f.saved)
+	}
 	if len(audit.events) != 1 || audit.events[0].EventType != model.SecurityEventAlertTriggered ||
 		audit.events[0].Details["rule_id"] != uint(1) || audit.events[0].MinSeverity != model.SecuritySeverityError {
 		t.Errorf("audit = %+v", audit.events)
@@ -260,7 +277,8 @@ func TestAlertEvaluator_ABrokenRuleDoesNotStopTheOthers(t *testing.T) {
 func TestAlertEvaluator_EnforceSendsTheNotifications(t *testing.T) {
 	var mu sync.Mutex
 	var bodies []map[string]interface{}
-	status := http.StatusOK
+	var status atomic.Int32
+	status.Store(http.StatusOK)
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		var m map[string]interface{}
@@ -272,7 +290,7 @@ func TestAlertEvaluator_EnforceSendsTheNotifications(t *testing.T) {
 			w.WriteHeader(http.StatusUnsupportedMediaType)
 			return
 		}
-		w.WriteHeader(status)
+		w.WriteHeader(int(status.Load()))
 	}))
 	defer srv.Close()
 
@@ -319,7 +337,7 @@ func TestAlertEvaluator_EnforceSendsTheNotifications(t *testing.T) {
 	}
 
 	// A failed send is recorded as such.
-	status = http.StatusInternalServerError
+	status.Store(http.StatusInternalServerError)
 	mailer.err = errors.New("smtp down")
 	f.alerts = nil
 	if n, err := e.EvaluateOnce(context.Background()); n != 1 || err != nil {
@@ -366,5 +384,25 @@ func TestAlertSeverity_DefaultsToWarning(t *testing.T) {
 		if got := alertSeverity(in); got != want {
 			t.Errorf("alertSeverity(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// A failed save of one group's alert is reported and retried next pass; the
+// rule's other groups still trigger.
+func TestAlertEvaluator_AFailedSaveDoesNotStopTheOtherGroups(t *testing.T) {
+	// The failing group comes first: the groups are evaluated in order.
+	f := &alertFakes{rules: []model.AlertRule{loginRule(1, 1, 5, "ip_address")}, failCreateGroup: "198.51.100.1",
+		counts: map[string]map[string]map[string]int64{"login_failed": {"ip_address": {"203.0.113.7": 3, "198.51.100.1": 3}}}}
+	e, _ := newTestEvaluator(f, AlertRulesModeObserve)
+	n, err := e.EvaluateOnce(context.Background())
+	if n != 1 || len(f.alerts) != 1 || f.alerts[0].Details["group"] != "203.0.113.7" {
+		t.Fatalf("triggered %d (%+v), want the other group", n, f.alerts)
+	}
+	if err == nil {
+		t.Error("the failed save was not reported")
+	}
+	f.failCreateGroup = ""
+	if n, err := e.EvaluateOnce(context.Background()); n != 1 || err != nil || f.alerts[1].Details["group"] != "198.51.100.1" {
+		t.Fatalf("next pass = %d, %v: the failed group was not retried", n, err)
 	}
 }

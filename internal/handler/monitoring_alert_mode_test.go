@@ -30,7 +30,7 @@ func TestListAlertRules_ReportsTheEvaluationMode(t *testing.T) {
 			t.Fatalf("mode %q: %d %v", set, w.Code, err)
 		}
 		if resp.EvaluationMode != want || resp.Total != 1 {
-			t.Errorf("mode %q: evaluation_mode = %q, want %q", set, resp.EvaluationMode, want)
+			t.Errorf("mode %q: evaluation_mode = %q, total %d; want %q, 1", set, resp.EvaluationMode, resp.Total, want)
 		}
 	}
 }

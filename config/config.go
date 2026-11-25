@@ -666,9 +666,6 @@ func normalizeAuditWriteMode(v string) string {
 	return "sync"
 }
 
-// normalizeStepUpMode lower-cases and validates the impersonation step-up mode,
-// falling back to "off" for any unrecognized value (fail safe — never enforce
-// or observe from a typo).
 // alertRulesInterval is ALERT_RULES_INTERVAL_SECONDS as a duration, from 10
 // seconds (each pass counts the audit log once per enabled rule) to a day (a
 // larger value would overflow, and no rule's window is longer).
@@ -682,6 +679,9 @@ func alertRulesInterval(seconds int) time.Duration {
 	return time.Duration(seconds) * time.Second
 }
 
+// normalizeStepUpMode lower-cases and validates the impersonation step-up mode,
+// falling back to "off" for any unrecognized value (fail safe — never enforce
+// or observe from a typo).
 func normalizeStepUpMode(v string) string {
 	switch strings.ToLower(strings.TrimSpace(v)) {
 	case "observe":

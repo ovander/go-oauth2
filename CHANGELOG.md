@@ -19,7 +19,8 @@ Capabilities**, non-breaking).
   reaching `MAX_FAILED_ATTEMPTS` locks that source out of that account for
   `LOCKOUT_DURATION_SECONDS`, audited `account_locked` with `lock_scope: source`, and the owner
   signing in from elsewhere is unaffected. An account-wide lock (an admin block, or one set before
-  `enforce`) still applies. `observe` keeps the account-wide lock and adds `source`,
+  `enforce`) still applies. If the per-source count cannot be written, the attempt counts on the
+  account, as in `off` (`source_store_error` in the audit details). `observe` keeps the account-wide lock and adds `source`,
   `source_failed_attempts` and `source_would_lock` to the audit details. Deploy note: migration
   0034 (new table `login_source_failures`, swept with the used tokens); run `observe` first. An
   attacker using many addresses gets `MAX_FAILED_ATTEMPTS` tries from each, so keep the per-IP

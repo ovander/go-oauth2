@@ -17,10 +17,11 @@ import (
 // themselves out of it, not the owner.
 
 type memSourceFailures struct {
-	mu      sync.Mutex
-	counts  map[string]int
-	locks   map[string]time.Time
-	lockErr error
+	mu        sync.Mutex
+	counts    map[string]int
+	locks     map[string]time.Time
+	lockErr   error
+	recordErr error
 }
 
 func newMemSourceFailures() *memSourceFailures {
@@ -32,6 +33,9 @@ func sourceKey(userID uint, source string) string { return string(rune(userID)) 
 func (m *memSourceFailures) RecordFailure(_ context.Context, userID uint, source string, _ time.Duration) (int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.recordErr != nil {
+		return 0, m.recordErr
+	}
 	m.counts[sourceKey(userID, source)]++
 	return m.counts[sourceKey(userID, source)], nil
 }
@@ -236,5 +240,26 @@ func TestLoginSource(t *testing.T) {
 		if got := loginSource(fromIP(in)); got != want {
 			t.Errorf("loginSource(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// A failure that cannot be counted per source is counted on the account, as
+// in off: a broken store must not make guessing unlimited.
+func TestSourceLockout_EnforceStoreWriteErrorCountsOnTheAccount(t *testing.T) {
+	s, repo, store, audit := sourceLockoutService(t, lockoutSourceEnforce)
+	store.recordErr = errors.New("database unavailable")
+	for i := 0; i < 2; i++ {
+		if err := reauth(s, "198.51.100.7", "wrong"); !errors.Is(err, ErrInvalidCredentials) {
+			t.Fatalf("wrong password %d: %v", i+1, err)
+		}
+	}
+	if err := reauth(s, "198.51.100.7", "wrong"); !errors.Is(err, ErrAccountLocked) {
+		t.Fatalf("third wrong password with the store down: %v, want ErrAccountLocked", err)
+	}
+	if !repo.users[5].IsLocked() {
+		t.Fatal("the account was not locked while the source store failed")
+	}
+	if ev := audit.lastOf(model.SecurityEventAccountLocked); ev == nil || ev.Details["source_store_error"] != true {
+		t.Fatalf("lock details: %+v", ev)
 	}
 }

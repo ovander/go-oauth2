@@ -709,16 +709,19 @@ func (s *authService) checkPasswordWithLockout(ctx context.Context, user *model.
 // logged and do not stop the caller, which refuses the attempt either way.
 func (s *authService) countFailedAttempt(ctx context.Context, user *model.User) (bool, map[string]interface{}) {
 	counts := map[string]interface{}{}
-	sourceLocked := false
+	sourceLocked, sourceCounted := false, false
 	if s.countsPerSource() {
 		source := loginSource(ctx)
 		n, err := s.loginFailures.RecordFailure(ctx, user.ID, source, s.lockoutDuration)
-		if err != nil {
-			logger.FromContext(ctx).Warnf("auth: could not count a source failure of user %d: %v", user.ID, err)
-		}
 		counts["source"] = source
-		counts["source_failed_attempts"] = n
-		if n >= s.maxFailedAttempts {
+		if err != nil {
+			logger.FromContext(ctx).Errorf("auth: could not count a source failure of user %d: %v", user.ID, err)
+			counts["source_store_error"] = true
+		} else {
+			sourceCounted = true
+			counts["source_failed_attempts"] = n
+		}
+		if sourceCounted && n >= s.maxFailedAttempts {
 			if s.lockoutSourceMode == lockoutSourceEnforce {
 				if err := s.loginFailures.Lock(ctx, user.ID, source, time.Now().Add(s.lockoutDuration)); err != nil {
 					logger.FromContext(ctx).Warnf("auth: could not lock source %s out of user %d: %v", source, user.ID, err)
@@ -729,7 +732,10 @@ func (s *authService) countFailedAttempt(ctx context.Context, user *model.User) 
 			}
 		}
 	}
-	if s.lockoutSourceMode == lockoutSourceEnforce && s.loginFailures != nil {
+	// Under enforce the source's count replaces the account's — unless it
+	// could not be written: then the attempt counts on the account, as in off,
+	// rather than not at all (fail closed).
+	if s.lockoutSourceMode == lockoutSourceEnforce && s.loginFailures != nil && sourceCounted {
 		if sourceLocked {
 			counts["lock_scope"] = "source"
 		}

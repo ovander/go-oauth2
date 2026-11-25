@@ -1063,7 +1063,11 @@ func (s *authService) ResetPassword(ctx context.Context, token, newPassword stri
 	// #366: a link issued before the password last changed (by a reset, a
 	// change, an admin or an activation) no longer resets it, so an old link
 	// left in a mailbox cannot undo a newer password. It is used up as well.
-	if user.PasswordChangedAt != nil && (claims.IssuedAt == nil || claims.IssuedAt.Before(*user.PasswordChangedAt)) {
+	// iat has one-second precision, so the change time is compared at the
+	// same precision: a link requested in the same second as a change, after
+	// it, still works (a link issued in that second before the change does
+	// too — it went to the same mailbox, less than a second earlier).
+	if user.PasswordChangedAt != nil && (claims.IssuedAt == nil || claims.IssuedAt.Before(user.PasswordChangedAt.Truncate(time.Second))) {
 		return fmt.Errorf("%w: the password changed after this link was issued", ErrInvalidToken)
 	}
 
@@ -1074,10 +1078,16 @@ func (s *authService) ResetPassword(ctx context.Context, token, newPassword stri
 
 	// The new password, the cleared forced-change flag and the revocation of
 	// every existing token are one write.
+	// Written only if the password has not changed since it was read above,
+	// so a change that lands meanwhile is not overwritten by this link.
 	now := time.Now()
 	if err := s.userRepo.SetPassword(ctx, user.ID, repository.PasswordChange{
 		HashedPassword: hashedPassword, ClearMustChangePassword: true, ChangedAt: &now,
+		OnlyIfUnchangedSince: &repository.PasswordState{ChangedAt: user.PasswordChangedAt},
 	}); err != nil {
+		if errors.Is(err, repository.ErrPasswordChangedMeanwhile) {
+			return fmt.Errorf("%w: the password changed after this link was issued", ErrInvalidToken)
+		}
 		return fmt.Errorf("failed to update password: %w", err)
 	}
 

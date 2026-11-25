@@ -173,8 +173,8 @@ func TestAcceptInvite_ActivatesThePendingAccount(t *testing.T) {
 		}
 		// #366: choosing the first password retires the reset links issued
 		// for the pending account before it.
-		if users.user.PasswordChangedAt == nil {
-			t.Fatalf("source %s: activation did not record the password change", source)
+		if users.user.PasswordChangedAt == nil || time.Since(*users.user.PasswordChangedAt) > time.Minute {
+			t.Fatalf("source %s: activation did not record the password change now: %v", source, users.user.PasswordChangedAt)
 		}
 	}
 	users, _, err := acceptInviteFor(t, nil)

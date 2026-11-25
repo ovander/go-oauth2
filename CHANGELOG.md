@@ -15,9 +15,11 @@ Capabilities**, non-breaking).
 - **A password-reset link no longer outlives a password change.** Reset links were single-use but
   stayed valid until they expired, even after the password had been changed or reset another
   way, so an old link left in a mailbox could undo a newer password. A link issued before the
-  account's last password change is now refused (`invalid or expired token`). An admin's password
-  reset and the activation of an invited account now record the change too, as a reset and a
-  change already did. Deploy note: none (#366).
+  account's last password change is now refused (`invalid or expired token`), compared at the
+  link's one-second precision, and the reset writes only if the password has not changed since it
+  was checked, so a change that lands meanwhile is not overwritten. An admin's password reset and
+  the activation of an invited account now record the change too, as a reset and a change already
+  did. Deploy note: none (#366).
 
 - **Introspection reports a locked or deleted user's token as inactive.** `/oauth/introspect`
   answered `active: true` for a locked user's token, and for a deleted user's (or when the user

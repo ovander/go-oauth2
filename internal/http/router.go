@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/ovander/go-oauth2/internal/handler"
 	"github.com/ovander/go-oauth2/internal/metrics"
 	"github.com/ovander/go-oauth2/internal/middleware"
+	"github.com/ovander/go-oauth2/internal/policy"
 	"github.com/ovander/go-oauth2/internal/repository"
 	"github.com/ovander/go-oauth2/internal/shared/auth"
 	"github.com/ovander/go-oauth2/internal/shared/auth/dpop"
@@ -761,6 +763,10 @@ func newAdminRouter(
 		if config.AppAudience != nil {
 			r.Use(config.AppAudience)
 		}
+		// A4 (#395): the policy enforcement point, as on the admin API: after
+		// authentication, in front of the code gates below. The caller's role
+		// in this app is read server-side for principal.app_role.
+		r.Use(config.PolicyPEP.AppMiddleware(policy.AppPrefix, r, appRoleLookup(userAppRoleRepo)))
 		r.Use(middleware.RequireAppAccess(userAppRoleRepo))
 
 		r.Route("/users", func(r chi.Router) {
@@ -784,6 +790,11 @@ func newAdminRouter(
 
 		r.With(middleware.RequireAppAdmin(userAppRoleRepo)).
 			Get("/logs", appLogsHandler.GetLogs)
+
+		if config.PolicyHandler != nil {
+			actions, _ := middleware.PolicyActions(policy.AppPrefix, r)
+			config.PolicyHandler.SetAppActions(actions)
+		}
 	})
 
 	// ==========================================
@@ -879,4 +890,20 @@ func NewRouter(
 	r.Mount("/manage", adminRouter)
 
 	return r
+}
+
+// appRoleLookup reads a user's role in an application for the policy
+// enforcement point: "" when they have none, or when it cannot be read (a rule
+// on principal.app_role then sees the attribute as absent).
+func appRoleLookup(repo repository.UserAppRoleRepository) middleware.AppRoleFunc {
+	if repo == nil {
+		return func(context.Context, uint, uint) string { return "" }
+	}
+	return func(ctx context.Context, userID, appID uint) string {
+		role, err := repo.FindByUserAndApp(ctx, userID, appID)
+		if err != nil || role == nil {
+			return ""
+		}
+		return string(role.Role)
+	}
 }

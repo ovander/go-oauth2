@@ -233,7 +233,7 @@ func (s *Service) EnsureBaseline(ctx context.Context) (bool, error) {
 	err = s.store.Insert(ctx, &Version{
 		Version:   1,
 		Rules:     Baseline(),
-		Note:      "baseline: restates the admin API's code gates as rules",
+		Note:      "baseline: restates the code gates of the admin API and the app-management routes as rules",
 		CreatedAt: s.now().UTC(),
 	})
 	if errors.Is(err, ErrVersionConflict) {

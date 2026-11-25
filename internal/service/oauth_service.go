@@ -135,13 +135,15 @@ type OAuthService interface {
 }
 
 type oauthService struct {
-	userRepo        repository.UserRepository
-	appRepo         repository.AppRepository
-	userAppRoleRepo repository.UserAppRoleRepository
-	codeStore       *auth.CodeStore
-	tokenService    *auth.TokenService
-	keyManager      *auth.KeyManager
-	auditRepo       repository.SecurityAuditLogRepository
+	// dummyClientSecret replaces auth.CheckDummyClientSecret in tests.
+	dummyClientSecret func() bool
+	userRepo          repository.UserRepository
+	appRepo           repository.AppRepository
+	userAppRoleRepo   repository.UserAppRoleRepository
+	codeStore         *auth.CodeStore
+	tokenService      *auth.TokenService
+	keyManager        *auth.KeyManager
+	auditRepo         repository.SecurityAuditLogRepository
 	// usedTokenRepo tracks consumed refresh-token JTIs so that each refresh
 	// token can only be used once (HIGH-04).  Nil disables the check (tests
 	// that don't need JTI enforcement may leave it unset).
@@ -1773,7 +1775,8 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 	var app *model.App
 	var appID *uint
 	allowTE, allowImp := false, false
-	if a, aerr := s.appRepo.FindByClientID(ctx, clientID); aerr == nil {
+	a, lookupErr := s.appRepo.FindByClientID(ctx, clientID)
+	if lookupErr == nil {
 		app, appID = a, &a.ID
 		allowTE, allowImp = a.AllowTokenExchange, a.AllowImpersonation
 	}
@@ -1805,11 +1808,21 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 	// secret (a public client cannot authenticate), a wrong secret or a
 	// deactivated client may not exchange, and a client that requires DPoP
 	// must present a proof, as on the other grants.
+	// A lookup that failed is an internal error, not an unknown client: the
+	// exchange is refused (fail closed) without blaming the client.
+	if lookupErr != nil && !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+		details["deny_reason"] = "client_lookup_failed"
+		return fail("error", fmt.Errorf("token exchange: look up client: %w", lookupErr))
+	}
+	// An unknown or public client pays the cost of a secret check too, so
+	// that timing does not tell them from a confidential one (#366).
 	if app == nil {
+		s.checkDummyClientSecret()
 		details["deny_reason"] = "unknown_client"
 		return fail("denied", ErrInvalidCredentials)
 	}
 	if !app.IsConfidential() {
+		s.checkDummyClientSecret()
 		details["deny_reason"] = "public_client"
 		return fail("denied", ErrExchangeNotAllowed)
 	}
@@ -2156,10 +2169,23 @@ func (s *oauthService) lookupTokenClient(ctx context.Context, clientID string) (
 		return app, nil
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// An unknown client pays the cost of a secret check, so that timing
+		// does not tell which client_ids exist (#366).
+		s.checkDummyClientSecret()
 		s.logClientAuthFailed(ctx, clientID, "unknown_client", nil)
 		return nil, fmt.Errorf("%w: client_id=%s", ErrAppNotFound, clientID)
 	}
 	return nil, fmt.Errorf("token endpoint: look up client: %w", err)
+}
+
+// checkDummyClientSecret pays the cost of a client-secret check for a client
+// whose secret cannot be checked (#366).
+func (s *oauthService) checkDummyClientSecret() {
+	if s.dummyClientSecret != nil {
+		s.dummyClientSecret()
+		return
+	}
+	auth.CheckDummyClientSecret()
 }
 
 func (s *oauthService) logClientAuthFailed(ctx context.Context, clientID, reason string, appID *uint) {

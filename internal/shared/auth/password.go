@@ -7,6 +7,7 @@ import (
 	"errors"
 	"regexp"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -127,7 +128,7 @@ func CheckDummyPassword() bool {
 // hardware.  bcrypt is slow by design (work factor 12 ≈ 250 ms/attempt),
 // making an offline attack infeasible.
 func HashClientSecret(secret string) (string, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(secret), 12)
+	hash, err := bcrypt.GenerateFromPassword([]byte(secret), clientSecretCost)
 	if err != nil {
 		return "", err
 	}
@@ -141,12 +142,46 @@ func HashClientSecret(secret string) (string, error) {
 // validate against the old algorithm so that existing apps continue to work
 // until their secrets are rotated.
 func CheckClientSecret(secret, hash string) bool {
+	if hash == "" {
+		// No secret to check against (a public client): pay the same cost
+		// as a wrong secret, so timing does not tell the two apart.
+		CheckDummyClientSecret()
+		return false
+	}
 	if strings.HasPrefix(hash, "$2") {
 		// bcrypt hash
 		return bcrypt.CompareHashAndPassword([]byte(hash), []byte(secret)) == nil
 	}
 	// Legacy SHA-256 path. P3-9: the comparison is genuinely constant-time now
-	// (the previous `==` short-circuited on the first differing byte).
+	// (the previous `==` short-circuited on the first differing byte). It
+	// also pays the cost of a bcrypt check, so that a client whose secret is
+	// still a legacy hash answers in the same time as any other (#366).
+	CheckDummyClientSecret()
 	legacy := sha256.Sum256([]byte(secret))
 	return subtle.ConstantTimeCompare([]byte(hex.EncodeToString(legacy[:])), []byte(hash)) == 1
+}
+
+// clientSecretCost is the bcrypt work factor of client secrets.
+const clientSecretCost = 12
+
+var (
+	dummyClientSecretOnce sync.Once
+	dummyClientSecretHash []byte
+)
+
+// CheckDummyClientSecret performs a bcrypt comparison at the cost of a client
+// secret against a fixed placeholder hash, and always returns false. A token
+// or introspection endpoint calls it for a client it cannot check a secret of
+// (unknown, public or inactive), so that the response time does not tell which
+// client_ids exist (#366). The hash is computed on first use.
+func CheckDummyClientSecret() bool {
+	dummyClientSecretOnce.Do(func() {
+		h, err := bcrypt.GenerateFromPassword([]byte("go-oauth2-timing-parity-dummy-client-secret"), clientSecretCost)
+		if err != nil {
+			panic("auth: failed to compute the dummy client secret hash: " + err.Error())
+		}
+		dummyClientSecretHash = h
+	})
+	_ = bcrypt.CompareHashAndPassword(dummyClientSecretHash, []byte("not-the-dummy-client-secret"))
+	return false
 }

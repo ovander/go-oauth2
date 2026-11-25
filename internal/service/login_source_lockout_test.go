@@ -141,21 +141,34 @@ func TestSourceLockout_EnforceLocksOnlyTheSource(t *testing.T) {
 	if err := reauth(s, attacker, "wrong"); !errors.Is(err, ErrInvalidCredentials) || errors.Is(err, ErrAccountLocked) {
 		t.Fatalf("wrong password from the locked source: %v, want ErrInvalidCredentials", err)
 	}
-	if ev := audit.lastOf(model.SecurityEventLoginFailed); ev == nil || ev.Details["lock_scope"] != "source" {
+	if ev := audit.lastOf(model.SecurityEventLoginFailed); ev == nil || ev.Details["lock_scope"] != "source" ||
+		ev.Details["source"] != attacker || ev.Details["password_verified"] != false {
 		t.Fatalf("attempt from the locked source not audited: %+v", ev)
 	}
 	if err := reauth(s, attacker, lockoutTestPassword); !errors.Is(err, ErrAccountLocked) {
 		t.Fatalf("right password from the locked source: %v, want ErrAccountLocked", err)
 	}
+	if ev := audit.lastOf(model.SecurityEventLoginFailed); ev == nil || ev.Details["lock_scope"] != "source" ||
+		ev.Details["source"] != attacker || ev.Details["password_verified"] != true {
+		t.Fatalf("right password from the locked source not audited with its source: %+v", ev)
+	}
 }
 
 func TestSourceLockout_EnforceIPv6CountsThe64(t *testing.T) {
-	s, _, _, _ := sourceLockoutService(t, lockoutSourceEnforce)
+	s, _, _, audit := sourceLockoutService(t, lockoutSourceEnforce)
 	for i, ip := range []string{"2001:db8:1:2::1", "2001:db8:1:2::2", "2001:db8:1:2:ffff::3"} {
 		err := reauth(s, ip, "wrong")
 		if want := i == 2; errors.Is(err, ErrAccountLocked) != want {
 			t.Fatalf("attempt %d from %s: %v (locked want %v)", i+1, ip, err, want)
 		}
+	}
+	// An attempt from another address in the locked /64 is audited with the
+	// /64 it was refused for.
+	if err := reauth(s, "2001:db8:1:2::9", lockoutTestPassword); !errors.Is(err, ErrAccountLocked) {
+		t.Fatalf("right password from the locked /64: %v, want ErrAccountLocked", err)
+	}
+	if ev := audit.lastOf(model.SecurityEventLoginFailed); ev == nil || ev.Details["source"] != "2001:db8:1:2::/64" {
+		t.Fatalf("locked /64 not audited: %+v", ev)
 	}
 	if err := reauth(s, "2001:db8:1:3::1", lockoutTestPassword); err != nil {
 		t.Fatalf("another /64: %v", err)

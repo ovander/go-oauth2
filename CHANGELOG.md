@@ -15,8 +15,9 @@ Capabilities**, non-breaking).
 - **The right password on a locked account is audited.** Since #404 a wrong password on a locked
   account is audited as `login_failed` with `account_locked: true`, but the right one was refused
   without any event, although whoever typed it knows the credential while the lock may be there
-  because of an attack. Both are now audited, with `password_verified` (`true` or `false`).
-  Deploy note: none.
+  because of an attack. Both are now audited, with `password_verified` (`true` or `false`); under
+  a per-source lock the event also carries the `source` it was refused for (the IPv6 /64, as the
+  counting path records it). Deploy note: none.
 
 - **Only a superadmin acts on a superadmin's account.** Deleting and blocking a superadmin were
   refused, but any admin (or the monitoring console, with `monitoring:write`) could revoke a

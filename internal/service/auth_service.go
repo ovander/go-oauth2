@@ -669,7 +669,10 @@ func (s *authService) checkPasswordWithLockout(ctx context.Context, user *model.
 		passwordOK := auth.CheckPassword(password, user.HashedPassword)
 		details := map[string]interface{}{"email": user.Email, "account_locked": true, "password_verified": passwordOK}
 		if scope == "source" {
+			// The lock key, as the counting path records it: for IPv6 it is
+			// the /64, which the row's ip_address alone does not show.
 			details["lock_scope"] = "source"
+			details["source"] = loginSource(ctx)
 		}
 		if loginType != "" {
 			details["login_type"] = loginType

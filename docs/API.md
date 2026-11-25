@@ -171,7 +171,7 @@ GET https://auth.example.com/oauth/authorize
 |-----------|----------|-------|
 | `response_type` | yes | Only `code` is supported |
 | `client_id` | yes | |
-| `redirect_uri` | yes | Must exactly match a registered URI |
+| `redirect_uri` | yes | Must match a registered URI. Compared after normalization (case of scheme and host, default port, trailing slash, query order), or as the exact string under `REDIRECT_URI_MATCH_MODE=enforce` (RFC 9700 §2.1) |
 | `state` | **yes** | Server rejects requests without it |
 | `scope` | recommended | space-delimited |
 | `nonce` | recommended | echoed into the ID token |

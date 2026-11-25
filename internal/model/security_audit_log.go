@@ -52,6 +52,10 @@ const (
 	// SecurityEventScopeDenied: a client requested a scope outside its
 	// allowed_scopes policy (A1). Emitted in observe and enforce modes.
 	SecurityEventScopeDenied SecurityEventType = "scope_denied"
+	// SecurityEventRedirectURIInexact: an authorization request's redirect_uri
+	// matched a registered one only after normalization, not as the exact
+	// string (REDIRECT_URI_MATCH_MODE observe and enforce, #261).
+	SecurityEventRedirectURIInexact SecurityEventType = "redirect_uri_inexact_match"
 
 	// Suspicious activity
 	SecurityEventSuspiciousActivity SecurityEventType = "suspicious_activity"

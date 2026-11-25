@@ -150,6 +150,7 @@ func LogStartupSummary(cfg *config.Config) {
 		"admin_scope_mode":        cfg.AdminScopeMode,
 		"admin_api_audience_mode": cfg.AdminAPIAudienceMode,
 		"privileged_scope_mode":   cfg.PrivilegedScopeMode,
+		"redirect_uri_match_mode": cfg.RedirectURIMatchMode,
 		"service_user_scope_mode": cfg.ServiceUserScopeMode,
 		"lockout_source_mode":     cfg.LockoutSourceMode,
 		"audit_write_mode":        cfg.AuditWriteMode,
@@ -687,6 +688,12 @@ func Bootstrap(cfg *config.Config) *App {
 	} else {
 		logger.Fatalf("bootstrap: %T does not support SetCodeReplayMode", oauthService)
 	}
+	// REDIRECT_URI_MATCH_MODE: exact redirect_uri matching (RFC 9700).
+	if rm, ok := oauthService.(interface{ SetRedirectURIMatchMode(string) }); ok {
+		rm.SetRedirectURIMatchMode(cfg.RedirectURIMatchMode)
+	} else {
+		logger.Fatalf("bootstrap: %T does not support SetRedirectURIMatchMode", oauthService)
+	}
 
 	// ==========================================
 	// Template Service
@@ -719,6 +726,7 @@ func Bootstrap(cfg *config.Config) *App {
 		oauthHandler.SetDPoPSigningAlgs([]string{"ES256"})
 	}
 	oauthHandler.SetJWKSCacheMaxAge(int(cfg.JWKSCacheMaxAge.Seconds()))
+	oauthHandler.SetRedirectURIExactMatch(cfg.RedirectURIMatchMode == "enforce")
 	// Tier-0 admin session hardening: when an admin-console client is configured,
 	// deliver its refresh token as an HttpOnly cookie (set/read at /oauth/token,
 	// cleared at logout). Secure in production. Empty client id leaves it off.

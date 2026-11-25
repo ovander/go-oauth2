@@ -18,6 +18,12 @@ Capabilities**, non-breaking).
   because of an attack. Both are now audited, with `password_verified` (`true` or `false`).
   Deploy note: none.
 
+- **Only a superadmin acts on a superadmin's account.** Deleting and blocking a superadmin were
+  refused, but any admin (or the monitoring console, with `monitoring:write`) could revoke a
+  superadmin's sessions or unlock one. One rule now covers every per-user admin action: on a
+  superadmin's account, `revoke-tokens`, `unlock` and `attributes` need a superadmin (`403`
+  otherwise), and delete and block stay on `/api/admin/superadmins/{id}`. Deploy note: none (#366).
+
 - **A password-reset link no longer outlives a password change.** Reset links were single-use but
   stayed valid until they expired, even after the password had been changed or reset another
   way, so an old link left in a mailbox could undo a newer password. A link issued before the

@@ -142,6 +142,32 @@ func TestGetClientIPSafe_TrustedCIDR_HonoursProxyHeaders(t *testing.T) {
 			wantIP:     "10.0.0.1",
 		},
 		{
+			name:       "trusted proxy: an entry with a port counts as its address",
+			remoteAddr: "10.0.0.1:1234",
+			xff:        "1.2.3.4, 203.0.113.5:5678",
+			wantIP:     "203.0.113.5",
+		},
+		{
+			name:       "trusted proxy: an IPv6 entry with a port",
+			remoteAddr: "10.0.0.1:1234",
+			xff:        "[2001:db8::77]:443",
+			wantIP:     "2001:db8::77",
+		},
+		{
+			name:       "trusted proxy: a trusted proxy with a port is skipped",
+			remoteAddr: "10.0.0.1:1234",
+			xff:        "203.0.113.5, 10.0.0.2:8080",
+			wantIP:     "203.0.113.5",
+		},
+		{
+			// An empty entry ends the walk: believing what is left of it
+			// would let the client choose.
+			name:       "trusted proxy: an empty last entry falls back to the peer",
+			remoteAddr: "10.0.0.1:1234",
+			xff:        "1.2.3.4,",
+			wantIP:     "10.0.0.1",
+		},
+		{
 			name:       "trusted proxy: IPv6 client",
 			remoteAddr: "10.0.0.1:1234",
 			xff:        "2001:db8::1, 2001:db8::77",

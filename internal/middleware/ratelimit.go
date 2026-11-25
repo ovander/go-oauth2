@@ -367,13 +367,16 @@ func GetClientIPSafe(r *http.Request, trustedCIDRs []*net.IPNet) string {
 // clientFromForwardedFor returns the right-most X-Forwarded-For entry that is
 // not a trusted proxy. When every entry is trusted it returns the left-most;
 // when the walk meets a malformed entry first, the last trusted one seen, or
-// fallback (the immediate peer) when there is none.
+// fallback (the immediate peer) when there is none. An entry with a port
+// ("1.2.3.4:5678", "[2001:db8::1]:443", as some proxies write them) counts
+// as its address. An empty entry is malformed: only a trusted proxy writes
+// that position, and skipping it would believe the entry to its left.
 func clientFromForwardedFor(xff string, trustedCIDRs []*net.IPNet, fallback string) string {
 	entries := strings.Split(xff, ",")
 	client := fallback
 	for i := len(entries) - 1; i >= 0; i-- {
-		entry := strings.TrimSpace(entries[i])
-		if net.ParseIP(entry) == nil {
+		entry := forwardedAddress(strings.TrimSpace(entries[i]))
+		if entry == "" {
 			break
 		}
 		client = entry
@@ -382,6 +385,18 @@ func clientFromForwardedFor(xff string, trustedCIDRs []*net.IPNet, fallback stri
 		}
 	}
 	return client
+}
+
+// forwardedAddress is the IP address of one X-Forwarded-For entry, with any
+// port removed, or "" when the entry is not an address.
+func forwardedAddress(entry string) string {
+	if ip := net.ParseIP(entry); ip != nil {
+		return entry
+	}
+	if host, _, err := net.SplitHostPort(entry); err == nil && net.ParseIP(host) != nil {
+		return host
+	}
+	return ""
 }
 
 // extractRemoteIP strips the port from a "host:port" address.

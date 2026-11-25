@@ -17,7 +17,8 @@ Capabilities**, non-breaking).
   `$proxy_add_x_forwarded_for`, Caddy with `trusted_proxies`) keeps whatever the client sent
   there, so a client could choose the address that rate limiting, IP blocks, auto-defense and the
   audit log saw. The header is now read from the right: the client is the last entry that is not
-  in `TRUSTED_PROXIES`, and a malformed entry ends the walk. The deploy kit's Caddy replaces the
+  in `TRUSTED_PROXIES` (an entry with a port counts as its address), and an empty or malformed
+  entry ends the walk. The deploy kit's Caddy replaces the
   header, so its attribution does not change. Deploy note: a deployment with more than one proxy
   hop must list them all in `TRUSTED_PROXIES` (#366).
 

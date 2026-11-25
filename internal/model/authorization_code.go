@@ -21,12 +21,19 @@ type AuthorizationCode struct {
 	// AuthTime, AMR and ACR are the end-user authentication behind the code
 	// (when the user signed in, and how), stamped on the tokens it is
 	// redeemed for. Zero on codes issued before migration 0029.
-	AuthTime  int64       `gorm:"column:auth_time" json:"auth_time,omitempty"`
-	AMR       StringArray `gorm:"type:text[];column:amr" json:"amr,omitempty"`
-	ACR       string      `gorm:"column:acr" json:"acr,omitempty"`
-	Used      bool        `gorm:"column:used;default:false;index" json:"used"`
-	ExpiresAt time.Time   `gorm:"column:expires_at;not null;index" json:"expires_at"`
-	CreatedAt time.Time   `gorm:"column:inserted_at" json:"created_at"`
+	AuthTime int64       `gorm:"column:auth_time" json:"auth_time,omitempty"`
+	AMR      StringArray `gorm:"type:text[];column:amr" json:"amr,omitempty"`
+	ACR      string      `gorm:"column:acr" json:"acr,omitempty"`
+	// TokenFamily and AccessJTI identify the tokens the code was redeemed
+	// for (the refresh-token family and the access token's jti), recorded
+	// with the redemption so a replay of the code can revoke them (RFC 6749
+	// §4.1.2, CODE_REPLAY_MODE). Empty until redeemed, and on codes redeemed
+	// before migration 0035.
+	TokenFamily string    `gorm:"column:token_family;size:64" json:"-"`
+	AccessJTI   string    `gorm:"column:access_jti;size:64" json:"-"`
+	Used        bool      `gorm:"column:used;default:false;index" json:"used"`
+	ExpiresAt   time.Time `gorm:"column:expires_at;not null;index" json:"expires_at"`
+	CreatedAt   time.Time `gorm:"column:inserted_at" json:"created_at"`
 }
 
 func (AuthorizationCode) TableName() string {

@@ -58,6 +58,11 @@ type AuthnEvidence struct {
 	// Family is the refresh-token family a refresh carries over (#365); empty
 	// starts a new one. It is not part of the consent token.
 	Family string `json:"-"`
+	// AccessJTI is the jti to give the access token; empty draws a new one.
+	// Set when the jti must be known before the token is minted (an
+	// authorization code records it with its redemption). Not part of the
+	// consent token.
+	AccessJTI string `json:"-"`
 }
 
 // IssueConsentToken returns a short-lived HMAC-signed token that binds

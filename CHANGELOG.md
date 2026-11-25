@@ -12,6 +12,18 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **A replayed authorization code can revoke the tokens it was redeemed for** (`CODE_REPLAY_MODE`,
+  default `off`). A code presented again after its redemption was refused, but the tokens issued
+  for it stayed valid, although the replay means someone else holds the code (RFC 6749 §4.1.2).
+  The code now records, with its redemption, the refresh-token family and the access-token `jti`
+  it was redeemed for (migration 0035). `observe` audits a replay as `auth_code_failed` with
+  `reason: code_replayed`; `enforce` also revokes that family (every refresh token rotated from
+  it) and that access token, as seen by introspection, userinfo and the admin API (a resource
+  server that only verifies the JWT accepts it until it expires). A used code is now recognised
+  as a replay even after it has expired. Each code signals once; codes redeemed before the
+  migration are audited only. Deploy note: migration 0035 (adds two nullable columns); new
+  variable `CODE_REPLAY_MODE`, default `off` (#366).
+
 - **The decide endpoint no longer reveals who the global admins are.** By a bare `user_id`, a
   subject who is not a member of the calling application got `404 unknown subject` unless they
   were a global admin, whose decision was evaluated (`200`), so any application could test user

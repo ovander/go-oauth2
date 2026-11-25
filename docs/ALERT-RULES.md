@@ -72,7 +72,7 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
 | `expired_token_used` | Expired token usage attempt |
 | `auth_code_issued` | Authorization code issued |
 | `auth_code_exchanged` | Code exchanged for token |
-| `auth_code_failed` | Authorization code exchange failed |
+| `auth_code_failed` | Authorization code exchange failed (`reason: code_replayed` for a replayed code under `CODE_REPLAY_MODE`) |
 | `pkce_validation_failed` | PKCE verification failed |
 | `suspicious_activity` | General suspicious activity |
 | `rate_limit_exceeded` | Rate limit was exceeded |

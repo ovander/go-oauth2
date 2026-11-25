@@ -327,6 +327,8 @@ type authnContext struct {
 	amr    []string
 	acr    string
 	family string // refresh-token family to carry over; empty starts one
+	// accessJTI is the access token's jti; empty draws a new one.
+	accessJTI string
 }
 
 // GenerateTokenSet generates a complete token set for a user.
@@ -358,7 +360,7 @@ func (ts *TokenService) GenerateTokenSetWithDPoP(user *model.User, app *model.Ap
 // AuthTime falls back to now, as GenerateTokenSet does. jkt binds the access
 // and refresh tokens to a DPoP key when non-empty.
 func (ts *TokenService) GenerateTokenSetWithEvidence(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, nonce string, ev AuthnEvidence, jkt string) (*TokenSet, error) {
-	return ts.generateTokenSet(user, app, role, scope, appRoles, nonce, ev.AuthTime, jkt, authnContext{amr: ev.AMR, acr: ev.ACR, family: ev.Family})
+	return ts.generateTokenSet(user, app, role, scope, appRoles, nonce, ev.AuthTime, jkt, authnContext{amr: ev.AMR, acr: ev.ACR, family: ev.Family, accessJTI: ev.AccessJTI})
 }
 
 func (ts *TokenService) generateTokenSet(user *model.User, app *model.App, role string, scope string, appRoles map[string]string, nonce string, authTime int64, jkt string, ac authnContext) (*TokenSet, error) {
@@ -402,6 +404,10 @@ func (ts *TokenService) newAccessClaims(user *model.User, app *model.App, role s
 	if role != "" {
 		roles = append(roles, role)
 	}
+	jti := ac.accessJTI
+	if jti == "" {
+		jti = uuid.New().String()
+	}
 
 	return AccessTokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -411,7 +417,7 @@ func (ts *TokenService) newAccessClaims(user *model.User, app *model.App, role s
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now), // Token valid immediately (nbf claim)
 			ExpiresAt: jwt.NewNumericDate(now.Add(ts.AccessTokenTTLFor(app))),
-			ID:        uuid.New().String(),
+			ID:        jti,
 		},
 		Scope:        scope,
 		Role:         role,

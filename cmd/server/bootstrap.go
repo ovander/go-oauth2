@@ -143,6 +143,7 @@ func LogStartupSummary(cfg *config.Config) {
 		"dpop_mode":               cfg.DPoPMode,
 		"token_exchange_mode":     cfg.TokenExchangeMode,
 		"refresh_reuse_mode":      cfg.RefreshReuseMode,
+		"code_replay_mode":        cfg.CodeReplayMode,
 		"audience_mode":           cfg.AudienceMode,
 		"admin_mfa_policy":        cfg.AdminMFAPolicy,
 		"admin_app_signin_policy": cfg.AdminAppSignInPolicy,
@@ -667,6 +668,13 @@ func Bootstrap(cfg *config.Config) *App {
 		ps.SetPrivilegedScopePolicy(cfg.PrivilegedScopeMode, cfg.ConsoleClientIDs())
 	} else {
 		logger.Fatalf("bootstrap: %T does not support SetPrivilegedScopePolicy", oauthService)
+	}
+	// CODE_REPLAY_MODE: a replayed authorization code revokes what it was
+	// redeemed for.
+	if cr, ok := oauthService.(interface{ SetCodeReplayMode(string) }); ok {
+		cr.SetCodeReplayMode(cfg.CodeReplayMode)
+	} else {
+		logger.Fatalf("bootstrap: %T does not support SetCodeReplayMode", oauthService)
 	}
 
 	// ==========================================

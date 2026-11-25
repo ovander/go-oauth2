@@ -18,6 +18,15 @@ type AuthorizationCodeRepository interface {
 	DeleteByUserID(ctx context.Context, userID uint) error
 }
 
+// AuthorizationCodeRedeemer is implemented by a code repository that records,
+// with the redemption itself, the tokens a code is redeemed for.
+type AuthorizationCodeRedeemer interface {
+	// MarkAsUsedWithTokens marks an unused code used and records the refresh
+	// family and access-token jti it is redeemed for, in one statement. It
+	// returns gorm.ErrRecordNotFound when the code is unknown or already used.
+	MarkAsUsedWithTokens(ctx context.Context, code, tokenFamily, accessJTI string) error
+}
+
 type authorizationCodeRepository struct {
 	db *gorm.DB
 }
@@ -37,6 +46,20 @@ func (r *authorizationCodeRepository) FindByCode(ctx context.Context, code strin
 		return nil, err
 	}
 	return &authCode, nil
+}
+
+// MarkAsUsedWithTokens implements AuthorizationCodeRedeemer.
+func (r *authorizationCodeRepository) MarkAsUsedWithTokens(ctx context.Context, code, tokenFamily, accessJTI string) error {
+	result := r.db.WithContext(ctx).Model(&model.AuthorizationCode{}).
+		Where("code = ? AND used = ?", code, false).
+		Updates(map[string]interface{}{"used": true, "token_family": tokenFamily, "access_jti": accessJTI})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (r *authorizationCodeRepository) MarkAsUsed(ctx context.Context, code string) error {

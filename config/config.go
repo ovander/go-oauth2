@@ -186,6 +186,12 @@ type Config struct {
 	// that client — since reuse signals token theft). Each token raises the
 	// signal once, and only from an authenticated client (#365).
 	RefreshReuseMode string
+	// CodeReplayMode governs a replayed authorization code (RFC 6749 §4.1.2):
+	// "off" (default — refuse it, audited as before), "observe" (also audit
+	// it as auth_code_failed with reason code_replayed), "enforce" (also
+	// revoke the tokens the code was redeemed for: its refresh-token family
+	// and its access token). CODE_REPLAY_MODE.
+	CodeReplayMode string
 	// ScopePolicyMode governs the per-client allowed_scopes policy (A1 / P3-8):
 	// "off" (default — policy stored but not applied), "observe" (audit
 	// scope_denied, still issue), "enforce" (refuse with invalid_scope).
@@ -412,6 +418,7 @@ func Load() *Config {
 		ImpersonationMaxAuthAge:  time.Duration(getEnvInt("IMPERSONATION_MAX_AUTH_AGE", 900)) * time.Second,
 		DelegationStepUpMode:     normalizeStepUpMode(getEnv("DELEGATION_STEPUP_MODE", "off")),
 		RefreshReuseMode:         normalizeStepUpMode(getEnv("REFRESH_REUSE_MODE", "off")),
+		CodeReplayMode:           normalizeStepUpMode(getEnv("CODE_REPLAY_MODE", "off")),
 		ScopePolicyMode:          normalizeStepUpMode(getEnv("SCOPE_POLICY_MODE", "off")),
 		PrivilegedScopeMode:      normalizeStepUpMode(getEnv("PRIVILEGED_SCOPE_MODE", "off")),
 		AudienceMode:             normalizeAudienceMode(getEnv("AUDIENCE_MODE", "off")),

@@ -160,6 +160,42 @@ func TestMigration0029_AuthorizationCodeAuthnColumns(t *testing.T) {
 	}
 }
 
+// 0035 adds authorization_codes.token_family and access_jti on a fresh
+// install and on an upgrade from a database that predates them.
+func TestMigration0035_AuthorizationCodeIssuedTokens(t *testing.T) {
+	db := scratchDB(t)
+	if err := db.AutoMigrate(&model.AuthorizationCode{}); err != nil {
+		t.Fatalf("automigrate authorization_codes: %v", err)
+	}
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	cols := func() int64 {
+		var n int64
+		db.Raw(`SELECT count(*) FROM information_schema.columns
+			WHERE table_name = 'authorization_codes' AND column_name IN ('token_family', 'access_jti')`).Scan(&n)
+		return n
+	}
+	if got := cols(); got != 2 {
+		t.Fatalf("fresh install: %d of the 2 columns", got)
+	}
+
+	for _, c := range []string{"token_family", "access_jti"} {
+		if err := db.Exec("ALTER TABLE authorization_codes DROP COLUMN " + c).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Exec("DELETE FROM schema_migrations WHERE id = '0035'").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("upgrade run: %v", err)
+	}
+	if got := cols(); got != 2 {
+		t.Fatalf("upgrade: %d of the 2 columns", got)
+	}
+}
+
 // 0030 adds policy_decisions.obligations (NOT NULL, default empty) on a fresh
 // install and on an upgrade, without touching the rows already logged.
 func TestMigration0030_PolicyDecisionObligations(t *testing.T) {

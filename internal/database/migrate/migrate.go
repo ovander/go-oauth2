@@ -737,6 +737,27 @@ var migrations = []Migration{
 				ON login_source_failures (updated_at)`).Error
 		},
 	},
+	{
+		// 0035 (#366): the tokens an authorization code was redeemed for, so
+		// that a replay of the code can revoke them (CODE_REPLAY_MODE). A fresh
+		// install gets the columns from the model.
+		ID:   "0035",
+		Name: "add_authorization_codes.token_family_access_jti",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("authorization_codes") {
+				return nil
+			}
+			for _, col := range []string{"token_family", "access_jti"} {
+				if db.Migrator().HasColumn(&model.AuthorizationCode{}, col) {
+					continue
+				}
+				if err := db.Exec("ALTER TABLE authorization_codes ADD COLUMN " + col + " VARCHAR(64)").Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

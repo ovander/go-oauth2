@@ -512,6 +512,7 @@ func TestCRIT04_POST_ConsentAllow_RedirectsWithCode(t *testing.T) {
 		"csrf_token":    {csrfValue},
 		"consent_token": {consentToken},
 	}
+	form.Set("consent_token", boundConsentToken(t, 42, form, auth.AuthnEvidence{}))
 	r := httptest.NewRequest(http.MethodPost, "/oauth/authorize",
 		strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -571,6 +572,7 @@ func TestCRIT04_POST_ConsentDeny_RedirectsWithAccessDenied(t *testing.T) {
 		"csrf_token":    {csrfValue},
 		"consent_token": {consentToken},
 	}
+	form.Set("consent_token", boundConsentToken(t, 42, form, auth.AuthnEvidence{}))
 	r := httptest.NewRequest(http.MethodPost, "/oauth/authorize",
 		strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")

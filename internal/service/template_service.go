@@ -95,6 +95,9 @@ type LoginPageData struct {
 	// ShowMFA shows the authentication-code field: set once the password was
 	// accepted for a user with MFA enabled, so the form asks for the code.
 	ShowMFA bool
+	// PromptLogin carries prompt=login (OIDC Core §3.1.2.1) to the consent
+	// step, which refuses it without a sign-in on this form.
+	PromptLogin bool
 }
 
 // ConsentPageData contains data for the OAuth consent page template.
@@ -119,6 +122,8 @@ type ConsentPageData struct {
 	// MaxAge is the OIDC max_age parameter (LOW-02).  -1 means "not specified".
 	// Preserved as a hidden field so the consent POST can pass it to the service.
 	MaxAge int
+	// PromptLogin carries prompt=login to the consent POST (see LoginPageData).
+	PromptLogin bool
 }
 
 // ErrorPageData contains data for the error page template

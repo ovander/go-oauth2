@@ -374,6 +374,7 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 			Nonce:               req.Nonce,
 			CSRFToken:           csrfToken,
 			MaxAge:              req.MaxAge,
+			PromptLogin:         promptLogin,
 		})
 		return
 	}
@@ -385,7 +386,7 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.renderConsentPage(w, req, app.Name, userID, csrfToken, auth.AuthnEvidence{})
+	h.renderConsentPage(w, req, app.Name, userID, csrfToken, auth.AuthnEvidence{}, false)
 }
 
 // adminAppSignInRefusedMessage is shown on Socrate's sign-in page when
@@ -483,12 +484,19 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	action := r.FormValue("action")
+	// prompt=login, carried by the login and consent forms. A value the GET
+	// would refuse is refused here too.
+	_, promptLogin, perr := parsePrompt(r.FormValue("prompt"))
+	if perr != nil {
+		h.renderOAuthError(w, "invalid_request", perr.Error(), "")
+		return
+	}
 
 	// -----------------------------------------------------------------------
 	// Path A: consent — user explicitly approved or denied the request.
 	// -----------------------------------------------------------------------
 	if action == "consent" {
-		h.handleConsentPost(w, r, req, app.Name)
+		h.handleConsentPost(w, r, req, app.Name, promptLogin)
 		return
 	}
 
@@ -518,6 +526,7 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 			CSRFToken:           csrfToken,
 			MaxAge:              req.MaxAge,
 			ShowMFA:             showMFA,
+			PromptLogin:         promptLogin,
 		})
 	}
 
@@ -587,17 +596,17 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 
 	// The sign-in that just happened is the authentication behind the code.
 	h.renderConsentPage(w, req, app.Name, loginResp.UserID, csrfToken,
-		auth.AuthnEvidence{AuthTime: loginResp.AuthTime, AMR: loginResp.AMR, ACR: loginResp.ACR})
+		auth.AuthnEvidence{AuthTime: loginResp.AuthTime, AMR: loginResp.AMR, ACR: loginResp.ACR}, promptLogin)
 }
 
 // handleConsentPost processes the explicit "Allow" / "Deny" consent POST.
 // The consent_token field carries a signed user identity that was issued when
 // the consent page was rendered (after login or on GET /oauth/authorize for
 // an already-authenticated user).
-func (h *OAuthHandler) handleConsentPost(w http.ResponseWriter, r *http.Request, req dto.AuthorizeRequest, appName string) {
+func (h *OAuthHandler) handleConsentPost(w http.ResponseWriter, r *http.Request, req dto.AuthorizeRequest, appName string, promptLogin bool) {
 	// Validate and extract the signed user identity.
 	consentTokenStr := r.FormValue("consent_token")
-	userID, tokenClientID, authn, err := auth.ValidateConsentTokenWithAuthn(consentTokenStr, h.secretKey)
+	userID, tokenClientID, authn, binding, err := auth.ValidateConsentTokenForRequest(consentTokenStr, h.secretKey)
 	if err != nil {
 		h.renderOAuthError(w, "invalid_request", "Consent session expired or invalid. Please sign in again.", "")
 		return
@@ -607,6 +616,24 @@ func (h *OAuthHandler) handleConsentPost(w http.ResponseWriter, r *http.Request,
 	// to prevent a user from swapping the client during consent submission.
 	if tokenClientID != req.ClientID {
 		h.renderOAuthError(w, "invalid_request", "Client mismatch in consent token", "")
+		return
+	}
+
+	// The consent is for the request the page was shown for (#366): its
+	// redirect_uri, scope, PKCE challenge, nonce, max_age and prompt=login
+	// are bound into the consent token, so a form edited after the page was
+	// rendered — a widened scope, another challenge, a dropped max_age — is
+	// refused. A token without a binding is refused too (fail closed).
+	if binding == "" || binding != consentRequestBinding(req, promptLogin) {
+		h.renderOAuthError(w, "invalid_request", "The authorization request changed after the consent page was shown. Please sign in again.", "")
+		return
+	}
+
+	// prompt=login (OIDC Core §3.1.2.1) asks for a sign-in now: the consent
+	// token must come from the login form, which records when it happened,
+	// not from a session that was already signed in.
+	if promptLogin && authn.AuthTime == 0 {
+		h.redirectWithErrorPage(w, req.RedirectURI, req.State, "login_required", "re-authentication required")
 		return
 	}
 
@@ -687,8 +714,8 @@ func buildAuthzRedirect(redirectURL *url.URL, code, state, issuer string) string
 // renderConsentPage issues a consent token for userID/clientID, then renders
 // the consent HTML page.  Called from both the GET and POST (after login)
 // handlers.
-func (h *OAuthHandler) renderConsentPage(w http.ResponseWriter, req dto.AuthorizeRequest, appName string, userID uint, csrfToken string, authn auth.AuthnEvidence) {
-	consentToken, err := auth.IssueConsentTokenWithAuthn(userID, req.ClientID, authn, h.secretKey)
+func (h *OAuthHandler) renderConsentPage(w http.ResponseWriter, req dto.AuthorizeRequest, appName string, userID uint, csrfToken string, authn auth.AuthnEvidence, promptLogin bool) {
+	consentToken, err := auth.IssueConsentTokenForRequest(userID, req.ClientID, authn, consentRequestBinding(req, promptLogin), h.secretKey)
 	if err != nil {
 		h.renderOAuthError(w, "server_error", "failed to generate consent token", "")
 		return
@@ -707,7 +734,23 @@ func (h *OAuthHandler) renderConsentPage(w http.ResponseWriter, req dto.Authoriz
 		CSRFToken:           csrfToken,
 		ConsentToken:        consentToken,
 		MaxAge:              req.MaxAge,
+		PromptLogin:         promptLogin,
 	})
+}
+
+// consentRequestBinding is the digest of the authorization request a consent
+// token is issued for: every parameter the consent POST acts on, so that the
+// form cannot be changed between the consent page and its submission.
+func consentRequestBinding(req dto.AuthorizeRequest, promptLogin bool) string {
+	fields, err := json.Marshal([]interface{}{
+		req.ClientID, req.ResponseType, req.RedirectURI, req.Scope, req.State, req.Nonce,
+		req.CodeChallenge, req.CodeChallengeMethod, req.MaxAge, promptLogin,
+	})
+	if err != nil {
+		return "" // no binding: the consent POST refuses it (fail closed)
+	}
+	sum := sha256.Sum256(fields)
+	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
 // renderOAuthError renders the error page

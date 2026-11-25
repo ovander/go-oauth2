@@ -49,6 +49,9 @@
         {{if ge .MaxAge 0}}
         <input type="hidden" name="max_age" value="{{.MaxAge}}">
         {{end}}
+        {{if .PromptLogin}}
+        <input type="hidden" name="prompt" value="login">
+        {{end}}
         <!-- CRIT-03: CSRF double-submit token -->
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <!-- CRIT-04: Signed user identity carrier (stateless consent) -->

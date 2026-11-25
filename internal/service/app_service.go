@@ -31,6 +31,18 @@ type AppService interface {
 
 type appService struct {
 	repo repository.AppRepository
+	// dummyClientSecret replaces auth.CheckDummyClientSecret in tests.
+	dummyClientSecret func() bool
+}
+
+// checkDummyClientSecret pays the cost of a client-secret check for a client
+// whose secret cannot be checked (#366).
+func (s *appService) checkDummyClientSecret() {
+	if s.dummyClientSecret != nil {
+		s.dummyClientSecret()
+		return
+	}
+	auth.CheckDummyClientSecret()
 }
 
 func NewAppService(repo repository.AppRepository) AppService {
@@ -270,10 +282,14 @@ func (s *appService) RotateSecret(ctx context.Context, id uint) (*model.App, str
 func (s *appService) ValidateClientCredentials(ctx context.Context, clientID, clientSecret string) (*model.App, error) {
 	app, err := s.GetByClientID(ctx, clientID)
 	if err != nil {
+		// Unknown or inactive: the same cost as a wrong secret, so that
+		// timing does not tell which client_ids exist (#366).
+		s.checkDummyClientSecret()
 		return nil, err
 	}
 
 	if !app.Active {
+		s.checkDummyClientSecret()
 		return nil, ErrAppNotFound
 	}
 

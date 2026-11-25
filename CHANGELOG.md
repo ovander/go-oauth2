@@ -12,6 +12,14 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **Client authentication takes the same time whether the client exists or not.** The token
+  endpoint (every grant, and the token exchange), introspection and revocation answered an unknown
+  `client_id` without checking any secret, a public client against no hash, and an inactive client
+  before its secret, while a known confidential client paid a bcrypt check (cost 12, about
+  250 ms): the response time told which client_ids exist. Those cases now pay a check of the same
+  cost against a fixed placeholder hash. The token exchange already authenticated the client
+  before examining the subject token. Deploy note: none (#366).
+
 - **A replayed authorization code can revoke the tokens it was redeemed for** (`CODE_REPLAY_MODE`,
   default `off`). A code presented again after its redemption was refused, but the tokens issued
   for it stayed valid, although the replay means someone else holds the code (RFC 6749 §4.1.2).

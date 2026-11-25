@@ -84,8 +84,15 @@ func TestPKCEInvariant_ClientWithoutASecret_MustUsePKCE(t *testing.T) {
 			svc, _ := newMedSvc(t, newMemUsedTokenRepo(), app, user)
 			req := dto.AuthorizeRequest{ResponseType: "code", ClientID: "no-secret", RedirectURI: "https://app.example.com/cb", Scope: "openid", State: "s"}
 			_, err := svc.Authorize(context.Background(), req, user.ID)
-			if got := errors.Is(err, ErrPKCERequired); got != tc.wantPKCE {
-				t.Fatalf("Authorize without a challenge = %v, want PKCE required %v", err, tc.wantPKCE)
+			if tc.wantPKCE {
+				if !errors.Is(err, ErrPKCERequired) {
+					t.Fatalf("Authorize without a challenge = %v, want ErrPKCERequired", err)
+				}
+				return
+			}
+			// With a secret, the request without a challenge is accepted.
+			if err != nil {
+				t.Fatalf("Authorize without a challenge for a client with a secret = %v, want a code", err)
 			}
 		})
 	}

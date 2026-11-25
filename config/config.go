@@ -203,6 +203,13 @@ type Config struct {
 	// allowed_scopes, or an operator console, gets it; others invalid_scope).
 	// PRIVILEGED_SCOPE_MODE.
 	PrivilegedScopeMode string
+	// RedirectURIMatchMode governs how strictly a redirect_uri must match a
+	// registered one (RFC 9700 §2.1, #261): "off" (default — the normalized
+	// match: case of scheme and host, default port, trailing slash and query
+	// order are ignored), "observe" (also audit redirect_uri_inexact_match
+	// when only the normalized form matched), "enforce" (require the exact
+	// registered string). REDIRECT_URI_MATCH_MODE.
+	RedirectURIMatchMode string
 	// AudienceMode controls how an access token's `aud` is built from the client
 	// and its registered audiences (RFC-001 / EPIC-7): "off" (default — aud is
 	// the client_id, unchanged) or "dual" (the client's registered audiences are
@@ -421,6 +428,7 @@ func Load() *Config {
 		CodeReplayMode:           normalizeStepUpMode(getEnv("CODE_REPLAY_MODE", "off")),
 		ScopePolicyMode:          normalizeStepUpMode(getEnv("SCOPE_POLICY_MODE", "off")),
 		PrivilegedScopeMode:      normalizeStepUpMode(getEnv("PRIVILEGED_SCOPE_MODE", "off")),
+		RedirectURIMatchMode:     normalizeStepUpMode(getEnv("REDIRECT_URI_MATCH_MODE", "off")),
 		AudienceMode:             normalizeAudienceMode(getEnv("AUDIENCE_MODE", "off")),
 		ClaimsNamespace:          getEnv("CLAIMS_NAMESPACE", ""),
 		WebhooksEnabled:          strings.EqualFold(strings.TrimSpace(getEnv("WEBHOOKS_MODE", "off")), "on"),

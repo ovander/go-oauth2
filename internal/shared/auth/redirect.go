@@ -66,6 +66,20 @@ func ValidateRedirectURI(uri string, registeredURIs []string, requireHTTPS bool)
 	return ErrRedirectURINotRegistered
 }
 
+// RedirectURIExactlyRegistered reports whether uri is, character for character,
+// one of registeredURIs: the simple string comparison RFC 9700 §2.1 recommends
+// (RFC 3986 §6.2.1), stricter than the normalized match ValidateRedirectURI
+// accepts (case of scheme and host, default port, trailing slash, query order).
+// REDIRECT_URI_MATCH_MODE uses it on top of ValidateRedirectURI (#261).
+func RedirectURIExactlyRegistered(uri string, registeredURIs []string) bool {
+	for _, registered := range registeredURIs {
+		if uri == registered {
+			return true
+		}
+	}
+	return false
+}
+
 // isLocalhostURI checks if the URI is for localhost (development)
 func isLocalhostURI(u *url.URL) bool {
 	host := strings.ToLower(u.Hostname())

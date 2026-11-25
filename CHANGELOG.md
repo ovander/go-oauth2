@@ -10,6 +10,17 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Security
+
+- **A redirect URI can be required to match its registration exactly** (`REDIRECT_URI_MATCH_MODE`,
+  default `off`). Redirect URIs were compared after normalization (case of scheme and host, default
+  port, trailing slash, query order): safe, but more lenient than the exact string comparison RFC
+  9700 §2.1 recommends. `observe` audits `redirect_uri_inexact_match` at code issuance when only
+  the normalized form matched (the client and the URI it sent); `enforce` refuses it as not
+  registered, and audits the refusal: on the authorization page (before sign-in), at code issuance
+  and for `post_logout_redirect_uri`. `docs/API.md` no longer says the match was exact. Deploy note: new variable `REDIRECT_URI_MATCH_MODE`, default
+  `off`; run `observe` and fix the registrations or clients it names before `enforce` (#261).
+
 ## [1.15.0] - 2026-11-25
 
 Security release on the **v1.x** line. It closes the findings of the November 2026 review: account

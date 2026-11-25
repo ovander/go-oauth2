@@ -179,6 +179,9 @@ type oauthService struct {
 	// codeReplayMode is CODE_REPLAY_MODE: "off" (default), "observe" or
 	// "enforce", for an authorization code presented again (RFC 6749 §4.1.2).
 	codeReplayMode string
+	// redirectURIMatchMode is REDIRECT_URI_MATCH_MODE: "off" (default),
+	// "observe" or "enforce" (#261).
+	redirectURIMatchMode string
 	// scopePolicyMode is "off" (default), "observe" or "enforce" for the
 	// per-client allowed_scopes policy (A1 / P3-8).
 	scopePolicyMode string
@@ -196,6 +199,43 @@ type oauthService struct {
 // authorization code is audited (auth_code_failed, reason code_replayed),
 // under "enforce" the tokens it was redeemed for are also revoked.
 func (s *oauthService) SetCodeReplayMode(mode string) { s.codeReplayMode = mode }
+
+// SetRedirectURIMatchMode wires REDIRECT_URI_MATCH_MODE (#261): under
+// "observe" an authorization request whose redirect_uri matches a registered
+// one only after normalization is audited (redirect_uri_inexact_match), under
+// "enforce" it is refused as not registered.
+func (s *oauthService) SetRedirectURIMatchMode(mode string) { s.redirectURIMatchMode = mode }
+
+// checkRedirectURIExact applies REDIRECT_URI_MATCH_MODE to a redirect_uri that
+// ValidateRedirectURI already accepted.
+// CheckRedirectURIExact is the REDIRECT_URI_MATCH_MODE check of a redirect URI
+// that auth.ValidateRedirectURI already accepted for app: under observe or
+// enforce, a URI that is not exactly a registered one is audited
+// (redirect_uri_inexact_match), and under enforce refused with
+// auth.ErrRedirectURINotRegistered. The OAuth handler runs it before sign-in
+// under enforce (#261).
+func (s *oauthService) CheckRedirectURIExact(ctx context.Context, app *model.App, redirectURI string) error {
+	return s.checkRedirectURIExact(ctx, app, nil, redirectURI)
+}
+
+func (s *oauthService) checkRedirectURIExact(ctx context.Context, app *model.App, userID *uint, redirectURI string) error {
+	if s.redirectURIMatchMode != "observe" && s.redirectURIMatchMode != "enforce" {
+		return nil
+	}
+	if auth.RedirectURIExactlyRegistered(redirectURI, app.RedirectURIs) {
+		return nil
+	}
+	appID := app.ID
+	s.logSecurityEvent(ctx, model.SecurityEventRedirectURIInexact, userID, &appID, false, map[string]interface{}{
+		"client_id":    app.ClientID,
+		"redirect_uri": redirectURI,
+		"mode":         s.redirectURIMatchMode,
+	})
+	if s.redirectURIMatchMode == "enforce" {
+		return auth.ErrRedirectURINotRegistered
+	}
+	return nil
+}
 
 // CODE_REPLAY_MODE values.
 const (
@@ -424,6 +464,9 @@ func (s *oauthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, 
 
 	// Validate redirect URI with enhanced security checks
 	if err := auth.ValidateRedirectURI(req.RedirectURI, app.RedirectURIs, s.requireHTTPS); err != nil {
+		return "", fmt.Errorf("%w: %v", ErrInvalidRedirectURI, err)
+	}
+	if err := s.checkRedirectURIExact(ctx, app, &userID, req.RedirectURI); err != nil {
 		return "", fmt.Errorf("%w: %v", ErrInvalidRedirectURI, err)
 	}
 

@@ -484,8 +484,13 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	action := r.FormValue("action")
-	// prompt=login, carried by the login and consent forms.
-	_, promptLogin, _ := parsePrompt(r.FormValue("prompt"))
+	// prompt=login, carried by the login and consent forms. A value the GET
+	// would refuse is refused here too.
+	_, promptLogin, perr := parsePrompt(r.FormValue("prompt"))
+	if perr != nil {
+		h.renderOAuthError(w, "invalid_request", perr.Error(), "")
+		return
+	}
 
 	// -----------------------------------------------------------------------
 	// Path A: consent — user explicitly approved or denied the request.
@@ -737,10 +742,13 @@ func (h *OAuthHandler) renderConsentPage(w http.ResponseWriter, req dto.Authoriz
 // token is issued for: every parameter the consent POST acts on, so that the
 // form cannot be changed between the consent page and its submission.
 func consentRequestBinding(req dto.AuthorizeRequest, promptLogin bool) string {
-	fields, _ := json.Marshal([]interface{}{
+	fields, err := json.Marshal([]interface{}{
 		req.ClientID, req.ResponseType, req.RedirectURI, req.Scope, req.State, req.Nonce,
 		req.CodeChallenge, req.CodeChallengeMethod, req.MaxAge, promptLogin,
 	})
+	if err != nil {
+		return "" // no binding: the consent POST refuses it (fail closed)
+	}
 	sum := sha256.Sum256(fields)
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }

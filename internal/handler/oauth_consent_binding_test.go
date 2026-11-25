@@ -94,6 +94,7 @@ func TestConsent_AnEditedFormIsRefused(t *testing.T) {
 		"widened scope":       func(v url.Values) { v.Set("scope", "openid profile admin") },
 		"another challenge":   func(v url.Values) { v.Set("code_challenge", "another-challenge-another-challenge-another1") },
 		"challenge dropped":   func(v url.Values) { v.Del("code_challenge"); v.Del("code_challenge_method") },
+		"challenge method":    func(v url.Values) { v.Set("code_challenge_method", "plain") },
 		"max_age dropped":     func(v url.Values) { v.Del("max_age") },
 		"max_age widened":     func(v url.Values) { v.Set("max_age", "86400") },
 		"another nonce":       func(v url.Values) { v.Set("nonce", "n-2") },
@@ -206,5 +207,17 @@ func TestAuthorizePost_PromptLoginReachesTheConsentStep(t *testing.T) {
 	w = f.post(submit)
 	if f.authorized != 1 || !strings.Contains(metaRefreshURL(w.Body.String()), "code=the-code") {
 		t.Fatalf("consent after the prompt=login sign-in: authorized %d, status %d", f.authorized, w.Code)
+	}
+}
+
+// A prompt value the GET refuses is refused on the POST too.
+func TestAuthorizePost_InvalidPromptIsRefused(t *testing.T) {
+	f := newBindingFixture()
+	form := consentForm()
+	form.Set("prompt", "none login")
+	form.Set("consent_token", boundConsentToken(t, 42, form, auth.AuthnEvidence{}))
+	w := f.post(form)
+	if f.authorized != 0 || !strings.Contains(w.Body.String(), "prompt=none cannot be combined") {
+		t.Fatalf("prompt=none login on the POST: authorized %d, status %d", f.authorized, w.Code)
 	}
 }

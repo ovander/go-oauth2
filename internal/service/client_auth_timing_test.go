@@ -47,9 +47,8 @@ func TestTokenGrants_UnknownClientPaysASecretCheck(t *testing.T) {
 	// A database failure is not an unknown client: it is an internal error,
 	// answered as such, without a dummy check.
 	svc, n = newSvc(errors.New("db down"))
-	_, _ = svc.lookupTokenClient(context.Background(), "ghost")
-	if n.Load() != 0 {
-		t.Errorf("a lookup failure paid %d dummy checks", n.Load())
+	if _, err := svc.lookupTokenClient(context.Background(), "ghost"); err == nil || errors.Is(err, ErrAppNotFound) || n.Load() != 0 {
+		t.Errorf("a lookup failure = %v after %d dummy checks, want an internal error and none", err, n.Load())
 	}
 }
 
@@ -104,8 +103,14 @@ func TestValidateClientCredentials_UnknownOrInactivePaysASecretCheck(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = mem.Create(context.Background(), &model.App{ClientID: "active", Active: true, ClientSecretHash: hash})
-	_ = mem.Create(context.Background(), &model.App{ClientID: "inactive", Active: false, ClientSecretHash: hash})
+	for _, a := range []*model.App{
+		{ClientID: "active", Active: true, ClientSecretHash: hash},
+		{ClientID: "inactive", Active: false, ClientSecretHash: hash},
+	} {
+		if err := mem.Create(context.Background(), a); err != nil {
+			t.Fatalf("create %s: %v", a.ClientID, err)
+		}
+	}
 	for _, clientID := range []string{"nobody", "inactive"} {
 		dummy, n := countingDummy()
 		svc := &appService{repo: repo, dummyClientSecret: dummy}
@@ -128,8 +133,8 @@ func TestValidateClientCredentials_UnknownOrInactivePaysASecretCheck(t *testing.
 	// A database failure is an error, without the cost.
 	dummy, n = countingDummy()
 	svc = &appService{repo: failingAppRepo{mem}, dummyClientSecret: dummy}
-	if _, err := svc.ValidateClientCredentials(context.Background(), "active", "s3cret-for-the-test"); err == nil || n.Load() != 0 {
-		t.Errorf("a lookup failure: err %v, %d dummy checks", err, n.Load())
+	if _, err := svc.ValidateClientCredentials(context.Background(), "active", "s3cret-for-the-test"); err == nil || errors.Is(err, ErrAppNotFound) || n.Load() != 0 {
+		t.Errorf("a lookup failure = %v after %d dummy checks, want an internal error and none", err, n.Load())
 	}
 }
 

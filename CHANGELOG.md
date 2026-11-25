@@ -15,11 +15,11 @@ Capabilities**, non-breaking).
 - **Client authentication takes the same time whether the client exists or not.** The token
   endpoint (every grant, and the token exchange), introspection and revocation answered an unknown
   `client_id` without checking any secret, a public client against no hash, and an inactive client
-  before its secret, while a known confidential client paid a bcrypt check (cost 12, about
-  250 ms): the response time told which client_ids exist. Those cases now pay a check of the same
-  cost against a fixed placeholder hash (computed at startup), and so does a client whose secret is
-  still a legacy SHA-256 hash. The token exchange already authenticated the client
-  before examining the subject token. Deploy note: none (#366).
+  before its secret, while a known confidential client paid a bcrypt check (cost 12, about 250
+  ms): the response time told which client_ids exist. Those cases now pay a check of the same cost
+  against a fixed placeholder hash (computed at startup, before the server serves), and so does a
+  client whose secret is still a legacy SHA-256 hash. The token exchange already authenticated the
+  client before examining the subject token. Deploy note: none (#366).
 
 - **A client without a stored secret must use PKCE, and one rule decides who is confidential.**
   The token endpoint required a secret from any client with a stored hash and none from the

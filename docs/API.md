@@ -788,6 +788,10 @@ refused, is audited with `console_client: true` at `critical` severity.
 List/get/delete users, `GET /{id}/apps`, `GET /{id}/sessions`,
 `POST /{id}/revoke-tokens`, `POST /{id}/unlock`, `POST /{id}/block`.
 
+On a **superadmin's** account, only a superadmin may act (since v1.14.7): an admin gets `403`
+on `revoke-tokens`, `unlock` and `attributes`. Deleting or blocking a superadmin is refused here
+for everyone; remove one with `DELETE /api/admin/superadmins/{id}`, which keeps the last one.
+
 - `PUT /{id}/attributes` — replace a user's free-form attributes (A2):
   `{ "attributes": { "tier": "gold", "dept": "engineering" } }` → the updated
   `UserResponse`. Global admin only, with fresh step-up (since v1.14.7: policy

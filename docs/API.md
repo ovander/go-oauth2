@@ -303,7 +303,7 @@ per-account counter; the account is locked for the lockout duration when it reac
 (since v1.14.5; before, only a wrong password counted). A complete sign-in resets the counter.
 While an account is locked, only the right password gets `403` account locked; a wrong one gets
 `401` invalid credentials, like an unknown email, after the same password check, so the lock does
-not reveal that the account exists (since v1.14.7). The same holds wherever a password is checked:
+not reveal that the account exists (since v1.15.0). The same holds wherever a password is checked:
 the hosted login, admin login, `/elevate` and change-password.
 With `LOCKOUT_SOURCE_MODE=enforce` (#403) the count is kept per account **and source** (the
 client's IPv4 address, or the /64 of its IPv6 address): reaching the limit locks that source out
@@ -342,7 +342,7 @@ Set-Cookie: __Host-refresh_token=<jwt>; Path=/; Max-Age=<REFRESH_TOKEN_TTL>;
             HttpOnly; Secure; SameSite=Strict
 ```
 
-In production (Secure) the cookie is `__Host-refresh_token` (since v1.14.7): the
+In production (Secure) the cookie is `__Host-refresh_token` (since v1.15.0): the
 prefix makes the browser refuse it unless it is Secure, host-only and on `Path=/`,
 so a sibling subdomain cannot set or overwrite it. Over plain http (local
 development) it stays `refresh_token` on `Path=/oauth/token`. A browser holding
@@ -358,7 +358,7 @@ the cookie under its old name gets it expired; the console signs in once more.
   `X-Requested-By` header (a page on another site cannot add a custom header
   without a CORS grant), and only when the request's `Origin`, if any, is one of
   the console's own origins (those of `ADMIN_CONSOLE_REDIRECT_URIS`) (since
-  v1.14.7). `SameSite=Strict` alone lets a page on another origin of the same site
+  v1.15.0). `SameSite=Strict` alone lets a page on another origin of the same site
   send the cookie, and `ALLOWED_ORIGINS` may grant it CORS. A request that fails
   these checks is handled as one without a refresh token.
 - **Logout** (`/api/auth/logout`) revokes the tokens server-side and clears the
@@ -377,7 +377,7 @@ Two halves, by design:
    ```json
    { "token": "RAW_MAGIC_TOKEN", "client_id": "YOUR_CLIENT_ID" }
    ```
-   Success returns a full login token set (same shape as §5.3). `422` if the link was already used, `401` if invalid/expired, `403` if locked, and (since v1.14.7) `403` when the account has MFA enabled (a link is one factor: such a user signs in with the password and code), when the client is deactivated, or when a Socrate admin is refused by `ADMIN_MFA_POLICY`, as on the other sign-in paths. **POST-only** so email scanners don't consume the token: the landing page should ask for a click (or post on a user action) rather than on load, remove the token from the address bar (`history.replaceState`) and send `Referrer-Policy: no-referrer`.
+   Success returns a full login token set (same shape as §5.3). `422` if the link was already used, `401` if invalid/expired, `403` if locked, and (since v1.15.0) `403` when the account has MFA enabled (a link is one factor: such a user signs in with the password and code), when the client is deactivated, or when a Socrate admin is refused by `ADMIN_MFA_POLICY`, as on the other sign-in paths. **POST-only** so email scanners don't consume the token: the landing page should ask for a click (or post on a user action) rather than on load, remove the token from the address bar (`history.replaceState`) and send `Referrer-Policy: no-referrer`.
 
 ### 5.8 Invitations
 - `GET /api/auth/invite?token=...` → `{ "valid": true, "email": "...", "app_name": "...", "expires_at": "..." }`
@@ -495,10 +495,10 @@ scoped to that exact app:
 `ServiceAccountMiddleware` enforces that the `{app_id}` in the URL matches the
 app encoded in the token, so an app can never act on another app's resources.
 A service-account token revoked through `POST /oauth/revoke` is refused there
-with `401` from then on (since v1.14.7), as a user token is; before, it stayed
+with `401` from then on (since v1.15.0), as a user token is; before, it stayed
 usable until it expired.
 
-**Accounts the app did not create (`SERVICE_USER_SCOPE_MODE`, since v1.14.7).**
+**Accounts the app did not create (`SERVICE_USER_SCOPE_MODE`, since v1.15.0).**
 `off` (default) changes nothing. Under `enforce`, `POST …/service/users` for
 an existing account that was neither created for this app (by its invite) nor
 is already a member answers `409 account_exists`: the service API does not
@@ -547,7 +547,7 @@ invalid_dpop_proof`; a client registered with `require_dpop` gets no token
 without a valid proof (so it needs DPoP on). The token response keeps
 `token_type: "Bearer"`.
 
-**Bound tokens on Socrate's own APIs (since v1.14.7).** The same mode covers a
+**Bound tokens on Socrate's own APIs (since v1.15.0).** The same mode covers a
 token carrying `cnf.jkt` presented to `/oauth/userinfo`, `/api/*` (including
 the app and service-account routes) and the admin API (RFC 9449 §7.1). Send it with `Authorization: DPoP <token>` (or `Bearer`,
 since the token response says `Bearer`) and a fresh `DPoP` proof for that
@@ -641,7 +641,7 @@ from an application, gets `403 { "error": "invalid_audience" }`. `observe`
 allows it and audits `admin_api_audience`.
 
 The same mode covers the app-management routes `/api/apps/{app_id}/*` (§8.5,
-since v1.14.7), with one difference: a token issued to that app is accepted
+since v1.15.0), with one difference: a token issued to that app is accepted
 too, since an application's backend forwards its app admins' tokens there. A
 token issued to another application gets `403 invalid_audience` under
 `enforce`. The service-account routes `/api/apps/{app_id}/service/*` keep their
@@ -666,14 +666,14 @@ public PKCE client auto-registered from `ADMIN_CONSOLE_CLIENT_ID` +
 
 **Step-up for destructive operations (Tier-0).** The most destructive admin
 routes — **create / update / delete an OAuth client** (`POST /api/admin/apps`,
-`PUT` and `DELETE /api/admin/apps/{id}`; create and update since v1.14.7), **rotate
+`PUT` and `DELETE /api/admin/apps/{id}`; create and update since v1.15.0), **rotate
 client secret** (`POST /api/admin/apps/{id}/rotate-secret`), **create/delete
 superadmin** (`POST /api/admin/superadmins`, `DELETE /api/admin/superadmins/{id}`;
-**update** `PUT /api/admin/superadmins/{id}` since v1.14.7 — a change of email or password
+**update** `PUT /api/admin/superadmins/{id}` since v1.15.0 — a change of email or password
 there revokes that superadmin's sessions, and an admin's own password is changed through
 `POST /api/admin/change-password` instead, `400` here),
 **block / delete a user** (`POST /api/admin/users/{id}/block`, `DELETE
-/api/admin/users/{id}` since v1.14.7), **revoke a user's tokens**, **block /
+/api/admin/users/{id}` since v1.15.0), **revoke a user's tokens**, **block /
 unblock an IP**, **create / update / delete an alert rule**, every webhook write
 (§8.3.1) and every policy write (§8.3.2) — require a *recent* authentication.
 If the access token's `auth_time` is older than `ADMIN_ELEVATION_MAX_AGE`
@@ -699,7 +699,7 @@ admin's tokens are revoked (token-version bump) and they must log in again
 (`200 { "message": "Password changed successfully; please log in again" }`).
 `401` if the current password is wrong; `400` on a weak or unchanged new password.
 A wrong current password counts toward the account lockout like a failed sign-in, and a
-locked account gets `403 account is locked` (since v1.14.7). Rate-limited per admin with the
+locked account gets `403 account is locked` (since v1.15.0). Rate-limited per admin with the
 login limiter (`429`), as is `/elevate`.
 
 ### 8.2 App (client) management — `/api/admin/apps`
@@ -732,7 +732,7 @@ login limiter (`429`), as is `/elevate`.
   `SCOPE_POLICY_MODE=enforce`, so list the global scopes it needs too (`api`
   for a `client_credentials` client that sends no `scope`). The privileged scopes
   `admin`, `monitoring:read` and `monitoring:write` follow `PRIVILEGED_SCOPE_MODE`
-  (since v1.14.7) whatever `SCOPE_POLICY_MODE` says: under `enforce` a client gets
+  (since v1.15.0) whatever `SCOPE_POLICY_MODE` says: under `enforce` a client gets
   one only if it lists it here or is an operator console (`invalid_scope`
   otherwise; an empty list does not grant them); `observe` audits `scope_denied`
   with `reason: privileged_scope`. `claim_mappings` (optional, A2) declares the custom claims
@@ -766,7 +766,7 @@ login limiter (`429`), as is `/elevate`.
 - `POST /{id}/rotate-secret` — issue a new secret (returned once).
 
 An operator-console client (`OPERATOR_CONSOLE_CLIENT_IDS` and
-`ADMIN_CONSOLE_CLIENT_ID`) is protected, since v1.14.7: tokens issued to it reach
+`ADMIN_CONSOLE_CLIENT_ID`) is protected, since v1.15.0: tokens issued to it reach
 the admin API. `PUT`, `DELETE` and `rotate-secret` on one need a superadmin
 (`403` for any other admin, the attempt audited), and every change, allowed or
 refused, is audited with `console_client: true` at `critical` severity.
@@ -788,13 +788,13 @@ refused, is audited with `console_client: true` at `critical` severity.
 List/get/delete users, `GET /{id}/apps`, `GET /{id}/sessions`,
 `POST /{id}/revoke-tokens`, `POST /{id}/unlock`, `POST /{id}/block`.
 
-On a **superadmin's** account, only a superadmin may act (since v1.14.7): an admin gets `403`
+On a **superadmin's** account, only a superadmin may act (since v1.15.0): an admin gets `403`
 on `revoke-tokens`, `unlock` and `attributes`. Deleting or blocking a superadmin is refused here
 for everyone; remove one with `DELETE /api/admin/superadmins/{id}`, which keeps the last one.
 
 - `PUT /{id}/attributes` — replace a user's free-form attributes (A2):
   `{ "attributes": { "tier": "gold", "dept": "engineering" } }` → the updated
-  `UserResponse`. Global admin only, with fresh step-up (since v1.14.7: policy
+  `UserResponse`. Global admin only, with fresh step-up (since v1.15.0: policy
   rules read these attributes). An admin cannot change their own (`400`), and only
   a superadmin changes a superadmin's (`403`). Audited (`update_user_attributes`;
   the audit row records the attribute *names* — all of them, and which were
@@ -887,7 +887,7 @@ policy-decisions), `/events/stream` (SSE), `/sessions`, `/reports/*`,
 `/alerts/*` (rules, history, acknowledge; see [`ALERT-RULES.md`](ALERT-RULES.md)),
 `/tokens/stats`, `/logs` (audit logs, with `/export`), `/settings/*`.
 `POST /security/blocked-ips` takes one IP address (no range) and refuses
-(`400`), since v1.14.7, loopback and unspecified addresses, the server's own
+(`400`), since v1.15.0, loopback and unspecified addresses, the server's own
 addresses and any address in `TRUSTED_PROXIES`: blocking one would cut off the
 consoles and the route that lifts the block. The automatic defence never
 blocks them either, and a block already stored for one of them is not enforced. An IPv4-mapped IPv6 address is stored as IPv4.
@@ -896,7 +896,7 @@ With `ADMIN_SCOPE_MODE=enforce` the monitoring routes also need
 (`403 insufficient_scope`). `GET /metrics` (Prometheus) is served on the admin
 port only, without authentication; see [`OBSERVABILITY.md`](OBSERVABILITY.md).
 
-Changes to the defences are security events (since v1.14.7), with the admin
+Changes to the defences are security events (since v1.15.0), with the admin
 as the user: `ip_blocked` and `ip_unblocked` (the block's address, reason,
 author, dates; `DELETE /security/blocked-ips/{id}` answers `404` for an unknown
 block), `alert_rule_created`, `alert_rule_updated` (the values `before` and

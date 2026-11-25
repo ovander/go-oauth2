@@ -303,8 +303,12 @@ func TestDecide_SubjectMustBelongToTheCallingApp(t *testing.T) {
 	if byID.code != nethttp.StatusNotFound || byID.body != noSuchUser.body {
 		t.Fatalf("global admin by user_id → %d %s, want the 404 of an unknown user", byID.code, byID.body)
 	}
-	if r := f.decide(t, "3", svc, `{"subject":{"token":"`+f.userToken(t, f.root)+`"},"action":"invoice.approve"}`); r.code != 200 {
-		t.Fatalf("global admin by token → %d %s", r.code, r.body)
+	// By the admin's own token the decision is evaluated for the admin: the
+	// refund allow applies to an MFA token, which only a resolved principal
+	// with its token facts can match.
+	if r := f.decide(t, "3", svc, `{"subject":{"token":"`+f.userToken(t, f.root, "pwd", "otp", "mfa")+`"},"action":"refund.issue"}`); r.code != 200 ||
+		!r.resp.Allow || r.resp.Rule != "refunds" {
+		t.Fatalf("global admin by token → %d %s, want the refunds allow", r.code, r.body)
 	}
 }
 

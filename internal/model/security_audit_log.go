@@ -159,10 +159,13 @@ type SecurityAuditLog struct {
 	// hash chain so that deletion or reordering of rows is detectable (RFC-007),
 	// not just in-place mutation. Empty for the genesis row and for rows written
 	// before chaining was enabled.
-	PrevHash  string    `gorm:"column:prev_hash;type:varchar(64)" json:"prev_hash,omitempty"`
-	Success   bool      `gorm:"index" json:"success"`
-	User      *User     `gorm:"foreignKey:UserID" json:"user,omitempty"`
-	App       *App      `gorm:"foreignKey:AppID" json:"app,omitempty"`
+	PrevHash string `gorm:"column:prev_hash;type:varchar(64)" json:"prev_hash,omitempty"`
+	Success  bool   `gorm:"index" json:"success"`
+	User     *User  `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	// App is loaded for display only: there is no foreign key on app_id
+	// (constraint:-, migration 0036), so deleting an app leaves the rows that
+	// name it — and their row hash, which covers app_id — untouched (#260).
+	App       *App      `gorm:"foreignKey:AppID;constraint:-" json:"app,omitempty"`
 	CreatedAt time.Time `gorm:"index" json:"created_at"`
 }
 

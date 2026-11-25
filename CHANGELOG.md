@@ -21,6 +21,16 @@ Capabilities**, non-breaking).
   still a legacy SHA-256 hash. The token exchange already authenticated the client
   before examining the subject token. Deploy note: none (#366).
 
+- **The consent step acts only on the request it was shown for, and honours `prompt=login`.** The
+  consent POST took the authorization parameters from the submitted form, so a form edited after
+  the consent page was rendered could change the scope, the PKCE challenge, the nonce or drop
+  `max_age`, and `prompt=login` was checked only when the page was shown. The consent token now
+  carries a digest of the request it was issued for (client, response type, `redirect_uri`,
+  scope, state, nonce, PKCE challenge, `max_age`, `prompt=login`); a form that differs, or a token
+  without one, is refused. `prompt=login` is carried through the login and consent forms, and the
+  consent step answers `login_required` unless the sign-in happened on the login form. Deploy
+  note: a consent page open during the upgrade asks to sign in again (#366).
+
 - **The client IP is the right-most untrusted `X-Forwarded-For` entry.** Behind a trusted proxy,
   the left-most entry was taken as the client, but a proxy that appends to the header (nginx's
   `$proxy_add_x_forwarded_for`, Caddy with `trusted_proxies`) keeps whatever the client sent

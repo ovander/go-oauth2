@@ -72,6 +72,7 @@ func TestAdminAppSignIn_ConsentStepShowsTheRefusal(t *testing.T) {
 		"client_id": {"gpwa"}, "redirect_uri": {"https://gpwa.example.com/cb"},
 		"response_type": {"code"}, "state": {"s"}, "csrf_token": {csrf}, "consent_token": {consentToken},
 	}
+	form.Set("consent_token", boundConsentToken(t, 9, form, auth.AuthnEvidence{}))
 	r := httptest.NewRequest(http.MethodPost, "/oauth/authorize", strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	attachCSRFCookie(r, csrf)

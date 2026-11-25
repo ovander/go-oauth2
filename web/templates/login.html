@@ -46,6 +46,9 @@
         {{if ge .MaxAge 0}}
         <input type="hidden" name="max_age" value="{{.MaxAge}}">
         {{end}}
+        {{if .PromptLogin}}
+        <input type="hidden" name="prompt" value="login">
+        {{end}}
 
         <div class="form-group">
             <label for="email">Email</label>

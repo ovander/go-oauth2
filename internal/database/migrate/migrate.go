@@ -794,6 +794,14 @@ var migrations = []Migration{
 			return nil
 		},
 	},
+	{
+		// 0037 (#258): seed the recommended alert rules when there are none
+		// (defaultAlertRules). They are evaluated only under ALERT_RULES_MODE
+		// observe or enforce, and email nobody until given recipients.
+		ID:   "0037",
+		Name: "seed_default_alert_rules",
+		Run:  seedDefaultAlertRules,
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

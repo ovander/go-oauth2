@@ -12,6 +12,16 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **The decide endpoint no longer reveals who the global admins are.** By a bare `user_id`, a
+  subject who is not a member of the calling application got `404 unknown subject` unless they
+  were a global admin, whose decision was evaluated (`200`), so any application could test user
+  ids for admin rights. A global admin's implicit access now needs the admin's own token (which
+  backendkit's `pep` always sends); by id they are a `404` like any non-member. The admin
+  namespace reservation also matched only an upper-case method: `get /api/admin/…` and other
+  spellings an admin rule's glob matches are now refused too (`400`). Deploy note: an
+  application that asks about a global admin by `user_id` must send the admin's token instead
+  (#366).
+
 - **Only a superadmin acts on a superadmin's account.** Deleting and blocking a superadmin were
   refused, but any admin (or the monitoring console, with `monitoring:write`) could revoke a
   superadmin's sessions or unlock one. One rule now covers every per-user admin action: on a

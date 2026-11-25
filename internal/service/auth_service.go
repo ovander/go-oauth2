@@ -606,11 +606,13 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 	if err := s.resetFailedAttempts(ctx, user.ID); err != nil {
 		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
+	// Only the sign-in times are written: user was loaded before the password
+	// check, and a full-row save would undo a change made meanwhile.
 	now := time.Now()
 	user.LastLogin = &now
 	user.LastLoginAttempt = &now
 	user.UpdatedAt = now
-	if err := s.userRepo.Update(ctx, user); err != nil {
+	if err := s.userRepo.RecordLogin(ctx, user.ID, now, true); err != nil {
 		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 
@@ -870,11 +872,13 @@ func (s *authService) AdminLogin(ctx context.Context, req dto.AdminLoginRequest)
 	if err := s.resetFailedAttempts(ctx, user.ID); err != nil {
 		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
+	// Only the sign-in times are written: user was loaded before the password
+	// and MFA checks, and a full-row save would undo a change made meanwhile.
 	now := time.Now()
 	user.LastLogin = &now
 	user.LastLoginAttempt = &now
 	user.UpdatedAt = now
-	if err := s.userRepo.Update(ctx, user); err != nil {
+	if err := s.userRepo.RecordLogin(ctx, user.ID, now, true); err != nil {
 		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 
@@ -1374,7 +1378,8 @@ func (s *authService) AcceptInvite(ctx context.Context, token, name, password st
 	}
 
 	user.LastLogin = &now
-	if err := s.userRepo.Update(ctx, user); err != nil {
+	user.UpdatedAt = now
+	if err := s.userRepo.RecordLogin(ctx, user.ID, now, false); err != nil {
 		logger.FromContext(ctx).Warnf("auth: non-fatal error persisting user state, continuing: %v", err)
 	}
 

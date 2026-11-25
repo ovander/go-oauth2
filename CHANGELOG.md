@@ -33,6 +33,17 @@ Capabilities**, non-breaking).
   (two nullable columns and an index); new variable `CODE_REPLAY_MODE`, default `off`; with it
   on, `authorization_codes` keeps one row per active sign-in, and each refresh updates it (#366).
 
+- **A sign-in records its time without saving the whole user.** Hosted login, admin login,
+  invite acceptance and magic-link sign-in loaded the user, checked the password (and MFA), then
+  saved the whole row with `UserRepository.Update` only to record the last-login time, writing
+  back every column `Update` does not guard (the password, token-version and lockout columns
+  are guarded) from the copy loaded before the checks. A change made to the account in between was undone: an MFA enrolment confirmed while
+  a sign-in was in flight was switched off again (or an MFA reset restored the old secret), and a
+  rename or email change was reverted. These paths now use the new `UserRepository.RecordLogin`,
+  which writes only `last_login` (and `last_login_attempt` where the path set it) and
+  `updated_at`; a failure to record it stays non-fatal, as before. Deploy note: no migration, no
+  environment variable, no contract change.
+
 - **The decide endpoint no longer reveals who the global admins are.** By a bare `user_id`, a
   subject who is not a member of the calling application got `404 unknown subject` unless they
   were a global admin, whose decision was evaluated (`200`), so any application could test user

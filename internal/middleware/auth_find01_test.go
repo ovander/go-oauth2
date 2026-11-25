@@ -407,6 +407,7 @@ func (*find01UserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error
 func (*find01UserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
 	return false, nil
 }
+func (*find01UserRepo) RecordLogin(context.Context, uint, time.Time, bool) error { return nil }
 
 func (*find01UserRepo) SetPassword(context.Context, uint, repository.PasswordChange) error {
 	return nil

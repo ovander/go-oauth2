@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -88,5 +89,70 @@ func TestUserRepository_UpdateKeepsThePassword(t *testing.T) {
 	}
 	if after := stored(); after.HashedPassword != "new-hash" || after.MustChangePassword {
 		t.Fatal("Update wrote a password column")
+	}
+}
+
+// #366: a guarded SetPassword writes only if password_changed_at still holds
+// the value the caller read, so a reset link checked against the last change
+// cannot overwrite a change that landed meanwhile.
+func TestUserRepository_SetPasswordGuard(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set; skipping the Postgres integration test")
+	}
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	if err := db.AutoMigrate(&model.User{}); err != nil {
+		t.Fatalf("automigrate: %v", err)
+	}
+	tx := db.Begin()
+	if tx.Error != nil {
+		t.Fatalf("begin: %v", tx.Error)
+	}
+	t.Cleanup(func() { tx.Rollback() })
+	repo := repository.NewUserRepository(tx)
+	ctx := context.Background()
+
+	u := &model.User{Email: fmt.Sprintf("guard-%d@example.test", time.Now().UnixNano()), Name: "Guard",
+		HashedPassword: "first", Source: "manual", Role: model.UserRoleUser}
+	if err := repo.Create(ctx, u); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	hash := func() string {
+		got, err := repo.FindByID(ctx, u.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.HashedPassword
+	}
+
+	// Never changed: a guard expecting NULL writes.
+	first := time.Now().Truncate(time.Microsecond)
+	if err := repo.SetPassword(ctx, u.ID, repository.PasswordChange{HashedPassword: "second", ChangedAt: &first,
+		OnlyIfUnchangedSince: &repository.PasswordState{}}); err != nil {
+		t.Fatalf("guard on a never-changed password: %v", err)
+	}
+	// A stale guard (still expecting NULL) writes nothing.
+	if err := repo.SetPassword(ctx, u.ID, repository.PasswordChange{HashedPassword: "stale",
+		OnlyIfUnchangedSince: &repository.PasswordState{}}); !errors.Is(err, repository.ErrPasswordChangedMeanwhile) {
+		t.Fatalf("stale guard: %v, want ErrPasswordChangedMeanwhile", err)
+	}
+	if got := hash(); got != "second" {
+		t.Fatalf("a stale guard wrote %q", got)
+	}
+	// The value read back matches.
+	read, err := repo.FindByID(ctx, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	later := first.Add(time.Second)
+	if err := repo.SetPassword(ctx, u.ID, repository.PasswordChange{HashedPassword: "third", ChangedAt: &later,
+		OnlyIfUnchangedSince: &repository.PasswordState{ChangedAt: read.PasswordChangedAt}}); err != nil {
+		t.Fatalf("guard on the value read back: %v", err)
+	}
+	if got := hash(); got != "third" {
+		t.Fatalf("hash = %q, want third", got)
 	}
 }

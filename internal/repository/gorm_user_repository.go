@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/ovander/go-oauth2/internal/model"
@@ -62,7 +63,23 @@ type PasswordChange struct {
 	// ConfirmedAt, when set, also marks the user verified and stores it as
 	// confirmed_at (an invited account choosing its first password).
 	ConfirmedAt *time.Time
+	// OnlyIfUnchangedSince, when set, applies the change only if
+	// password_changed_at still holds the value it carries (nil: never
+	// changed): a password-reset link checked against the last change cannot
+	// overwrite a change that lands between that check and this write (#366).
+	// Otherwise SetPassword returns ErrPasswordChangedMeanwhile and writes
+	// nothing.
+	OnlyIfUnchangedSince *PasswordState
 }
+
+// PasswordState is the password_changed_at a guarded change expects.
+type PasswordState struct {
+	ChangedAt *time.Time
+}
+
+// ErrPasswordChangedMeanwhile is returned by a guarded SetPassword when the
+// password changed after the caller read it.
+var ErrPasswordChangedMeanwhile = errors.New("the password changed meanwhile")
 
 // userGuardedColumns are the users columns that Update never writes: each is
 // changed only by a targeted statement (an increment, a reset, a lock, a
@@ -177,11 +194,22 @@ func (r *userRepository) SetPassword(ctx context.Context, userID uint, change Pa
 	}
 	// One UPDATE statement (updated_at is set with it): the new hash and the
 	// revocation cannot be saved apart.
-	res := r.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", userID).Updates(columns)
+	q := r.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", userID)
+	if g := change.OnlyIfUnchangedSince; g != nil {
+		if g.ChangedAt == nil {
+			q = q.Where("password_changed_at IS NULL")
+		} else {
+			q = q.Where("password_changed_at = ?", *g.ChangedAt)
+		}
+	}
+	res := q.Updates(columns)
 	if res.Error != nil {
 		return res.Error
 	}
 	if res.RowsAffected == 0 {
+		if change.OnlyIfUnchangedSince != nil {
+			return ErrPasswordChangedMeanwhile
+		}
 		return gorm.ErrRecordNotFound
 	}
 	return nil

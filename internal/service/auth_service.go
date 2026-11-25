@@ -1060,6 +1060,17 @@ func (s *authService) ResetPassword(ctx context.Context, token, newPassword stri
 		return fmt.Errorf("%w: user_id=%d", ErrUserNotFound, userID)
 	}
 
+	// #366: a link issued before the password last changed (by a reset, a
+	// change, an admin or an activation) no longer resets it, so an old link
+	// left in a mailbox cannot undo a newer password. It is used up as well.
+	// iat has one-second precision, so the change time is compared at the
+	// same precision: a link requested in the same second as a change, after
+	// it, still works (a link issued in that second before the change does
+	// too — it went to the same mailbox, less than a second earlier).
+	if user.PasswordChangedAt != nil && (claims.IssuedAt == nil || claims.IssuedAt.Before(user.PasswordChangedAt.Truncate(time.Second))) {
+		return fmt.Errorf("%w: the password changed after this link was issued", ErrInvalidToken)
+	}
+
 	hashedPassword, err := auth.HashPassword(newPassword)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
@@ -1067,10 +1078,16 @@ func (s *authService) ResetPassword(ctx context.Context, token, newPassword stri
 
 	// The new password, the cleared forced-change flag and the revocation of
 	// every existing token are one write.
+	// Written only if the password has not changed since it was read above,
+	// so a change that lands meanwhile is not overwritten by this link.
 	now := time.Now()
 	if err := s.userRepo.SetPassword(ctx, user.ID, repository.PasswordChange{
 		HashedPassword: hashedPassword, ClearMustChangePassword: true, ChangedAt: &now,
+		OnlyIfUnchangedSince: &repository.PasswordState{ChangedAt: user.PasswordChangedAt},
 	}); err != nil {
+		if errors.Is(err, repository.ErrPasswordChangedMeanwhile) {
+			return fmt.Errorf("%w: the password changed after this link was issued", ErrInvalidToken)
+		}
 		return fmt.Errorf("failed to update password: %w", err)
 	}
 
@@ -1314,8 +1331,9 @@ func (s *authService) AcceptInvite(ctx context.Context, token, name, password st
 		// The password and the verification are one write (Update never
 		// writes a password); it also moves the token version, so read the
 		// user back for the tokens issued below.
+		// Recording the change retires the reset links issued before it (#366).
 		if err := s.userRepo.SetPassword(ctx, user.ID, repository.PasswordChange{
-			HashedPassword: hashedPassword, ConfirmedAt: &now,
+			HashedPassword: hashedPassword, ConfirmedAt: &now, ChangedAt: &now,
 		}); err != nil {
 			return nil, fmt.Errorf("failed to update user: %w", err)
 		}

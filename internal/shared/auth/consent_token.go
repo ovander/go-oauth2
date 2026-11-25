@@ -45,6 +45,10 @@ type consentPayload struct {
 	// token minted from it) carries the real sign-in evidence. Absent in
 	// tokens issued before it existed: the zero value.
 	Authn *AuthnEvidence `json:"authn,omitempty"`
+	// Req binds the token to the authorization request it was issued for
+	// (see IssueConsentTokenForRequest): a digest of its parameters. Empty
+	// for a token issued without one.
+	Req string `json:"req,omitempty"`
 }
 
 // AuthnEvidence is the end-user authentication behind a grant: when it
@@ -81,6 +85,14 @@ func IssueConsentToken(userID uint, clientID string, secret []byte) (string, err
 // evidence of the sign-in that precedes the consent page, signed with the rest
 // of the payload so it cannot be altered by the browser.
 func IssueConsentTokenWithAuthn(userID uint, clientID string, authn AuthnEvidence, secret []byte) (string, error) {
+	return IssueConsentTokenForRequest(userID, clientID, authn, "", secret)
+}
+
+// IssueConsentTokenForRequest is IssueConsentTokenWithAuthn bound to one
+// authorization request: request is a digest of its parameters (the OAuth
+// handler's consentRequestBinding), returned by ValidateConsentTokenForRequest
+// for the consent POST to compare with the request it receives.
+func IssueConsentTokenForRequest(userID uint, clientID string, authn AuthnEvidence, request string, secret []byte) (string, error) {
 	if len(secret) == 0 {
 		return "", ErrConsentTokenInvalid
 	}
@@ -89,6 +101,7 @@ func IssueConsentTokenWithAuthn(userID uint, clientID string, authn AuthnEvidenc
 		UserID:   userID,
 		ClientID: clientID,
 		Exp:      time.Now().Add(consentTokenTTL).Unix(),
+		Req:      request,
 	}
 	if authn.AuthTime != 0 || len(authn.AMR) > 0 || authn.ACR != "" {
 		payload.Authn = &authn
@@ -122,13 +135,20 @@ func ValidateConsentToken(token string, secret []byte) (userID uint, clientID st
 // ValidateConsentTokenWithAuthn is ValidateConsentToken that also returns the
 // signed authentication evidence (the zero value when the token carries none).
 func ValidateConsentTokenWithAuthn(token string, secret []byte) (userID uint, clientID string, authn AuthnEvidence, err error) {
+	userID, clientID, authn, _, err = ValidateConsentTokenForRequest(token, secret)
+	return userID, clientID, authn, err
+}
+
+// ValidateConsentTokenForRequest is ValidateConsentTokenWithAuthn that also
+// returns the request binding the token was issued with ("" when none).
+func ValidateConsentTokenForRequest(token string, secret []byte) (userID uint, clientID string, authn AuthnEvidence, request string, err error) {
 	if len(secret) == 0 {
-		return 0, "", AuthnEvidence{}, ErrConsentTokenInvalid
+		return 0, "", AuthnEvidence{}, "", ErrConsentTokenInvalid
 	}
 
 	dot := strings.IndexByte(token, '.')
 	if dot < 0 {
-		return 0, "", AuthnEvidence{}, ErrConsentTokenInvalid
+		return 0, "", AuthnEvidence{}, "", ErrConsentTokenInvalid
 	}
 
 	payloadB64 := token[:dot]
@@ -140,25 +160,25 @@ func ValidateConsentTokenWithAuthn(token string, secret []byte) (userID uint, cl
 
 	// Constant-time comparison prevents timing attacks.
 	if !hmac.Equal([]byte(sigB64), []byte(expectedSig)) {
-		return 0, "", AuthnEvidence{}, ErrConsentTokenInvalid
+		return 0, "", AuthnEvidence{}, "", ErrConsentTokenInvalid
 	}
 
 	payloadJSON, err := base64.RawURLEncoding.DecodeString(payloadB64)
 	if err != nil {
-		return 0, "", AuthnEvidence{}, ErrConsentTokenInvalid
+		return 0, "", AuthnEvidence{}, "", ErrConsentTokenInvalid
 	}
 
 	var p consentPayload
 	if err := json.Unmarshal(payloadJSON, &p); err != nil {
-		return 0, "", AuthnEvidence{}, ErrConsentTokenInvalid
+		return 0, "", AuthnEvidence{}, "", ErrConsentTokenInvalid
 	}
 
 	if time.Now().Unix() > p.Exp {
-		return 0, "", AuthnEvidence{}, ErrConsentTokenExpired
+		return 0, "", AuthnEvidence{}, "", ErrConsentTokenExpired
 	}
 
 	if p.Authn != nil {
 		authn = *p.Authn
 	}
-	return p.UserID, p.ClientID, authn, nil
+	return p.UserID, p.ClientID, authn, p.Req, nil
 }

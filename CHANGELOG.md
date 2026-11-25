@@ -12,6 +12,16 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **The consent step acts only on the request it was shown for, and honours `prompt=login`.** The
+  consent POST took the authorization parameters from the submitted form, so a form edited after
+  the consent page was rendered could change the scope, the PKCE challenge, the nonce or drop
+  `max_age`, and `prompt=login` was checked only when the page was shown. The consent token now
+  carries a digest of the request it was issued for (client, response type, `redirect_uri`,
+  scope, state, nonce, PKCE challenge, `max_age`, `prompt=login`); a form that differs, or a token
+  without one, is refused. `prompt=login` is carried through the login and consent forms, and the
+  consent step answers `login_required` unless the sign-in happened on the login form. Deploy
+  note: a consent page open during the upgrade asks to sign in again (#366).
+
 - **A replayed authorization code can revoke the tokens it was redeemed for** (`CODE_REPLAY_MODE`,
   default `off`). A code presented again after its redemption was refused, but the tokens issued
   for it stayed valid, although the replay means someone else holds the code (RFC 6749 §4.1.2).

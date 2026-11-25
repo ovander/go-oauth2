@@ -196,6 +196,14 @@ func TestMigration0035_AuthorizationCodeIssuedTokens(t *testing.T) {
 	if got := cols(); got != 2 {
 		t.Fatalf("upgrade: %d of the 2 columns", got)
 	}
+	var idx int64
+	if err := db.Raw(`SELECT count(*) FROM pg_indexes
+		WHERE tablename = 'authorization_codes' AND indexname = 'idx_authorization_codes_token_family'`).Scan(&idx).Error; err != nil {
+		t.Fatalf("look up the index: %v", err)
+	}
+	if idx != 1 {
+		t.Fatal("upgrade: the token_family index is missing")
+	}
 }
 
 // 0030 adds policy_decisions.obligations (NOT NULL, default empty) on a fresh

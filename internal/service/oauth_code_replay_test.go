@@ -114,7 +114,40 @@ func (r recordingCodeRepo) MarkAsUsedWithTokens(_ context.Context, code, family,
 	})
 }
 
-var _ repository.AuthorizationCodeRedeemer = recordingCodeRepo{}
+func (r recordingCodeRepo) KeepFamilyUntil(_ context.Context, family string, keepUntil time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for k, c := range r.codes {
+		if c.Used && c.TokenFamily == family && keepUntil.After(c.ExpiresAt) {
+			c.ExpiresAt = keepUntil
+			r.codes[k] = c
+		}
+	}
+	return nil
+}
+
+// stored says whether a code is still stored.
+func (r *copyCodeRepo) stored(code string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, ok := r.codes[code]
+	return ok
+}
+
+// setExpiry sets a stored code's expiry.
+func (r *copyCodeRepo) setExpiry(t *testing.T, code string, at time.Time) {
+	t.Helper()
+	c := r.get(t, code)
+	c.ExpiresAt = at
+	r.mu.Lock()
+	r.codes[code] = c
+	r.mu.Unlock()
+}
+
+var (
+	_ repository.AuthorizationCodeRedeemer       = recordingCodeRepo{}
+	_ repository.AuthorizationCodeFamilyRetainer = recordingCodeRepo{}
+)
 
 type replayFixture struct {
 	svc   *oauthService
@@ -268,6 +301,9 @@ func TestCodeReplay_OffRefusesAsBefore(t *testing.T) {
 	if f.audit.last.Details["reason"] != "invalid_or_used_code" || f.audit.last.UserID != nil {
 		t.Fatalf("off audit = %+v, want the historical invalid_or_used_code", f.audit.last)
 	}
+	if f.codes.stored(f.code) {
+		t.Error("off left the replayed code stored")
+	}
 	if f.accessRevoked(t) {
 		t.Error("off revoked the access token")
 	}
@@ -332,7 +368,36 @@ func TestCodeReplay_EnforceRevokesOnlyForTheCodesClient(t *testing.T) {
 			if _, err := f.refresh(f.resp.RefreshToken); err != nil {
 				t.Errorf("an unauthenticated replay revoked the refresh token: %v", err)
 			}
+			// It did not erase the evidence: the code's own client, replaying
+			// it afterwards, still revokes.
+			if !f.codes.stored(f.code) {
+				t.Fatal("an unauthenticated replay removed the code")
+			}
+			if _, err := f.exchange(); !errors.Is(err, ErrInvalidCode) {
+				t.Fatalf("authenticated replay = %v", err)
+			}
+			if ev := f.audit.last; ev.Details["revoked"] != "tokens" || !f.accessRevoked(t) {
+				t.Fatalf("the authenticated replay after an unauthenticated one did not revoke: %+v", ev)
+			}
+			if f.codes.stored(f.code) {
+				t.Error("the authenticated replay left the code stored")
+			}
 		})
+	}
+}
+
+// Each refresh rotation keeps the family's code for another retention, so the
+// code outlives no token of its family.
+func TestCodeReplay_RefreshKeepsTheFamilysCode(t *testing.T) {
+	retention := 7 * 24 * time.Hour
+	f := newReplayFixtureWith(t, codeReplayModeEnforce, true, auth.CodeStoreConfig{TTL: 10 * time.Minute, ReplayRetention: retention})
+	// As if the retention had nearly run out.
+	f.codes.setExpiry(t, f.code, time.Now().Add(time.Minute))
+	if _, err := f.refresh(f.resp.RefreshToken); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if exp := f.codes.get(t, f.code).ExpiresAt; exp.Before(time.Now().Add(retention - time.Minute)) {
+		t.Fatalf("after a rotation the code expires at %v, want about %v from now", exp, retention)
 	}
 }
 

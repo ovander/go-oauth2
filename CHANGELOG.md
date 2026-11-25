@@ -21,13 +21,14 @@ Capabilities**, non-breaking).
   it) and that access token, as seen by introspection, userinfo and the admin API (a resource
   server that only verifies the JWT accepts it until it expires) — when the replay authenticates
   as the code's client (its secret, or for a public client the code's PKCE verifier), so that
-  whoever merely saw a used code cannot end the sign-in (`revoked: none_unauthenticated`). A used
-  code is recognised as a replay even after it has expired, or when it loses a race with its own
-  redemption, and while a replay mode is on a redeemed code is kept for the refresh-token TTL so
-  the expiry sweep does not erase it. Each code signals once; codes redeemed before the migration
-  are audited only. Deploy note: migration 0035 (adds two nullable columns); new variable
-  `CODE_REPLAY_MODE`, default `off`; with it on, `authorization_codes` keeps one row per sign-in
-  for the refresh-token TTL (#366).
+  whoever merely saw a used code cannot end the sign-in (`revoked: none_unauthenticated`), nor
+  erase the code before its client replays it. A used code is recognised as a replay even after
+  it has expired, or when it loses a race with its own redemption, and while a replay mode is on a
+  redeemed code is kept as long as its refresh-token family can be refreshed (the refresh-token
+  TTL, extended at each rotation), so the expiry sweep does not erase it. An authenticated replay
+  signals once; codes redeemed before the migration are audited only. Deploy note: migration 0035
+  (two nullable columns and an index); new variable `CODE_REPLAY_MODE`, default `off`; with it
+  on, `authorization_codes` keeps one row per active sign-in, and each refresh updates it (#366).
 
 - **The decide endpoint no longer reveals who the global admins are.** By a bare `user_id`, a
   subject who is not a member of the calling application got `404 unknown subject` unless they

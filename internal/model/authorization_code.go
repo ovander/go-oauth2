@@ -29,7 +29,7 @@ type AuthorizationCode struct {
 	// with the redemption so a replay of the code can revoke them (RFC 6749
 	// §4.1.2, CODE_REPLAY_MODE). Empty until redeemed, and on codes redeemed
 	// before migration 0035.
-	TokenFamily string    `gorm:"column:token_family;size:64" json:"-"`
+	TokenFamily string    `gorm:"column:token_family;size:64;index" json:"-"`
 	AccessJTI   string    `gorm:"column:access_jti;size:64" json:"-"`
 	Used        bool      `gorm:"column:used;default:false;index" json:"used"`
 	ExpiresAt   time.Time `gorm:"column:expires_at;not null;index" json:"expires_at"`

@@ -29,6 +29,14 @@ type AuthorizationCodeRedeemer interface {
 	MarkAsUsedWithTokens(ctx context.Context, code, tokenFamily, accessJTI string, keepUntil time.Time) error
 }
 
+// AuthorizationCodeFamilyRetainer is implemented by a code repository that
+// can keep the redeemed code of a refresh-token family for longer.
+type AuthorizationCodeFamilyRetainer interface {
+	// KeepFamilyUntil keeps the used code whose tokens are in tokenFamily
+	// until keepUntil, when that is later than its current expiry.
+	KeepFamilyUntil(ctx context.Context, tokenFamily string, keepUntil time.Time) error
+}
+
 type authorizationCodeRepository struct {
 	db *gorm.DB
 }
@@ -66,6 +74,16 @@ func (r *authorizationCodeRepository) MarkAsUsedWithTokens(ctx context.Context, 
 		return gorm.ErrRecordNotFound
 	}
 	return nil
+}
+
+// KeepFamilyUntil implements AuthorizationCodeFamilyRetainer.
+func (r *authorizationCodeRepository) KeepFamilyUntil(ctx context.Context, tokenFamily string, keepUntil time.Time) error {
+	if tokenFamily == "" {
+		return nil
+	}
+	return r.db.WithContext(ctx).Model(&model.AuthorizationCode{}).
+		Where("token_family = ? AND used = ?", tokenFamily, true).
+		Update("expires_at", gorm.Expr("GREATEST(expires_at, ?)", keepUntil)).Error
 }
 
 func (r *authorizationCodeRepository) MarkAsUsed(ctx context.Context, code string) error {

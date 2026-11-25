@@ -127,11 +127,13 @@ var ErrCodeReplayed = errors.New("authorization code already redeemed")
 
 // RedeemCode retrieves and marks an authorization code as used atomically.
 // It returns nil, nil when the code does not exist or is expired. A code
-// already used is a replay: RedeemCode deletes it, so it is reported once, and
-// returns it with ErrCodeReplayed; its TokenFamily and AccessJTI say what it
-// was redeemed for. A code redeemed now gets a new TokenFamily and AccessJTI,
-// recorded with the redemption itself when the repository supports it, for
-// the caller to mint the tokens with.
+// already used is a replay: RedeemCode returns it with ErrCodeReplayed, its
+// TokenFamily and AccessJTI saying what it was redeemed for, and leaves it
+// stored: the caller deletes it (DeleteCode) once the replay is handled, so
+// that a replay it does not trust cannot erase the evidence. A code redeemed
+// now gets a new TokenFamily and AccessJTI, recorded with the redemption
+// itself when the repository supports it, for the caller to mint the tokens
+// with.
 func (cs *CodeStore) RedeemCode(ctx context.Context, code string) (*model.AuthorizationCode, error) {
 	authCode, err := cs.repo.FindByCode(ctx, code)
 	if err != nil {
@@ -141,8 +143,6 @@ func (cs *CodeStore) RedeemCode(ctx context.Context, code string) (*model.Author
 	// A used code is a replay whether or not it has expired since: the
 	// tokens it was redeemed for may still be valid.
 	if authCode.Used {
-		// Delete to prevent further attempts
-		_ = cs.repo.Delete(ctx, code)
 		return authCode, ErrCodeReplayed
 	}
 
@@ -168,7 +168,6 @@ func (cs *CodeStore) RedeemCode(ctx context.Context, code string) (*model.Author
 		// Another request redeemed it between the read and the update: this
 		// one is a replay of a code redeemed a moment ago.
 		if again, ferr := cs.repo.FindByCode(ctx, code); ferr == nil && again != nil && again.Used {
-			_ = cs.repo.Delete(ctx, code)
 			return again, ErrCodeReplayed
 		}
 		return nil, nil
@@ -176,6 +175,18 @@ func (cs *CodeStore) RedeemCode(ctx context.Context, code string) (*model.Author
 	authCode.Used, authCode.TokenFamily, authCode.AccessJTI = true, family, accessJTI
 
 	return authCode, nil
+}
+
+// KeepFamilyCode extends, by the replay retention, how long the redeemed code
+// of a refresh-token family is kept: a refresh rotation calls it, so that the
+// code stays recognisable as long as its family can be refreshed. It does
+// nothing without a replay retention or a repository that supports it.
+func (cs *CodeStore) KeepFamilyCode(ctx context.Context, tokenFamily string) error {
+	r, ok := cs.repo.(repository.AuthorizationCodeFamilyRetainer)
+	if cs.replayRetention <= 0 || tokenFamily == "" || !ok {
+		return nil
+	}
+	return r.KeepFamilyUntil(ctx, tokenFamily, time.Now().Add(cs.replayRetention))
 }
 
 // GetCode retrieves a code without marking it as used (for validation only)

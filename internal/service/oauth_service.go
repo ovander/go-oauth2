@@ -616,10 +616,13 @@ func tokenOutcome(err error) string {
 func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto.TokenRequest, clientID, clientSecret string) (*dto.TokenResponse, error) {
 	// Redeem the code atomically
 	authCode, err := s.codeStore.RedeemCode(ctx, req.Code)
-	if errors.Is(err, auth.ErrCodeReplayed) && authCode != nil &&
-		(s.codeReplayMode == codeReplayModeObserve || s.codeReplayMode == codeReplayModeEnforce) {
-		s.signalCodeReplay(ctx, authCode, req, clientID, clientSecret)
-		return nil, ErrInvalidCode
+	if errors.Is(err, auth.ErrCodeReplayed) && authCode != nil {
+		if s.codeReplayMode == codeReplayModeObserve || s.codeReplayMode == codeReplayModeEnforce {
+			s.signalCodeReplay(ctx, authCode, req, clientID, clientSecret)
+			return nil, ErrInvalidCode
+		}
+		// Off: the replayed code is removed, as it always was.
+		_ = s.codeStore.DeleteCode(ctx, req.Code)
 	}
 	if err != nil || authCode == nil {
 		// RFC-007: a failed code redemption (invalid, expired, or already-used
@@ -996,6 +999,15 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 		}
 	}
 
+	// CODE_REPLAY_MODE: the code this family was redeemed from stays
+	// recognisable as long as the family can be refreshed.
+	if claims.Family != "" && s.codeStore != nil &&
+		(s.codeReplayMode == codeReplayModeObserve || s.codeReplayMode == codeReplayModeEnforce) {
+		if err := s.codeStore.KeepFamilyCode(ctx, claims.Family); err != nil {
+			logger.FromContext(ctx).Errorf("RFC 6749 §4.1.2: could not extend the retention of the code of a refresh family: %v", err)
+		}
+	}
+
 	roles := []string{string(userAppRole.Role)}
 
 	// Log token refresh with token types
@@ -1138,8 +1150,9 @@ func (s *oauthService) signalRefreshReuse(ctx context.Context, claims *auth.Refr
 // also revokes the tokens the code was redeemed for, which the code may have
 // been stolen to obtain — but only when the request authenticates as the
 // code's client, so that whoever merely saw a used code (in a log, a
-// referrer) cannot end the user's sign-in. The code store reports each code
-// once.
+// referrer) cannot end the user's sign-in. An authenticated replay then
+// removes the code, so it signals once; an unauthenticated one leaves it, so
+// that it cannot erase the evidence a later authenticated replay needs.
 func (s *oauthService) signalCodeReplay(ctx context.Context, code *model.AuthorizationCode, req dto.TokenRequest, clientID, clientSecret string) {
 	details := map[string]interface{}{
 		"client_id": clientID,
@@ -1149,11 +1162,18 @@ func (s *oauthService) signalCodeReplay(ctx context.Context, code *model.Authori
 	if clientID != code.ClientID {
 		details["code_client_id"] = code.ClientID
 	}
+	authenticated := s.replayFromCodeClient(ctx, code, req, clientID, clientSecret)
+	details["client_authenticated"] = authenticated
 	if s.codeReplayMode == codeReplayModeEnforce {
-		if s.replayFromCodeClient(ctx, code, req, clientID, clientSecret) {
+		if authenticated {
 			details["revoked"] = s.revokeCodeTokens(ctx, code)
 		} else {
 			details["revoked"] = "none_unauthenticated"
+		}
+	}
+	if authenticated {
+		if err := s.codeStore.DeleteCode(ctx, code.Code); err != nil {
+			logger.FromContext(ctx).Errorf("RFC 6749 §4.1.2: could not remove a replayed code of user %d: %v", code.UserID, err)
 		}
 	}
 	uid := code.UserID

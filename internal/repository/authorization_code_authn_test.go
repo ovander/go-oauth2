@@ -103,3 +103,45 @@ func TestAuthorizationCode_MarkAsUsedWithTokens(t *testing.T) {
 		t.Fatalf("a second redemption overwrote the recorded tokens: %+v", got)
 	}
 }
+
+// KeepFamilyUntil extends the expiry of the used code of a refresh-token
+// family, never shortens it, and leaves other codes alone.
+func TestAuthorizationCode_KeepFamilyUntil(t *testing.T) {
+	repo := codeRepoInTx(t)
+	retainer, ok := repo.(repository.AuthorizationCodeFamilyRetainer)
+	if !ok {
+		t.Fatal("the GORM code repository cannot keep a family's code")
+	}
+	redeemer := repo.(repository.AuthorizationCodeRedeemer)
+	ctx := context.Background()
+	tag := fmt.Sprint(time.Now().UnixNano())
+	exp := time.Now().Add(time.Minute)
+	mine := &model.AuthorizationCode{Code: "fam-mine-" + tag, UserID: 1, AppID: 1, ClientID: "c", RedirectURI: "https://a/cb", ExpiresAt: exp}
+	other := &model.AuthorizationCode{Code: "fam-other-" + tag, UserID: 1, AppID: 1, ClientID: "c", RedirectURI: "https://a/cb", ExpiresAt: exp}
+	for _, c := range []*model.AuthorizationCode{mine, other} {
+		if err := repo.Create(ctx, c); err != nil {
+			t.Fatalf("create: %v", err)
+		}
+	}
+	if err := redeemer.MarkAsUsedWithTokens(ctx, mine.Code, "family-"+tag, "jti-a-"+tag, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := redeemer.MarkAsUsedWithTokens(ctx, other.Code, "other-"+tag, "jti-b-"+tag, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	keep := time.Now().Add(7 * 24 * time.Hour)
+	if err := retainer.KeepFamilyUntil(ctx, "family-"+tag, keep); err != nil {
+		t.Fatalf("KeepFamilyUntil: %v", err)
+	}
+	if err := retainer.KeepFamilyUntil(ctx, "family-"+tag, time.Now()); err != nil {
+		t.Fatalf("KeepFamilyUntil (earlier): %v", err)
+	}
+	got, err := repo.FindByCode(ctx, mine.Code)
+	if err != nil || got.ExpiresAt.Before(keep.Add(-time.Second)) {
+		t.Fatalf("the family's code = %+v, %v; want kept until %v", got, err, keep)
+	}
+	got, err = repo.FindByCode(ctx, other.Code)
+	if err != nil || got.ExpiresAt.After(exp.Add(time.Second)) {
+		t.Fatalf("another family's code was extended: %+v, %v", got, err)
+	}
+}

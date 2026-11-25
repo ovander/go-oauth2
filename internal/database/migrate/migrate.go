@@ -739,8 +739,9 @@ var migrations = []Migration{
 	},
 	{
 		// 0035 (#366): the tokens an authorization code was redeemed for, so
-		// that a replay of the code can revoke them (CODE_REPLAY_MODE). A fresh
-		// install gets the columns from the model.
+		// that a replay of the code can revoke them (CODE_REPLAY_MODE), and an
+		// index to find a code by its refresh-token family. A fresh install
+		// gets the columns and the index from the model.
 		ID:   "0035",
 		Name: "add_authorization_codes.token_family_access_jti",
 		Run: func(db *gorm.DB) error {
@@ -755,7 +756,10 @@ var migrations = []Migration{
 					return err
 				}
 			}
-			return nil
+			// A refresh rotation extends the retention of its family's code.
+			// The name is the one GORM derives from the model's index tag.
+			return db.Exec(`CREATE INDEX IF NOT EXISTS idx_authorization_codes_token_family
+				ON authorization_codes (token_family)`).Error
 		},
 	},
 }

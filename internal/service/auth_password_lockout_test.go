@@ -144,9 +144,18 @@ func TestPasswordLockout_EveryPath(t *testing.T) {
 			if audit.last == nil || audit.last.EventType != model.SecurityEventLoginFailed || audit.last.Details["account_locked"] != true {
 				t.Fatalf("the attempt on a locked account was not audited: %+v", audit.last)
 			}
-			// The right password learns about the lock.
+			if audit.last.Details["password_verified"] != false {
+				t.Fatalf("a wrong password on a locked account audited password_verified %v", audit.last.Details["password_verified"])
+			}
+			// The right password learns about the lock, and is audited too:
+			// whoever typed it knows the credential.
+			audit.last = nil
 			if err := tc.try(s, lockoutTestPassword); !errors.Is(err, ErrAccountLocked) {
 				t.Fatalf("right password on a locked account: %v, want ErrAccountLocked", err)
+			}
+			if audit.last == nil || audit.last.EventType != model.SecurityEventLoginFailed ||
+				audit.last.Details["account_locked"] != true || audit.last.Details["password_verified"] != true {
+				t.Fatalf("the right password on a locked account was not audited: %+v", audit.last)
 			}
 		})
 	}

@@ -341,17 +341,20 @@ func rateLimitBy(limiter Limiter, keyOf func(*http.Request) string) func(http.Ha
 // trustedCIDRs.  If trustedCIDRs is nil or empty the function always returns
 // the bare RemoteAddr, making it safe even when the server is exposed directly
 // to the internet.
+//
+// X-Forwarded-For is read from the right: each proxy appends the address it
+// received the request from, so the entries a trusted proxy vouches for are
+// at the end, and anything to their left may have been sent by the client
+// itself. The client is the right-most entry that is not a trusted proxy
+// (#366); the left-most entry is used only when every entry is a trusted
+// proxy. A malformed entry ends the walk: nothing to its left is believed.
 func GetClientIPSafe(r *http.Request, trustedCIDRs []*net.IPNet) string {
 	remoteIP := extractRemoteIP(r.RemoteAddr)
 
 	if len(trustedCIDRs) > 0 && isIPInCIDRs(remoteIP, trustedCIDRs) {
 		// Connection comes from a trusted proxy — honour its forwarding headers.
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			// XFF is a comma-separated list; the leftmost entry is the original client.
-			if idx := strings.Index(xff, ","); idx != -1 {
-				return strings.TrimSpace(xff[:idx])
-			}
-			return strings.TrimSpace(xff)
+			return clientFromForwardedFor(xff, trustedCIDRs, remoteIP)
 		}
 		if xri := r.Header.Get("X-Real-IP"); xri != "" {
 			return strings.TrimSpace(xri)
@@ -359,6 +362,41 @@ func GetClientIPSafe(r *http.Request, trustedCIDRs []*net.IPNet) string {
 	}
 
 	return remoteIP
+}
+
+// clientFromForwardedFor returns the right-most X-Forwarded-For entry that is
+// not a trusted proxy. When every entry is trusted it returns the left-most;
+// when the walk meets a malformed entry first, the last trusted one seen, or
+// fallback (the immediate peer) when there is none. An entry with a port
+// ("1.2.3.4:5678", "[2001:db8::1]:443", as some proxies write them) counts
+// as its address. An empty entry is malformed: only a trusted proxy writes
+// that position, and skipping it would believe the entry to its left.
+func clientFromForwardedFor(xff string, trustedCIDRs []*net.IPNet, fallback string) string {
+	entries := strings.Split(xff, ",")
+	client := fallback
+	for i := len(entries) - 1; i >= 0; i-- {
+		entry := forwardedAddress(strings.TrimSpace(entries[i]))
+		if entry == "" {
+			break
+		}
+		client = entry
+		if !isIPInCIDRs(entry, trustedCIDRs) {
+			break
+		}
+	}
+	return client
+}
+
+// forwardedAddress is the IP address of one X-Forwarded-For entry, with any
+// port removed, or "" when the entry is not an address.
+func forwardedAddress(entry string) string {
+	if ip := net.ParseIP(entry); ip != nil {
+		return entry
+	}
+	if host, _, err := net.SplitHostPort(entry); err == nil && net.ParseIP(host) != nil {
+		return host
+	}
+	return ""
 }
 
 // extractRemoteIP strips the port from a "host:port" address.

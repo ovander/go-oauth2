@@ -15,7 +15,8 @@ Capabilities**, non-breaking).
 - **Two token checks no longer pass when the database errors.** If the list of revoked tokens
   could not be read, a bearer token was accepted; it is now refused with `503` and `Retry-After`
   (no `invalid_token` challenge, so a client retries instead of discarding its token), on the
-  user API, the service-account API, and as anonymous on the optional-auth routes. If a
+  user API, the service-account API and the optional-auth routes (`/oauth/logout`,
+  `/oauth/revoke`, which must not report a revocation they could not tie to the caller). If a
   refreshed token could not be marked as used, the refresh succeeded and the old token stayed
   redeemable; the refresh is now refused with `500 server_error`, and the client retries with
   the old token. Deploy note: none (#366).

@@ -44,9 +44,10 @@ type AuthRejectFunc func(r *http.Request, reason AuthRejectReason, detail string
 //
 // A store error is returned, and every caller refuses the token on it (fail
 // closed, #366): a revoked token must not be accepted because the list of
-// revoked tokens could not be read. The routes that require a token answer
-// 503, not 401, so a client retries instead of discarding its token over a
-// transient outage; the optional-auth routes serve the request anonymously.
+// revoked tokens could not be read. The callers answer 503, not 401, so a
+// client retries instead of discarding its token over a transient outage —
+// on the optional-auth routes too, where serving the request anonymously
+// would let a logout or a revocation report success without revoking.
 func isRevoked(ctx context.Context, usedTokenRepo repository.UsedTokenRepository, jti string) (bool, error) {
 	if usedTokenRepo == nil || jti == "" {
 		return false, nil
@@ -255,9 +256,17 @@ func OptionalAuthMiddleware(tokenService *auth.TokenService, userRepo repository
 				return
 			}
 
-			// EPIC-14: a per-token-revoked token is treated as unauthenticated,
-			// and so is one whose revocation status cannot be read.
-			if revoked, err := isRevoked(r.Context(), usedTokenRepo, claims.ID); err != nil || revoked {
+			// EPIC-14: a per-token-revoked token is treated as unauthenticated.
+			// One whose revocation status cannot be read is refused with 503
+			// instead (#366): serving the request anonymously would let
+			// /oauth/logout and /oauth/revoke answer success without revoking
+			// the caller's tokens.
+			revoked, err := isRevoked(r.Context(), usedTokenRepo, claims.ID)
+			if err != nil {
+				writeUnavailable(w, revocationUnavailable)
+				return
+			}
+			if revoked {
 				next.ServeHTTP(w, r)
 				return
 			}

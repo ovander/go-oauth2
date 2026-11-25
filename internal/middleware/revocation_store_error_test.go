@@ -45,23 +45,39 @@ func TestRevocationStoreError_AuthMiddlewareRefuses(t *testing.T) {
 	}
 }
 
-func TestRevocationStoreError_OptionalAuthIsAnonymous(t *testing.T) {
+// On the optional-auth routes (/oauth/logout, /oauth/revoke) a presented
+// token whose revocation cannot be read is refused with 503 too: served
+// anonymously, a logout or a revocation would report success without
+// revoking the caller's tokens. A request without a token is unaffected.
+func TestRevocationStoreError_OptionalAuthRefusesAPresentedToken(t *testing.T) {
 	t.Parallel()
 	ts := newFind01TokenService(t)
 	token := mintToken(t, ts, 9, 1)
 	repo := &find01UserRepo{user: &model.User{ID: 9, Email: "u@example.com", TokenVersion: 1}}
-	var ran, sawUser bool
+	ran := false
 	inner := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		ran = true
-		_, sawUser = r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
+		if _, ok := r.Context().Value(contextkeys.CurrentUserKey).(*model.User); ok {
+			t.Error("the user was identified despite the store error")
+		}
 	})
+	h := OptionalAuthMiddleware(ts, repo, &revokeStubRepo{err: errStoreDown})(inner)
+
 	w, req := makeAuthRequest(token)
-	OptionalAuthMiddleware(ts, repo, &revokeStubRepo{err: errStoreDown})(inner).ServeHTTP(w, req)
-	if !ran || w.Code != http.StatusOK {
-		t.Fatalf("the optional route must still be served: ran %v, status %d", ran, w.Code)
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusServiceUnavailable || ran {
+		t.Fatalf("presented token: status %d (ran %v), want 503 and not served", w.Code, ran)
 	}
-	if sawUser {
-		t.Error("a token whose revocation cannot be read must not identify the user")
+	if w.Header().Get("Retry-After") == "" || w.Header().Get("WWW-Authenticate") != "" {
+		t.Errorf("503 headers: Retry-After %q, WWW-Authenticate %q", w.Header().Get("Retry-After"), w.Header().Get("WWW-Authenticate"))
+	}
+
+	// No token: served anonymously, as before.
+	ran = false
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/oauth/logout", nil))
+	if !ran || w.Code != http.StatusOK {
+		t.Fatalf("no token: status %d (ran %v), want served", w.Code, ran)
 	}
 }
 

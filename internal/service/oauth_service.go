@@ -965,9 +965,12 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 				s.signalRefreshReuse(ctx, claims, clientID, user.ID, true)
 				return nil, fmt.Errorf("%w: concurrent refresh token replay detected", ErrInvalidToken)
 			}
-			// Any other DB error is non-fatal: log it but don't break the
-			// user's session; the IsUsed pre-check provides the main guard.
-			logger.FromContext(ctx).Errorf("HIGH-04: failed to mark refresh token JTI as used: %v", markErr)
+			// Any other error: the old token could not be retired, so it
+			// would stay redeemable alongside the new one. Refuse (fail
+			// closed, #366) with a server error rather than invalid_grant:
+			// the old token is still good, and the client retries with it.
+			logger.FromContext(ctx).Errorf("HIGH-04: failed to mark refresh token JTI as used, refusing the refresh: %v", markErr)
+			return nil, fmt.Errorf("failed to record the use of the refresh token: %w", markErr)
 		}
 	}
 

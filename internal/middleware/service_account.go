@@ -64,7 +64,12 @@ func ServiceAccountMiddlewareWithDPoP(binding *DPoPBinding, appRepo repository.A
 				writeAuthError(w, "invalid token claims", http.StatusUnauthorized)
 				return
 			}
-			if isRevoked(r.Context(), usedTokenRepo, claims.ID) {
+			revoked, err := isRevoked(r.Context(), usedTokenRepo, claims.ID)
+			if err != nil {
+				writeUnavailable(w, revocationUnavailable)
+				return
+			}
+			if revoked {
 				writeAuthError(w, "token has been revoked", http.StatusUnauthorized)
 				return
 			}

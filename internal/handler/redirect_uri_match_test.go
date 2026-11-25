@@ -32,7 +32,7 @@ func TestAuthorize_ExactRedirectURIUnderEnforce(t *testing.T) {
 	app := &model.App{ClientID: "my-app", Name: "Test App", Active: true, RedirectURIs: model.StringArray{"https://app.example.com/cb"}}
 	appSvc := &critAppService{getByClientID: func(_ context.Context, _ string) (*model.App, error) { return app, nil }}
 	checks := &exactCheck{}
-	page := func(exact bool, redirectURI string) string {
+	page := func(exact bool, redirectURI string) *httptest.ResponseRecorder {
 		h := newCritTestHandler(appSvc, &critOAuthService{}, &critAuthService{})
 		if exact {
 			h.SetRedirectURICheck(checks.check)
@@ -40,17 +40,22 @@ func TestAuthorize_ExactRedirectURIUnderEnforce(t *testing.T) {
 		target := "/oauth/authorize?response_type=code&client_id=my-app&state=s&redirect_uri=" + url.QueryEscape(redirectURI)
 		w := httptest.NewRecorder()
 		h.Authorize(w, httptest.NewRequest(http.MethodGet, target, nil))
-		return w.Body.String()
+		return w
+	}
+	// signInPage reports whether w is the sign-in form of an accepted request.
+	signInPage := func(w *httptest.ResponseRecorder) bool {
+		body := w.Body.String()
+		return w.Code == http.StatusOK && strings.Contains(body, `name="csrf_token"`) && !strings.Contains(body, "not registered")
 	}
 	const inexact = "https://app.example.com/cb/"
-	if body := page(false, inexact); strings.Contains(body, "not registered") {
-		t.Fatal("off: a normalized match was refused")
+	if w := page(false, inexact); !signInPage(w) {
+		t.Fatalf("off: a normalized match did not get the sign-in page (%d)", w.Code)
 	}
-	if body := page(true, inexact); !strings.Contains(body, "not registered") {
-		t.Fatalf("enforce: a normalized-only match was not refused: %.200s", body)
+	if w := page(true, inexact); signInPage(w) || !strings.Contains(w.Body.String(), "not registered") {
+		t.Fatalf("enforce: a normalized-only match was not refused as unregistered: %d %.200s", w.Code, w.Body.String())
 	}
-	if body := page(true, "https://app.example.com/cb"); strings.Contains(body, "not registered") {
-		t.Fatal("enforce: the exact registered URI was refused")
+	if w := page(true, "https://app.example.com/cb"); !signInPage(w) {
+		t.Fatalf("enforce: the exact registered URI did not get the sign-in page (%d)", w.Code)
 	}
 	if checks.refused != 1 {
 		t.Errorf("the service check refused %d URIs, want 1: the refusal must go through it, to be audited", checks.refused)
@@ -79,8 +84,10 @@ func TestEndSession_ExactPostLogoutURIUnderEnforce(t *testing.T) {
 	if w := logout(false, inexact); w.Code != http.StatusFound {
 		t.Fatalf("off: a normalized match did not redirect (%d)", w.Code)
 	}
-	if w := logout(true, inexact); w.Code == http.StatusFound {
-		t.Fatalf("enforce: redirected to a normalized-only match: %s", w.Header().Get("Location"))
+	// A refused post_logout_redirect_uri is not an error: the logout
+	// completes, answered in JSON instead of a redirect.
+	if w := logout(true, inexact); w.Code != http.StatusOK || w.Header().Get("Location") != "" {
+		t.Fatalf("enforce: a normalized-only match = %d (Location %q), want the 200 JSON answer", w.Code, w.Header().Get("Location"))
 	}
 	if w := logout(true, registered); w.Code != http.StatusFound || w.Header().Get("Location") != registered {
 		t.Fatalf("enforce: the exact URI did not redirect (%d %s)", w.Code, w.Header().Get("Location"))

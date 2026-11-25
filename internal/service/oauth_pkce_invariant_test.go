@@ -45,17 +45,55 @@ func TestApp_PKCERequired(t *testing.T) {
 		name        string
 		requirePKCE bool
 		isPublic    bool
+		secretHash  string
 		want        bool
 	}{
-		{"explicit flag", true, false, true},
-		{"public client", false, true, true},
-		{"public and flag", true, true, true},
-		{"confidential, no flag", false, false, false},
+		{"explicit flag", true, false, "h", true},
+		{"public client", false, true, "", true},
+		{"public and flag", true, true, "", true},
+		{"confidential, no flag", false, false, "h", false},
+		// Not flagged public, but no secret to authenticate with (#366): PKCE
+		// is the only proof the code is redeemed by whoever asked for it.
+		{"non-public without a secret", false, false, "", true},
 	}
 	for _, c := range cases {
-		a := &model.App{RequirePKCE: c.requirePKCE, IsPublic: c.isPublic}
+		a := &model.App{RequirePKCE: c.requirePKCE, IsPublic: c.isPublic, ClientSecretHash: c.secretHash}
 		if got := a.PKCERequired(); got != c.want {
 			t.Errorf("%s: PKCERequired() = %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+// A client not flagged public but stored without a secret cannot authenticate
+// at the token endpoint, so it must use PKCE (#366): without a challenge its
+// authorization request is refused. With a secret it may omit PKCE.
+func TestPKCEInvariant_ClientWithoutASecret_MustUsePKCE(t *testing.T) {
+	for name, tc := range map[string]struct {
+		secretHash string
+		wantPKCE   bool
+	}{
+		"no secret":   {"", true},
+		"with secret": {"$2a$12$placeholderplaceholderplaceholderplaceholderplaceho", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			user := &model.User{ID: 22, Email: "c@example.com", TokenVersion: 1}
+			app := &model.App{
+				ID: 13, ClientID: "no-secret", Active: true, IsPublic: false, RequirePKCE: false,
+				ClientSecretHash: tc.secretHash, RedirectURIs: model.StringArray{"https://app.example.com/cb"},
+			}
+			svc, _ := newMedSvc(t, newMemUsedTokenRepo(), app, user)
+			req := dto.AuthorizeRequest{ResponseType: "code", ClientID: "no-secret", RedirectURI: "https://app.example.com/cb", Scope: "openid", State: "s"}
+			_, err := svc.Authorize(context.Background(), req, user.ID)
+			if tc.wantPKCE {
+				if !errors.Is(err, ErrPKCERequired) {
+					t.Fatalf("Authorize without a challenge = %v, want ErrPKCERequired", err)
+				}
+				return
+			}
+			// With a secret, the request without a challenge is accepted.
+			if err != nil {
+				t.Fatalf("Authorize without a challenge for a client with a secret = %v, want a code", err)
+			}
+		})
 	}
 }

@@ -706,7 +706,7 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 	// allowed confidential clients to exchange codes without authenticating
 	// by simply omitting the secret.  We now require it whenever the app
 	// has a stored hash.
-	if app.ClientSecretHash != "" {
+	if app.IsConfidential() {
 		if clientSecret == "" {
 			s.logClientAuthFailed(ctx, clientID, "missing_secret", &app.ID)
 			return nil, fmt.Errorf("%w: client_secret required for confidential client", ErrInvalidCredentials)
@@ -843,7 +843,7 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 		return nil, err
 	}
 
-	if app.ClientSecretHash != "" {
+	if app.IsConfidential() {
 		if clientSecret == "" {
 			s.logClientAuthFailed(ctx, clientID, "missing_secret", &app.ID)
 			return nil, fmt.Errorf("%w: client_secret required for confidential client", ErrInvalidCredentials)
@@ -1212,7 +1212,7 @@ func (s *oauthService) replayFromCodeClient(ctx context.Context, code *model.Aut
 	if err != nil || app == nil {
 		return false
 	}
-	if app.ClientSecretHash != "" {
+	if app.IsConfidential() {
 		return clientSecret != "" && auth.CheckClientSecret(clientSecret, app.ClientSecretHash)
 	}
 	if code.CodeChallenge != "" {
@@ -1821,7 +1821,7 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 		details["deny_reason"] = "unknown_client"
 		return fail("denied", ErrInvalidCredentials)
 	}
-	if app.ClientSecretHash == "" {
+	if !app.IsConfidential() {
 		s.checkDummyClientSecret()
 		details["deny_reason"] = "public_client"
 		return fail("denied", ErrExchangeNotAllowed)

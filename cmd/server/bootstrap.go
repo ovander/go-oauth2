@@ -547,10 +547,16 @@ func Bootstrap(cfg *config.Config) *App {
 	// ==========================================
 	// Code Store (database-backed with cleanup)
 	// ==========================================
-	codeStore := auth.NewCodeStore(authCodeRepo, auth.CodeStoreConfig{
+	codeStoreConfig := auth.CodeStoreConfig{
 		TTL:             10 * time.Minute,
 		CleanupInterval: time.Minute,
-	})
+	}
+	if cfg.CodeReplayMode != "off" {
+		// CODE_REPLAY_MODE: keep a redeemed code while its refresh tokens
+		// may live, so that a late replay is still recognised.
+		codeStoreConfig.ReplayRetention = cfg.RefreshTokenTTL
+	}
+	codeStore := auth.NewCodeStore(authCodeRepo, codeStoreConfig)
 
 	// ==========================================
 	// Services

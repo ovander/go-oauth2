@@ -172,8 +172,10 @@ func TestMigration0035_AuthorizationCodeIssuedTokens(t *testing.T) {
 	}
 	cols := func() int64 {
 		var n int64
-		db.Raw(`SELECT count(*) FROM information_schema.columns
-			WHERE table_name = 'authorization_codes' AND column_name IN ('token_family', 'access_jti')`).Scan(&n)
+		if err := db.Raw(`SELECT count(*) FROM information_schema.columns
+			WHERE table_name = 'authorization_codes' AND column_name IN ('token_family', 'access_jti')`).Scan(&n).Error; err != nil {
+			t.Fatalf("count the columns: %v", err)
+		}
 		return n
 	}
 	if got := cols(); got != 2 {

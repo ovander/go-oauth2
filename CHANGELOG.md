@@ -19,10 +19,15 @@ Capabilities**, non-breaking).
   it was redeemed for (migration 0035). `observe` audits a replay as `auth_code_failed` with
   `reason: code_replayed`; `enforce` also revokes that family (every refresh token rotated from
   it) and that access token, as seen by introspection, userinfo and the admin API (a resource
-  server that only verifies the JWT accepts it until it expires). A used code is now recognised
-  as a replay even after it has expired. Each code signals once; codes redeemed before the
-  migration are audited only. Deploy note: migration 0035 (adds two nullable columns); new
-  variable `CODE_REPLAY_MODE`, default `off` (#366).
+  server that only verifies the JWT accepts it until it expires) — when the replay authenticates
+  as the code's client (its secret, or for a public client the code's PKCE verifier), so that
+  whoever merely saw a used code cannot end the sign-in (`revoked: none_unauthenticated`). A used
+  code is recognised as a replay even after it has expired, or when it loses a race with its own
+  redemption, and while a replay mode is on a redeemed code is kept for the refresh-token TTL so
+  the expiry sweep does not erase it. Each code signals once; codes redeemed before the migration
+  are audited only. Deploy note: migration 0035 (adds two nullable columns); new variable
+  `CODE_REPLAY_MODE`, default `off`; with it on, `authorization_codes` keeps one row per sign-in
+  for the refresh-token TTL (#366).
 
 - **The decide endpoint no longer reveals who the global admins are.** By a bare `user_id`, a
   subject who is not a member of the calling application got `404 unknown subject` unless they

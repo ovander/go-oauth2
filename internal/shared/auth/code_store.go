@@ -20,6 +20,11 @@ import (
 type CodeStoreConfig struct {
 	TTL             time.Duration
 	CleanupInterval time.Duration
+	// ReplayRetention keeps a redeemed code this long after its redemption
+	// (when longer than its TTL), so that a replay is still recognised while
+	// the tokens it was redeemed for may be valid (CODE_REPLAY_MODE). Zero
+	// removes a used code at its expiry, as before.
+	ReplayRetention time.Duration
 }
 
 // DefaultCodeStoreConfig returns default configuration
@@ -35,6 +40,7 @@ type CodeStore struct {
 	repo            repository.AuthorizationCodeRepository
 	ttl             time.Duration
 	cleanupInterval time.Duration
+	replayRetention time.Duration
 	stopCh          chan struct{}
 	wg              sync.WaitGroup
 }
@@ -52,6 +58,7 @@ func NewCodeStore(repo repository.AuthorizationCodeRepository, config CodeStoreC
 		repo:            repo,
 		ttl:             config.TTL,
 		cleanupInterval: config.CleanupInterval,
+		replayRetention: config.ReplayRetention,
 		stopCh:          make(chan struct{}),
 	}
 
@@ -149,12 +156,21 @@ func (cs *CodeStore) RedeemCode(ctx context.Context, code string) (*model.Author
 	// Mark as used atomically, with the tokens it is redeemed for.
 	family, accessJTI := uuid.New().String(), uuid.New().String()
 	if r, ok := cs.repo.(repository.AuthorizationCodeRedeemer); ok {
-		err = r.MarkAsUsedWithTokens(ctx, code, family, accessJTI)
+		var keepUntil time.Time
+		if cs.replayRetention > 0 {
+			keepUntil = time.Now().Add(cs.replayRetention)
+		}
+		err = r.MarkAsUsedWithTokens(ctx, code, family, accessJTI, keepUntil)
 	} else {
 		err = cs.repo.MarkAsUsed(ctx, code)
 	}
 	if err != nil {
-		// Another request might have used it first
+		// Another request redeemed it between the read and the update: this
+		// one is a replay of a code redeemed a moment ago.
+		if again, ferr := cs.repo.FindByCode(ctx, code); ferr == nil && again != nil && again.Used {
+			_ = cs.repo.Delete(ctx, code)
+			return again, ErrCodeReplayed
+		}
 		return nil, nil
 	}
 	authCode.Used, authCode.TokenFamily, authCode.AccessJTI = true, family, accessJTI

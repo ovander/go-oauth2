@@ -22,9 +22,11 @@ type AuthorizationCodeRepository interface {
 // with the redemption itself, the tokens a code is redeemed for.
 type AuthorizationCodeRedeemer interface {
 	// MarkAsUsedWithTokens marks an unused code used and records the refresh
-	// family and access-token jti it is redeemed for, in one statement. It
+	// family and access-token jti it is redeemed for, in one statement. A
+	// non-zero keepUntil keeps the used code until then (when later than its
+	// expiry), so that a replay is still recognised while its tokens live. It
 	// returns gorm.ErrRecordNotFound when the code is unknown or already used.
-	MarkAsUsedWithTokens(ctx context.Context, code, tokenFamily, accessJTI string) error
+	MarkAsUsedWithTokens(ctx context.Context, code, tokenFamily, accessJTI string, keepUntil time.Time) error
 }
 
 type authorizationCodeRepository struct {
@@ -49,10 +51,14 @@ func (r *authorizationCodeRepository) FindByCode(ctx context.Context, code strin
 }
 
 // MarkAsUsedWithTokens implements AuthorizationCodeRedeemer.
-func (r *authorizationCodeRepository) MarkAsUsedWithTokens(ctx context.Context, code, tokenFamily, accessJTI string) error {
+func (r *authorizationCodeRepository) MarkAsUsedWithTokens(ctx context.Context, code, tokenFamily, accessJTI string, keepUntil time.Time) error {
+	updates := map[string]interface{}{"used": true, "token_family": tokenFamily, "access_jti": accessJTI}
+	if !keepUntil.IsZero() {
+		updates["expires_at"] = gorm.Expr("GREATEST(expires_at, ?)", keepUntil)
+	}
 	result := r.db.WithContext(ctx).Model(&model.AuthorizationCode{}).
 		Where("code = ? AND used = ?", code, false).
-		Updates(map[string]interface{}{"used": true, "token_family": tokenFamily, "access_jti": accessJTI})
+		Updates(updates)
 	if result.Error != nil {
 		return result.Error
 	}

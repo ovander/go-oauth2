@@ -22,6 +22,9 @@ import (
 type copyCodeRepo struct {
 	mu    sync.Mutex
 	codes map[string]model.AuthorizationCode
+	// staleReads makes the next FindByCode calls return the code as unused,
+	// as a read that raced with another redemption does.
+	staleReads int
 }
 
 func newCopyCodeRepo() *copyCodeRepo {
@@ -42,7 +45,23 @@ func (r *copyCodeRepo) FindByCode(_ context.Context, code string) (*model.Author
 	if !ok {
 		return nil, errors.New("not found")
 	}
+	if r.staleReads > 0 {
+		r.staleReads--
+		c.Used, c.TokenFamily, c.AccessJTI = false, "", ""
+	}
 	return &c, nil
+}
+
+// get returns a stored code.
+func (r *copyCodeRepo) get(t *testing.T, code string) model.AuthorizationCode {
+	t.Helper()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, ok := r.codes[code]
+	if !ok {
+		t.Fatalf("code %q is not stored", code)
+	}
+	return c
 }
 
 func (r *copyCodeRepo) MarkAsUsed(ctx context.Context, code string) error {
@@ -73,20 +92,26 @@ func (r *copyCodeRepo) DeleteExpired(_ context.Context) (int64, error) { return 
 func (r *copyCodeRepo) DeleteByUserID(_ context.Context, _ uint) error { return nil }
 
 // expire moves a stored code's expiry into the past.
-func (r *copyCodeRepo) expire(code string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	c := r.codes[code]
+func (r *copyCodeRepo) expire(t *testing.T, code string) {
+	t.Helper()
+	c := r.get(t, code)
 	c.ExpiresAt = time.Now().Add(-time.Minute)
+	r.mu.Lock()
 	r.codes[code] = c
+	r.mu.Unlock()
 }
 
 // recordingCodeRepo also records the tokens a code is redeemed for, as the
 // GORM repository does.
 type recordingCodeRepo struct{ *copyCodeRepo }
 
-func (r recordingCodeRepo) MarkAsUsedWithTokens(_ context.Context, code, family, jti string) error {
-	return r.markUsed(code, func(c *model.AuthorizationCode) { c.TokenFamily, c.AccessJTI = family, jti })
+func (r recordingCodeRepo) MarkAsUsedWithTokens(_ context.Context, code, family, jti string, keepUntil time.Time) error {
+	return r.markUsed(code, func(c *model.AuthorizationCode) {
+		c.TokenFamily, c.AccessJTI = family, jti
+		if keepUntil.After(c.ExpiresAt) {
+			c.ExpiresAt = keepUntil
+		}
+	})
 }
 
 var _ repository.AuthorizationCodeRedeemer = recordingCodeRepo{}
@@ -104,6 +129,11 @@ type replayFixture struct {
 // repository records the tokens a code is redeemed for.
 func newReplayFixture(t *testing.T, mode string, record bool) *replayFixture {
 	t.Helper()
+	return newReplayFixtureWith(t, mode, record, auth.CodeStoreConfig{TTL: 10 * time.Minute})
+}
+
+func newReplayFixtureWith(t *testing.T, mode string, record bool, cfg auth.CodeStoreConfig) *replayFixture {
+	t.Helper()
 	user := &model.User{ID: 42, Email: "op@example.test", IsVerified: true, Role: model.UserRoleSuperadmin}
 	svc := newAuthorizeSvc(t, user)
 	f := &replayFixture{svc: svc, codes: newCopyCodeRepo(), used: newMemUsedTokenRepo(), audit: &captureAuditRepo{}}
@@ -111,7 +141,7 @@ func newReplayFixture(t *testing.T, mode string, record bool) *replayFixture {
 	if record {
 		repo = recordingCodeRepo{f.codes}
 	}
-	cs := auth.NewCodeStoreWithTTL(repo, 10*time.Minute)
+	cs := auth.NewCodeStore(repo, cfg)
 	t.Cleanup(cs.Stop)
 	svc.codeStore, svc.usedTokenRepo, svc.auditRepo = cs, f.used, f.audit
 	svc.SetCodeReplayMode(mode)
@@ -128,12 +158,16 @@ func newReplayFixture(t *testing.T, mode string, record bool) *replayFixture {
 }
 
 func (f *replayFixture) exchange() (*dto.TokenResponse, error) {
+	return f.exchangeAs("admin-console-dev2", authnVerifier)
+}
+
+func (f *replayFixture) exchangeAs(clientID, verifier string) (*dto.TokenResponse, error) {
 	return f.svc.handleAuthorizationCodeGrant(context.Background(), dto.TokenRequest{
 		GrantType:    "authorization_code",
 		Code:         f.code,
-		RedirectURI:  authorizeReq().RedirectURI,
-		CodeVerifier: authnVerifier,
-	}, "admin-console-dev2", "")
+		RedirectURI:  authnAuthorizeReq().RedirectURI,
+		CodeVerifier: verifier,
+	}, clientID, "")
 }
 
 func (f *replayFixture) refresh(token string) (*dto.TokenResponse, error) {
@@ -146,12 +180,15 @@ func (f *replayFixture) accessRevoked(t *testing.T) bool {
 	if err != nil {
 		t.Fatalf("VerifyAccessToken: %v", err)
 	}
-	revoked, _ := f.used.IsUsed(context.Background(), c.ID)
+	revoked, err := f.used.IsUsed(context.Background(), c.ID)
+	if err != nil {
+		t.Fatalf("IsUsed: %v", err)
+	}
 	return revoked
 }
 
 func TestCodeReplay_EnforceRevokesWhatTheCodeWasRedeemedFor(t *testing.T) {
-	f := newReplayFixture(t, refreshReuseModeEnforce, true)
+	f := newReplayFixture(t, codeReplayModeEnforce, true)
 
 	if _, err := f.exchange(); !errors.Is(err, ErrInvalidCode) {
 		t.Fatalf("replay = %v, want ErrInvalidCode", err)
@@ -181,7 +218,7 @@ func TestCodeReplay_EnforceRevokesWhatTheCodeWasRedeemedFor(t *testing.T) {
 // The family revoked is the code's: a refresh token rotated from it before
 // the replay is revoked too.
 func TestCodeReplay_EnforceRevokesTheRotatedFamily(t *testing.T) {
-	f := newReplayFixture(t, refreshReuseModeEnforce, true)
+	f := newReplayFixture(t, codeReplayModeEnforce, true)
 	rotated, err := f.refresh(f.resp.RefreshToken)
 	if err != nil {
 		t.Fatalf("refresh before the replay: %v", err)
@@ -196,8 +233,8 @@ func TestCodeReplay_EnforceRevokesTheRotatedFamily(t *testing.T) {
 
 // A code used and then expired is still a replay: its tokens may be valid.
 func TestCodeReplay_DetectedAfterExpiry(t *testing.T) {
-	f := newReplayFixture(t, refreshReuseModeEnforce, true)
-	f.codes.expire(f.code)
+	f := newReplayFixture(t, codeReplayModeEnforce, true)
+	f.codes.expire(t, f.code)
 	if _, err := f.exchange(); !errors.Is(err, ErrInvalidCode) {
 		t.Fatalf("replay = %v", err)
 	}
@@ -207,7 +244,7 @@ func TestCodeReplay_DetectedAfterExpiry(t *testing.T) {
 }
 
 func TestCodeReplay_ObserveAuditsWithoutRevoking(t *testing.T) {
-	f := newReplayFixture(t, refreshReuseModeObserve, true)
+	f := newReplayFixture(t, codeReplayModeObserve, true)
 	if _, err := f.exchange(); !errors.Is(err, ErrInvalidCode) {
 		t.Fatalf("replay = %v", err)
 	}
@@ -224,7 +261,7 @@ func TestCodeReplay_ObserveAuditsWithoutRevoking(t *testing.T) {
 }
 
 func TestCodeReplay_OffRefusesAsBefore(t *testing.T) {
-	f := newReplayFixture(t, refreshReuseModeOff, true)
+	f := newReplayFixture(t, "off", true)
 	if _, err := f.exchange(); !errors.Is(err, ErrInvalidCode) {
 		t.Fatalf("replay = %v", err)
 	}
@@ -242,7 +279,7 @@ func TestCodeReplay_OffRefusesAsBefore(t *testing.T) {
 // A code whose redemption recorded nothing (redeemed before migration 0035)
 // is audited, and nothing is revoked.
 func TestCodeReplay_EnforceWithoutRecordedTokens(t *testing.T) {
-	f := newReplayFixture(t, refreshReuseModeEnforce, false)
+	f := newReplayFixture(t, codeReplayModeEnforce, false)
 	if _, err := f.exchange(); !errors.Is(err, ErrInvalidCode) {
 		t.Fatalf("replay = %v", err)
 	}
@@ -257,8 +294,8 @@ func TestCodeReplay_EnforceWithoutRecordedTokens(t *testing.T) {
 // The tokens are minted with the family and jti recorded with the
 // redemption.
 func TestCodeGrant_MintsTheRecordedIDs(t *testing.T) {
-	f := newReplayFixture(t, refreshReuseModeOff, true)
-	stored := f.codes.codes[f.code]
+	f := newReplayFixture(t, "off", true)
+	stored := f.codes.get(t, f.code)
 	ac, err := f.svc.tokenService.VerifyAccessToken(f.resp.AccessToken)
 	if err != nil {
 		t.Fatal(err)
@@ -269,5 +306,65 @@ func TestCodeGrant_MintsTheRecordedIDs(t *testing.T) {
 	}
 	if stored.AccessJTI == "" || ac.ID != stored.AccessJTI || stored.TokenFamily == "" || rc.Family != stored.TokenFamily {
 		t.Errorf("recorded jti/family %q/%q, minted %q/%q", stored.AccessJTI, stored.TokenFamily, ac.ID, rc.Family)
+	}
+}
+
+// Only the code's client can revoke: a replay without the PKCE verifier, or
+// from another client, is audited and revokes nothing — whoever merely saw a
+// used code cannot end the user's sign-in.
+func TestCodeReplay_EnforceRevokesOnlyForTheCodesClient(t *testing.T) {
+	for name, as := range map[string]struct{ client, verifier string }{
+		"no verifier":    {"admin-console-dev2", ""},
+		"wrong verifier": {"admin-console-dev2", "wrong-verifier-wrong-verifier-wrong-verifier-x"},
+		"other client":   {"other-client", authnVerifier},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newReplayFixture(t, codeReplayModeEnforce, true)
+			if _, err := f.exchangeAs(as.client, as.verifier); !errors.Is(err, ErrInvalidCode) {
+				t.Fatalf("replay = %v", err)
+			}
+			if ev := f.audit.last; ev.Details["reason"] != "code_replayed" || ev.Details["revoked"] != "none_unauthenticated" {
+				t.Fatalf("audit = %+v, want code_replayed with revoked none_unauthenticated", ev)
+			}
+			if f.accessRevoked(t) {
+				t.Error("an unauthenticated replay revoked the access token")
+			}
+			if _, err := f.refresh(f.resp.RefreshToken); err != nil {
+				t.Errorf("an unauthenticated replay revoked the refresh token: %v", err)
+			}
+		})
+	}
+}
+
+// A redemption that loses the race to another one is a replay of a code
+// redeemed a moment ago, not an unknown code.
+func TestCodeReplay_ConcurrentRedemptionIsAReplay(t *testing.T) {
+	f := newReplayFixture(t, codeReplayModeEnforce, true)
+	f.codes.mu.Lock()
+	f.codes.staleReads = 1
+	f.codes.mu.Unlock()
+	if _, err := f.exchange(); !errors.Is(err, ErrInvalidCode) {
+		t.Fatalf("losing redemption = %v", err)
+	}
+	if ev := f.audit.last; ev.Details["reason"] != "code_replayed" || ev.Details["revoked"] != "tokens" {
+		t.Fatalf("audit = %+v, want a revoking code_replayed", ev)
+	}
+	if !f.accessRevoked(t) {
+		t.Error("the winning redemption's access token is not revoked")
+	}
+}
+
+// With a replay retention, a redeemed code is kept while its refresh tokens
+// may live, so the expiry sweep does not erase the evidence of a late replay.
+func TestCodeStore_ReplayRetentionKeepsTheRedeemedCode(t *testing.T) {
+	retention := 7 * 24 * time.Hour
+	f := newReplayFixtureWith(t, codeReplayModeEnforce, true, auth.CodeStoreConfig{TTL: 10 * time.Minute, ReplayRetention: retention})
+	if exp := f.codes.get(t, f.code).ExpiresAt; exp.Before(time.Now().Add(retention - time.Minute)) {
+		t.Fatalf("redeemed code expires at %v, want about %v from now", exp, retention)
+	}
+	// Without a retention it keeps its own expiry.
+	g := newReplayFixture(t, codeReplayModeEnforce, true)
+	if exp := g.codes.get(t, g.code).ExpiresAt; exp.After(time.Now().Add(11 * time.Minute)) {
+		t.Fatalf("without a retention the redeemed code expires at %v", exp)
 	}
 }

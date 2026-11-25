@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -19,23 +20,7 @@ import (
 // The sign-in evidence stored on an authorization code (migration 0029)
 // survives the database round trip, and a code without it reads back empty.
 func TestAuthorizationCode_AuthnEvidenceRoundTrip(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("TEST_DATABASE_URL not set; skipping the Postgres integration test")
-	}
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
-	if err != nil {
-		t.Fatalf("connect: %v", err)
-	}
-	if err := db.AutoMigrate(&model.AuthorizationCode{}); err != nil {
-		t.Fatalf("automigrate: %v", err)
-	}
-	if err := migrate.Run(db); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	tx := db.Begin()
-	t.Cleanup(func() { tx.Rollback() })
-	repo := repository.NewAuthorizationCodeRepository(tx)
+	repo := codeRepoInTx(t)
 	ctx := context.Background()
 	tag := fmt.Sprint(time.Now().UnixNano())
 
@@ -58,9 +43,10 @@ func TestAuthorizationCode_AuthnEvidenceRoundTrip(t *testing.T) {
 	}
 }
 
-// MarkAsUsedWithTokens (migration 0035) marks an unused code used together
-// with the tokens it is redeemed for, and refuses a code already used.
-func TestAuthorizationCode_MarkAsUsedWithTokens(t *testing.T) {
+// codeRepoInTx is a code repository on a migrated test database, inside a
+// transaction rolled back at the end of the test.
+func codeRepoInTx(t *testing.T) repository.AuthorizationCodeRepository {
+	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
 		t.Skip("TEST_DATABASE_URL not set; skipping the Postgres integration test")
@@ -77,7 +63,14 @@ func TestAuthorizationCode_MarkAsUsedWithTokens(t *testing.T) {
 	}
 	tx := db.Begin()
 	t.Cleanup(func() { tx.Rollback() })
-	repo := repository.NewAuthorizationCodeRepository(tx)
+	return repository.NewAuthorizationCodeRepository(tx)
+}
+
+// MarkAsUsedWithTokens (migration 0035) marks an unused code used together
+// with the tokens it is redeemed for, keeps it until keepUntil, and refuses a
+// code already used without overwriting what it recorded.
+func TestAuthorizationCode_MarkAsUsedWithTokens(t *testing.T) {
+	repo := codeRepoInTx(t)
 	redeemer, ok := repo.(repository.AuthorizationCodeRedeemer)
 	if !ok {
 		t.Fatal("the GORM code repository does not record the tokens a code is redeemed for")
@@ -88,17 +81,25 @@ func TestAuthorizationCode_MarkAsUsedWithTokens(t *testing.T) {
 	if err := repo.Create(ctx, code); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if err := redeemer.MarkAsUsedWithTokens(ctx, code.Code, "fam-1", "jti-1"); err != nil {
+	keepUntil := time.Now().Add(7 * 24 * time.Hour)
+	if err := redeemer.MarkAsUsedWithTokens(ctx, code.Code, "fam-1", "jti-1", keepUntil); err != nil {
 		t.Fatalf("first redemption: %v", err)
 	}
 	got, err := repo.FindByCode(ctx, code.Code)
-	if err != nil || !got.Used || got.TokenFamily != "fam-1" || got.AccessJTI != "jti-1" {
-		t.Fatalf("after redemption = %+v, %v", got, err)
+	if err != nil {
+		t.Fatalf("find after redemption: %v", err)
 	}
-	if err := redeemer.MarkAsUsedWithTokens(ctx, code.Code, "fam-2", "jti-2"); err == nil {
-		t.Fatal("a used code was redeemed again")
+	if !got.Used || got.TokenFamily != "fam-1" || got.AccessJTI != "jti-1" || got.ExpiresAt.Before(keepUntil.Add(-time.Second)) {
+		t.Fatalf("after redemption = %+v", got)
 	}
-	if got, _ := repo.FindByCode(ctx, code.Code); got.TokenFamily != "fam-1" || got.AccessJTI != "jti-1" {
+	if err := redeemer.MarkAsUsedWithTokens(ctx, code.Code, "fam-2", "jti-2", time.Time{}); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("second redemption = %v, want gorm.ErrRecordNotFound", err)
+	}
+	got, err = repo.FindByCode(ctx, code.Code)
+	if err != nil {
+		t.Fatalf("find after the second redemption: %v", err)
+	}
+	if got.TokenFamily != "fam-1" || got.AccessJTI != "jti-1" {
 		t.Fatalf("a second redemption overwrote the recorded tokens: %+v", got)
 	}
 }

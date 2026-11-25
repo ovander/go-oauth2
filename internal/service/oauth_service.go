@@ -195,6 +195,12 @@ type oauthService struct {
 // under "enforce" the tokens it was redeemed for are also revoked.
 func (s *oauthService) SetCodeReplayMode(mode string) { s.codeReplayMode = mode }
 
+// CODE_REPLAY_MODE values.
+const (
+	codeReplayModeObserve = "observe"
+	codeReplayModeEnforce = "enforce"
+)
+
 // SetAdminAppSignInPolicy wires ADMIN_APP_SIGNIN_POLICY into code issuance and
 // the refresh grant.
 func (s *oauthService) SetAdminAppSignInPolicy(p AdminAppSignInPolicy) { s.adminAppSignIn = p }
@@ -610,8 +616,9 @@ func tokenOutcome(err error) string {
 func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto.TokenRequest, clientID, clientSecret string) (*dto.TokenResponse, error) {
 	// Redeem the code atomically
 	authCode, err := s.codeStore.RedeemCode(ctx, req.Code)
-	if errors.Is(err, auth.ErrCodeReplayed) && authCode != nil && s.codeReplayMode != refreshReuseModeOff && s.codeReplayMode != "" {
-		s.signalCodeReplay(ctx, authCode, clientID)
+	if errors.Is(err, auth.ErrCodeReplayed) && authCode != nil &&
+		(s.codeReplayMode == codeReplayModeObserve || s.codeReplayMode == codeReplayModeEnforce) {
+		s.signalCodeReplay(ctx, authCode, req, clientID, clientSecret)
 		return nil, ErrInvalidCode
 	}
 	if err != nil || authCode == nil {
@@ -1129,8 +1136,11 @@ func (s *oauthService) signalRefreshReuse(ctx context.Context, claims *auth.Refr
 // signalCodeReplay handles an authorization code presented again after it was
 // redeemed (CODE_REPLAY_MODE, RFC 6749 §4.1.2): observe audits it, enforce
 // also revokes the tokens the code was redeemed for, which the code may have
-// been stolen to obtain. The code store reports each code once.
-func (s *oauthService) signalCodeReplay(ctx context.Context, code *model.AuthorizationCode, clientID string) {
+// been stolen to obtain — but only when the request authenticates as the
+// code's client, so that whoever merely saw a used code (in a log, a
+// referrer) cannot end the user's sign-in. The code store reports each code
+// once.
+func (s *oauthService) signalCodeReplay(ctx context.Context, code *model.AuthorizationCode, req dto.TokenRequest, clientID, clientSecret string) {
 	details := map[string]interface{}{
 		"client_id": clientID,
 		"reason":    "code_replayed",
@@ -1139,8 +1149,12 @@ func (s *oauthService) signalCodeReplay(ctx context.Context, code *model.Authori
 	if clientID != code.ClientID {
 		details["code_client_id"] = code.ClientID
 	}
-	if s.codeReplayMode == refreshReuseModeEnforce {
-		details["revoked"] = s.revokeCodeTokens(ctx, code)
+	if s.codeReplayMode == codeReplayModeEnforce {
+		if s.replayFromCodeClient(ctx, code, req, clientID, clientSecret) {
+			details["revoked"] = s.revokeCodeTokens(ctx, code)
+		} else {
+			details["revoked"] = "none_unauthenticated"
+		}
 	}
 	uid := code.UserID
 	var appID *uint
@@ -1149,6 +1163,27 @@ func (s *oauthService) signalCodeReplay(ctx context.Context, code *model.Authori
 		appID = &id
 	}
 	s.logSecurityEvent(ctx, model.SecurityEventAuthCodeFailed, &uid, appID, false, details)
+}
+
+// replayFromCodeClient says whether a replay request authenticates as the
+// client the code was issued to: its client_id, and its client secret for a
+// confidential client or, for a public one, the PKCE verifier of the code.
+func (s *oauthService) replayFromCodeClient(ctx context.Context, code *model.AuthorizationCode, req dto.TokenRequest, clientID, clientSecret string) bool {
+	if clientID == "" || clientID != code.ClientID {
+		return false
+	}
+	app, err := s.lookupTokenClient(ctx, clientID)
+	if err != nil || app == nil {
+		return false
+	}
+	if app.ClientSecretHash != "" {
+		return clientSecret != "" && auth.CheckClientSecret(clientSecret, app.ClientSecretHash)
+	}
+	if code.CodeChallenge != "" {
+		return req.CodeVerifier != "" && auth.VerifyPKCE(req.CodeVerifier, code.CodeChallenge, code.CodeChallengeMethod) == nil
+	}
+	// A public client without PKCE has nothing more to show.
+	return true
 }
 
 // revokeCodeTokens revokes the refresh-token family and the access token a

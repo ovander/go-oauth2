@@ -195,6 +195,9 @@ func TestAlertEvaluator_ObserveRecordsWithoutNotifying(t *testing.T) {
 		audit.events[0].Details["rule_id"] != uint(1) || audit.events[0].MinSeverity != model.SecuritySeverityError {
 		t.Errorf("audit = %+v", audit.events)
 	}
+	if n, _ := audit.events[0].Details["notifications"].(map[string]interface{}); n["email"] != alertNotifyObserve {
+		t.Errorf("the audit event does not carry the notification outcome: %v", audit.events[0].Details)
+	}
 }
 
 func TestAlertEvaluator_BelowThresholdTriggersNothing(t *testing.T) {

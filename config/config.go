@@ -217,7 +217,7 @@ type Config struct {
 	// rule's email, webhook and Slack notifications). ALERT_RULES_MODE.
 	AlertRulesMode string
 	// AlertRulesInterval is how often the alert rules are evaluated
-	// (ALERT_RULES_INTERVAL_SECONDS, default 60, at least 10).
+	// (ALERT_RULES_INTERVAL_SECONDS, default 60, from 10 to 86400).
 	AlertRulesInterval time.Duration
 	// AudienceMode controls how an access token's `aud` is built from the client
 	// and its registered audiences (RFC-001 / EPIC-7): "off" (default — aud is
@@ -669,11 +669,15 @@ func normalizeAuditWriteMode(v string) string {
 // normalizeStepUpMode lower-cases and validates the impersonation step-up mode,
 // falling back to "off" for any unrecognized value (fail safe — never enforce
 // or observe from a typo).
-// alertRulesInterval is ALERT_RULES_INTERVAL_SECONDS as a duration, at least
-// 10 seconds: each pass counts the audit log once per enabled rule.
+// alertRulesInterval is ALERT_RULES_INTERVAL_SECONDS as a duration, from 10
+// seconds (each pass counts the audit log once per enabled rule) to a day (a
+// larger value would overflow, and no rule's window is longer).
 func alertRulesInterval(seconds int) time.Duration {
-	if seconds < 10 {
+	switch {
+	case seconds < 10:
 		seconds = 10
+	case seconds > 24*60*60:
+		seconds = 24 * 60 * 60
 	}
 	return time.Duration(seconds) * time.Second
 }

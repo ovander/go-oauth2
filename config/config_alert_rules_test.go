@@ -20,7 +20,10 @@ func TestConfig_AlertRules(t *testing.T) {
 			t.Errorf("ALERT_RULES_MODE=%q -> %q, want %q", in, got, want)
 		}
 	}
-	for in, want := range map[string]time.Duration{"300": 5 * time.Minute, "10": 10 * time.Second, "1": 10 * time.Second, "0": 10 * time.Second} {
+	for in, want := range map[string]time.Duration{
+		"300": 5 * time.Minute, "10": 10 * time.Second, "1": 10 * time.Second, "0": 10 * time.Second,
+		"86400": 24 * time.Hour, "86401": 24 * time.Hour, "99999999999": 24 * time.Hour,
+	} {
 		t.Setenv("ALERT_RULES_INTERVAL_SECONDS", in)
 		if got := Load().AlertRulesInterval; got != want {
 			t.Errorf("ALERT_RULES_INTERVAL_SECONDS=%q -> %v, want %v", in, got, want)

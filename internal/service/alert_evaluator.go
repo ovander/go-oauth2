@@ -182,7 +182,6 @@ func (e *AlertEvaluator) trigger(ctx context.Context, rule *model.AlertRule, con
 	if err := e.alerts.Create(ctx, alert); err != nil {
 		return fmt.Errorf("record alert: %w", err)
 	}
-	e.auditTriggered(ctx, rule, alert)
 
 	alert.Details["notifications"] = e.notify(ctx, rule, alert)
 	if err := e.alerts.Update(ctx, alert); err != nil {
@@ -190,6 +189,9 @@ func (e *AlertEvaluator) trigger(ctx context.Context, rule *model.AlertRule, con
 		logger.WithFields(logger.Fields{"alert_id": alert.ID, "error": err.Error()}).
 			Warn("alert rules: could not record the notification outcome")
 	}
+	// Audited once the notifications are done, so the security log also
+	// says whether the alert was delivered.
+	e.auditTriggered(ctx, rule, alert)
 	return nil
 }
 

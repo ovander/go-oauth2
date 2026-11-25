@@ -21,6 +21,16 @@ Capabilities**, non-breaking).
   still a legacy SHA-256 hash. The token exchange already authenticated the client
   before examining the subject token. Deploy note: none (#366).
 
+- **The client IP is the right-most untrusted `X-Forwarded-For` entry.** Behind a trusted proxy,
+  the left-most entry was taken as the client, but a proxy that appends to the header (nginx's
+  `$proxy_add_x_forwarded_for`, Caddy with `trusted_proxies`) keeps whatever the client sent
+  there, so a client could choose the address that rate limiting, IP blocks, auto-defense and the
+  audit log saw. The header is now read from the right: the client is the last entry that is not
+  in `TRUSTED_PROXIES` (an entry with a port counts as its address), and an empty or malformed
+  entry ends the walk. The deploy kit's Caddy replaces the
+  header, so its attribution does not change. Deploy note: a deployment with more than one proxy
+  hop must list them all in `TRUSTED_PROXIES` (#366).
+
 - **A replayed authorization code can revoke the tokens it was redeemed for** (`CODE_REPLAY_MODE`,
   default `off`). A code presented again after its redemption was refused, but the tokens issued
   for it stayed valid, although the replay means someone else holds the code (RFC 6749 §4.1.2).

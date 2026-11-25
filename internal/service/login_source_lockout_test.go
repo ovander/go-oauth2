@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -28,7 +29,7 @@ func newMemSourceFailures() *memSourceFailures {
 	return &memSourceFailures{counts: map[string]int{}, locks: map[string]time.Time{}}
 }
 
-func sourceKey(userID uint, source string) string { return string(rune(userID)) + "|" + source }
+func sourceKey(userID uint, source string) string { return fmt.Sprintf("%d|%s", userID, source) }
 
 func (m *memSourceFailures) RecordFailure(_ context.Context, userID uint, source string, _ time.Duration) (int, error) {
 	m.mu.Lock()

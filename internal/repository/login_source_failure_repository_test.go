@@ -50,17 +50,28 @@ func TestLoginSourceFailures(t *testing.T) {
 	if until, err := repo.LockedUntil(ctx, 5, "198.51.100.7"); err != nil || until == nil {
 		t.Fatalf("locked: (%v, %v)", until, err)
 	}
-	if until, _ := repo.LockedUntil(ctx, 5, "203.0.113.9"); until != nil {
-		t.Fatal("the lock leaked to another source")
+	if until, err := repo.LockedUntil(ctx, 5, "203.0.113.9"); err != nil || until != nil {
+		t.Fatalf("the lock leaked to another source: (%v, %v)", until, err)
+	}
+	// A success does not lift a lock in force, and a second lock never
+	// shortens it.
+	if err := repo.Reset(ctx, 5, "198.51.100.7"); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Lock(ctx, 5, "198.51.100.7", time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if until, err := repo.LockedUntil(ctx, 5, "198.51.100.7"); err != nil || until == nil || time.Until(*until) < 30*time.Second {
+		t.Fatalf("lock after a reset and a shorter lock: (%v, %v), want the original minute", until, err)
 	}
 	if n, _ := repo.RecordFailure(ctx, 5, "198.51.100.7", window); n != 1 {
 		t.Fatalf("a lock starts the count again: %d, want 1", n)
 	}
-	if err := repo.Lock(ctx, 5, "198.51.100.7", time.Now().Add(-time.Second)); err != nil {
+	if err := db.Exec(`UPDATE login_source_failures SET locked_until = now() - interval '1 second' WHERE user_id = 5 AND source = '198.51.100.7'`).Error; err != nil {
 		t.Fatal(err)
 	}
-	if until, _ := repo.LockedUntil(ctx, 5, "198.51.100.7"); until != nil {
-		t.Fatal("an expired lock is still in force")
+	if until, err := repo.LockedUntil(ctx, 5, "198.51.100.7"); err != nil || until != nil {
+		t.Fatalf("an expired lock is still in force: (%v, %v)", until, err)
 	}
 
 	// Reset and the sweep.
@@ -75,7 +86,9 @@ func TestLoginSourceFailures(t *testing.T) {
 		t.Fatalf("DeleteStale = (%d, %v), want 2: both rows of user 5, not the lock in force", n, err)
 	}
 	var left int64
-	db.Raw(`SELECT count(*) FROM login_source_failures`).Scan(&left)
+	if err := db.Raw(`SELECT count(*) FROM login_source_failures`).Scan(&left).Error; err != nil {
+		t.Fatal(err)
+	}
 	if left != 1 {
 		t.Fatalf("%d rows left, want the one holding a lock", left)
 	}

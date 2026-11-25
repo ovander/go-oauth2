@@ -18,13 +18,14 @@ type LoginSourceFailureRepository interface {
 	// count. Failures older than window are forgotten: a count whose last
 	// failure is older starts again at 1.
 	RecordFailure(ctx context.Context, userID uint, source string, window time.Duration) (int, error)
-	// Lock locks source out of userID's account until the given time and
-	// starts its count again.
+	// Lock locks source out of userID's account until the given time (or
+	// keeps a later end already set) and starts its count again.
 	Lock(ctx context.Context, userID uint, source string, until time.Time) error
 	// LockedUntil returns when the lock of source on userID ends, or nil when
 	// there is none in force.
 	LockedUntil(ctx context.Context, userID uint, source string) (*time.Time, error)
-	// Reset forgets the failures of source on userID (a complete sign-in).
+	// Reset forgets the failures of source on userID (a complete sign-in). A
+	// lock still in force is kept: only its end lifts it.
 	Reset(ctx context.Context, userID uint, source string) error
 	// DeleteStale removes the rows whose last failure is before the given
 	// time and that hold no lock still in force.
@@ -61,7 +62,9 @@ func (r *loginSourceFailureRepository) Lock(ctx context.Context, userID uint, so
 		INSERT INTO login_source_failures (user_id, source, failed_attempts, locked_until, updated_at)
 		VALUES (?, ?, 0, ?, ?)
 		ON CONFLICT (user_id, source) DO UPDATE SET
-			failed_attempts = 0, locked_until = EXCLUDED.locked_until, updated_at = EXCLUDED.updated_at`,
+			failed_attempts = 0,
+			locked_until = GREATEST(login_source_failures.locked_until, EXCLUDED.locked_until),
+			updated_at = EXCLUDED.updated_at`,
 		userID, source, until.UTC(), now).Error
 }
 
@@ -81,8 +84,10 @@ func (r *loginSourceFailureRepository) LockedUntil(ctx context.Context, userID u
 }
 
 func (r *loginSourceFailureRepository) Reset(ctx context.Context, userID uint, source string) error {
-	return r.db.WithContext(ctx).Exec(
-		`DELETE FROM login_source_failures WHERE user_id = ? AND source = ?`, userID, source).Error
+	return r.db.WithContext(ctx).Exec(`
+		DELETE FROM login_source_failures
+		WHERE user_id = ? AND source = ? AND (locked_until IS NULL OR locked_until <= ?)`,
+		userID, source, time.Now().UTC()).Error
 }
 
 func (r *loginSourceFailureRepository) DeleteStale(ctx context.Context, before time.Time) (int64, error) {

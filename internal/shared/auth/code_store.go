@@ -189,21 +189,6 @@ func (cs *CodeStore) KeepFamilyCode(ctx context.Context, tokenFamily string) err
 	return r.KeepFamilyUntil(ctx, tokenFamily, time.Now().Add(cs.replayRetention))
 }
 
-// GetCode retrieves a code without marking it as used (for validation only)
-func (cs *CodeStore) GetCode(ctx context.Context, code string) (*model.AuthorizationCode, error) {
-	authCode, err := cs.repo.FindByCode(ctx, code)
-	if err != nil {
-		return nil, err
-	}
-
-	// Check if expired
-	if authCode.IsExpired() {
-		return nil, nil
-	}
-
-	return authCode, nil
-}
-
 // DeleteCode removes a code from the store
 func (cs *CodeStore) DeleteCode(ctx context.Context, code string) error {
 	return cs.repo.Delete(ctx, code)

@@ -66,16 +66,6 @@ func ValidateRedirectURI(uri string, registeredURIs []string, requireHTTPS bool)
 	return ErrRedirectURINotRegistered
 }
 
-// ValidateRedirectURILoose performs a less strict validation for development environments
-func ValidateRedirectURILoose(uri string, registeredURIs []string) error {
-	return ValidateRedirectURI(uri, registeredURIs, false)
-}
-
-// ValidateRedirectURIStrict performs strict validation for production environments
-func ValidateRedirectURIStrict(uri string, registeredURIs []string) error {
-	return ValidateRedirectURI(uri, registeredURIs, true)
-}
-
 // isLocalhostURI checks if the URI is for localhost (development)
 func isLocalhostURI(u *url.URL) bool {
 	host := strings.ToLower(u.Hostname())

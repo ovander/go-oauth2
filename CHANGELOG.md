@@ -12,6 +12,18 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **A client without a stored secret must use PKCE, and one rule decides who is confidential.**
+  The token endpoint required a secret from any client with a stored hash and none from the
+  others, but PKCE was required only of clients flagged public: a client not flagged public and
+  stored without a secret (legacy data) could redeem a code with neither. `App.IsConfidential`,
+  which had no caller, is now that one rule (a stored secret, always required) and is used by the
+  token endpoint and the token exchange; `PKCERequired` also holds for every client that is not
+  confidential. Unused helpers that could drift from it are removed (`App.HasRedirectURI`,
+  `ValidateRedirectURILoose`/`Strict`, `CodeStore.GetCode`). Deploy note: before deploying, check
+  that no such client relies on omitting PKCE — `SELECT client_id FROM apps WHERE NOT is_public
+  AND coalesce(client_secret_hash, '') = '';` should return nothing, or those clients must send a
+  `code_challenge` (#366).
+
 - **The consent step acts only on the request it was shown for, and honours `prompt=login`.** The
   consent POST took the authorization parameters from the submitted form, so a form edited after
   the consent page was rendered could change the scope, the PKCE challenge, the nonce or drop

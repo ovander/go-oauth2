@@ -167,7 +167,10 @@ func TestSourceLockout_EnforceIPv6CountsThe64(t *testing.T) {
 	if err := reauth(s, "2001:db8:1:2::9", lockoutTestPassword); !errors.Is(err, ErrAccountLocked) {
 		t.Fatalf("right password from the locked /64: %v, want ErrAccountLocked", err)
 	}
-	if ev := audit.lastOf(model.SecurityEventLoginFailed); ev == nil || ev.Details["source"] != "2001:db8:1:2::/64" {
+	// password_verified is only on the refused attempt's row: the counted
+	// failures before it carry the same source.
+	if ev := audit.lastOf(model.SecurityEventLoginFailed); ev == nil || ev.Details["source"] != "2001:db8:1:2::/64" ||
+		ev.Details["lock_scope"] != "source" || ev.Details["password_verified"] != true {
 		t.Fatalf("locked /64 not audited: %+v", ev)
 	}
 	if err := reauth(s, "2001:db8:1:3::1", lockoutTestPassword); err != nil {

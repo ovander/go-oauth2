@@ -168,3 +168,26 @@ func TestCheckClientSecret_NoHashCostsACheck(t *testing.T) {
 		t.Errorf("an empty hash was refused in %v: no bcrypt-cost check was made", elapsed)
 	}
 }
+
+// A failed client lookup in the token exchange is an internal error, not an
+// unknown client: refused, without a dummy check, and audited as such.
+func TestExchangeToken_ClientLookupFailureIsInternal(t *testing.T) {
+	app := &model.App{ID: 7, ClientID: "c", AllowTokenExchange: true}
+	svc, audit, ts := newShadowExchangeSvc(t, app)
+	svc.tokenExchangeMode = TokenExchangeModeEnforce
+	dbDown := errors.New("db down")
+	svc.appRepo = &lookupErrAppRepo{err: dbDown}
+	dummy, n := countingDummy()
+	svc.dummyClientSecret = dummy
+	form := exForm(mintToken(t, ts, 100, "read"), "", "read", "https://api")
+	_, err := svc.ExchangeToken(context.Background(), form, "c", "any")
+	if !errors.Is(err, dbDown) || errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("exchange with a failed lookup = %v, want the lookup error, not invalid credentials", err)
+	}
+	if n.Load() != 0 {
+		t.Errorf("a lookup failure paid %d dummy checks", n.Load())
+	}
+	if audit.last == nil || audit.last.Details["deny_reason"] != "client_lookup_failed" {
+		t.Errorf("audit = %+v, want deny_reason client_lookup_failed", audit.last)
+	}
+}

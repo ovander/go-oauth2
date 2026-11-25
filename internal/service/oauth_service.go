@@ -1775,7 +1775,8 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 	var app *model.App
 	var appID *uint
 	allowTE, allowImp := false, false
-	if a, aerr := s.appRepo.FindByClientID(ctx, clientID); aerr == nil {
+	a, lookupErr := s.appRepo.FindByClientID(ctx, clientID)
+	if lookupErr == nil {
 		app, appID = a, &a.ID
 		allowTE, allowImp = a.AllowTokenExchange, a.AllowImpersonation
 	}
@@ -1807,6 +1808,12 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 	// secret (a public client cannot authenticate), a wrong secret or a
 	// deactivated client may not exchange, and a client that requires DPoP
 	// must present a proof, as on the other grants.
+	// A lookup that failed is an internal error, not an unknown client: the
+	// exchange is refused (fail closed) without blaming the client.
+	if lookupErr != nil && !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+		details["deny_reason"] = "client_lookup_failed"
+		return fail("error", fmt.Errorf("token exchange: look up client: %w", lookupErr))
+	}
 	// An unknown or public client pays the cost of a secret check too, so
 	// that timing does not tell them from a confidential one (#366).
 	if app == nil {

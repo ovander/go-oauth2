@@ -50,12 +50,16 @@ func TestRevocationStoreError_OptionalAuthIsAnonymous(t *testing.T) {
 	ts := newFind01TokenService(t)
 	token := mintToken(t, ts, 9, 1)
 	repo := &find01UserRepo{user: &model.User{ID: 9, Email: "u@example.com", TokenVersion: 1}}
-	var sawUser bool
+	var ran, sawUser bool
 	inner := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		ran = true
 		_, sawUser = r.Context().Value(contextkeys.CurrentUserKey).(*model.User)
 	})
 	w, req := makeAuthRequest(token)
 	OptionalAuthMiddleware(ts, repo, &revokeStubRepo{err: errStoreDown})(inner).ServeHTTP(w, req)
+	if !ran || w.Code != http.StatusOK {
+		t.Fatalf("the optional route must still be served: ran %v, status %d", ran, w.Code)
+	}
 	if sawUser {
 		t.Error("a token whose revocation cannot be read must not identify the user")
 	}
@@ -72,5 +76,11 @@ func TestRevocationStoreError_ServiceAccountRefuses(t *testing.T) {
 	ServiceAccountMiddleware(repo, b.ts, &revokeStubRepo{err: errStoreDown})(okHandler(&called)).ServeHTTP(rr, saRequest("1", token))
 	if rr.Code != http.StatusServiceUnavailable || called {
 		t.Fatalf("store error: status %d (next called %v), want 503 and refused", rr.Code, called)
+	}
+	if got := rr.Header().Get("WWW-Authenticate"); got != "" {
+		t.Errorf("a 503 must not challenge the token: WWW-Authenticate %q", got)
+	}
+	if rr.Header().Get("Retry-After") == "" {
+		t.Error("a 503 should carry Retry-After")
 	}
 }

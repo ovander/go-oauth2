@@ -30,4 +30,10 @@ func TestRefresh_MarkUsedErrorRefuses(t *testing.T) {
 	if errors.Is(err, ErrInvalidToken) {
 		t.Errorf("a store outage must not read as an invalid grant (the client would drop its token): %v", err)
 	}
+	// The old token was not retired, so once the store works again the
+	// client's retry with it succeeds.
+	svc.usedTokenRepo = newMemUsedTokenRepo()
+	if resp, err := svc.handleRefreshTokenGrant(context.Background(), refreshReq(refreshToken), "test-client", ""); err != nil || resp == nil {
+		t.Fatalf("retry after the outage: (%v, %v), want new tokens", resp, err)
+	}
 }

@@ -44,8 +44,9 @@ type AuthRejectFunc func(r *http.Request, reason AuthRejectReason, detail string
 //
 // A store error is returned, and every caller refuses the token on it (fail
 // closed, #366): a revoked token must not be accepted because the list of
-// revoked tokens could not be read. The callers answer 503, not 401, so a
-// client retries instead of discarding its token over a transient outage.
+// revoked tokens could not be read. The routes that require a token answer
+// 503, not 401, so a client retries instead of discarding its token over a
+// transient outage; the optional-auth routes serve the request anonymously.
 func isRevoked(ctx context.Context, usedTokenRepo repository.UsedTokenRepository, jti string) (bool, error) {
 	if usedTokenRepo == nil || jti == "" {
 		return false, nil
@@ -289,12 +290,6 @@ func GetUserRoleFromContext(ctx context.Context) (string, bool) {
 	return role, ok
 }
 
-// writeAuthError writes a JSON error response for authentication failures.
-//
-// M-05 fix: the previous implementation used raw string concatenation
-// (`{"error": "` + message + `"}`), which produces malformed JSON when
-// message contains a double-quote or backslash.  json.NewEncoder escapes
-// all special characters automatically.
 // writeUnavailable answers 503 for a token that could not be checked. Unlike
 // writeAuthError it sets no invalid_token challenge: the token may well be
 // valid, and a client should retry rather than discard it.
@@ -307,6 +302,12 @@ func writeUnavailable(w http.ResponseWriter, message string) {
 	}{Error: message})
 }
 
+// writeAuthError writes a JSON error response for authentication failures.
+//
+// M-05 fix: the previous implementation used raw string concatenation
+// (`{"error": "` + message + `"}`), which produces malformed JSON when
+// message contains a double-quote or backslash.  json.NewEncoder escapes
+// all special characters automatically.
 func writeAuthError(w http.ResponseWriter, message string, statusCode int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("WWW-Authenticate", `Bearer realm="oauth2", error="invalid_token"`)

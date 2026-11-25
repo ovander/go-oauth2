@@ -712,6 +712,21 @@ func (h *AdminHandler) GetUserApps(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// superadminTarget enforces the one rule for every per-user admin action on a
+// superadmin's account (#366): only a superadmin may take it. Deleting and
+// blocking a superadmin are refused here for everyone (removal goes through
+// /api/admin/superadmins/{id}, which guards the last superadmin); revoking
+// their sessions, unlocking them and changing their attributes need a
+// superadmin caller. It writes 403 and returns false when the action is
+// refused.
+func superadminTarget(w http.ResponseWriter, caller, target *model.User, action string) bool {
+	if target.Role != model.UserRoleSuperadmin || caller.Role == model.UserRoleSuperadmin {
+		return true
+	}
+	writeError(w, "only a superadmin can "+action+" a superadmin", http.StatusForbidden)
+	return false
+}
+
 // POST /api/admin/users/:id/revoke-tokens
 func (h *AdminHandler) RevokeUserTokens(w http.ResponseWriter, r *http.Request) {
 	adminID, ok := middleware.GetUserIDFromContext(r.Context())
@@ -737,6 +752,9 @@ func (h *AdminHandler) RevokeUserTokens(w http.ResponseWriter, r *http.Request) 
 	user, err := h.userService.GetByID(r.Context(), uint(userID))
 	if err != nil {
 		writeError(w, "user not found", http.StatusNotFound)
+		return
+	}
+	if !superadminTarget(w, currentUser, user, "revoke the sessions of") {
 		return
 	}
 
@@ -783,6 +801,9 @@ func (h *AdminHandler) UnlockUser(w http.ResponseWriter, r *http.Request) {
 	user, err := h.userService.GetByID(r.Context(), uint(userID))
 	if err != nil {
 		writeError(w, "user not found", http.StatusNotFound)
+		return
+	}
+	if !superadminTarget(w, currentUser, user, "unlock") {
 		return
 	}
 
@@ -847,8 +868,7 @@ func (h *AdminHandler) UpdateUserAttributes(w http.ResponseWriter, r *http.Reque
 		writeError(w, "failed to load the user", http.StatusInternalServerError)
 		return
 	}
-	if target.Role == model.UserRoleSuperadmin && currentUser.Role != model.UserRoleSuperadmin {
-		writeError(w, "only a superadmin can change a superadmin's attributes", http.StatusForbidden)
+	if !superadminTarget(w, currentUser, target, "change the attributes of") {
 		return
 	}
 	before := target.Attributes

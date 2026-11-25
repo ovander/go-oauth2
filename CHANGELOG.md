@@ -12,6 +12,12 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **Only a superadmin acts on a superadmin's account.** Deleting and blocking a superadmin were
+  refused, but any admin (or the monitoring console, with `monitoring:write`) could revoke a
+  superadmin's sessions or unlock one. One rule now covers every per-user admin action: on a
+  superadmin's account, `revoke-tokens`, `unlock` and `attributes` need a superadmin (`403`
+  otherwise), and delete and block stay on `/api/admin/superadmins/{id}`. Deploy note: none (#366).
+
 - **A failed-sign-in lock no longer has to lock the owner out.** New `LOCKOUT_SOURCE_MODE` (`off`
   default, `observe`, `enforce`). The lockout counted wrong passwords and codes per account, so
   anyone who knew an email could keep the account locked, admins and superadmins included. Under

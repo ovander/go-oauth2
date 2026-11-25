@@ -18,6 +18,7 @@ package migrate
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ovander/go-oauth2/internal/cluster"
 	"github.com/ovander/go-oauth2/internal/model"
@@ -762,6 +763,37 @@ var migrations = []Migration{
 				ON authorization_codes (token_family)`).Error
 		},
 	},
+	{
+		// 0036 (#260): drop the foreign key from security_audit_logs.app_id to
+		// apps. Deleting an app had to null app_id on its audit rows to satisfy
+		// it, which broke their row hash (app_id is hashed) and lost the
+		// attribution; the client_deleted event, written after the delete,
+		// was refused by it. The model no longer declares it (constraint:-),
+		// so a fresh install never has it.
+		ID:   "0036",
+		Name: "drop_security_audit_logs.app_id_foreign_key",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("security_audit_logs") {
+				return nil
+			}
+			// Every foreign key on app_id, whatever its name: GORM names it
+			// fk_security_audit_logs_app, but a database built otherwise may
+			// not, and a surviving key would make deleting an app fail.
+			var names []string
+			if err := db.Raw(`SELECT con.conname FROM pg_constraint con
+				JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = ANY (con.conkey)
+				WHERE con.conrelid = 'security_audit_logs'::regclass AND con.contype = 'f'
+				AND att.attname = 'app_id'`).Scan(&names).Error; err != nil {
+				return err
+			}
+			for _, name := range names {
+				if err := db.Exec(`ALTER TABLE security_audit_logs DROP CONSTRAINT ` + quoteIdent(name)).Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.
@@ -817,4 +849,9 @@ func runWithList(db *gorm.DB, migs []Migration) error {
 	}
 
 	return nil
+}
+
+// quoteIdent quotes a PostgreSQL identifier read from the catalog.
+func quoteIdent(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }

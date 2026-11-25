@@ -44,6 +44,14 @@ no change to discovery, claims or error codes.
 
 ### Security
 
+- **Deleting an app no longer rewrites its audit rows.** The audit log's `app_id` had a foreign key
+  to `apps`, so deleting an app first set `app_id` to null on every audit row naming it: the rows
+  lost their attribution and, `app_id` being covered by each row's hash, the integrity scan reported
+  them as tampered. The `client_deleted` event, written after the delete, was refused by the same
+  key and lost. The foreign key is dropped (migration 0036; the model no longer declares it): an
+  app's audit rows keep naming it, still verify, and its deletion is recorded. Deploy note:
+  migration 0036 drops one constraint and rewrites no data (#260).
+
 - **Client authentication takes the same time whether the client exists or not.** The token
   endpoint (every grant, and the token exchange), introspection and revocation answered an unknown
   `client_id` without checking any secret, a public client against no hash, and an inactive client

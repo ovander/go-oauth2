@@ -75,14 +75,12 @@ func (r *appRepository) Delete(ctx context.Context, id uint) error {
 	//   user_app_roles        NOT NULL FK, no CASCADE  → hard delete rows
 	//   authorization_codes   NOT NULL, no FK          → hard delete (safety)
 	//   admin_logs            nullable FK, no CASCADE  → SET NULL (keep audit trail)
-	//   security_audit_logs   nullable FK, no CASCADE  → SET NULL (keep audit trail)
+	//   security_audit_logs   no FK (migration 0036)   → untouched: its rows are
+	//                         hash-stamped over app_id, and keep naming the app (#260)
 	//   app_activity_logs     NOT NULL FK, CASCADE     → auto-cascades, no action needed
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// 1. Null out audit log references (preserve history)
 		if err := tx.Exec("UPDATE admin_logs SET app_id = NULL WHERE app_id = ?", id).Error; err != nil {
-			return err
-		}
-		if err := tx.Exec("UPDATE security_audit_logs SET app_id = NULL WHERE app_id = ?", id).Error; err != nil {
 			return err
 		}
 		// 2. Hard-delete rows that cannot be nulled

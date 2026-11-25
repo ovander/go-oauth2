@@ -1160,8 +1160,9 @@ func (s *oauthService) signalRefreshReuse(ctx context.Context, claims *auth.Refr
 // been stolen to obtain — but only when the request authenticates as the
 // code's client, so that whoever merely saw a used code (in a log, a
 // referrer) cannot end the user's sign-in. An authenticated replay then
-// removes the code, so it signals once; an unauthenticated one leaves it, so
-// that it cannot erase the evidence a later authenticated replay needs.
+// removes the code, so it signals once, unless the revocation failed; an
+// unauthenticated one leaves it, so that it cannot erase the evidence a later
+// authenticated replay needs.
 func (s *oauthService) signalCodeReplay(ctx context.Context, code *model.AuthorizationCode, req dto.TokenRequest, clientID, clientSecret string) {
 	details := map[string]interface{}{
 		"client_id": clientID,
@@ -1173,14 +1174,18 @@ func (s *oauthService) signalCodeReplay(ctx context.Context, code *model.Authori
 	}
 	authenticated := s.replayFromCodeClient(ctx, code, req, clientID, clientSecret)
 	details["client_authenticated"] = authenticated
+	revoked := ""
 	if s.codeReplayMode == codeReplayModeEnforce {
 		if authenticated {
-			details["revoked"] = s.revokeCodeTokens(ctx, code)
+			revoked = s.revokeCodeTokens(ctx, code)
 		} else {
-			details["revoked"] = "none_unauthenticated"
+			revoked = "none_unauthenticated"
 		}
+		details["revoked"] = revoked
 	}
-	if authenticated {
+	// A code whose tokens could not be revoked is kept (fail closed): the
+	// next authenticated replay tries again, instead of finding no code.
+	if authenticated && revoked != "failed" {
 		if err := s.codeStore.DeleteCode(ctx, code.Code); err != nil {
 			logger.FromContext(ctx).Errorf("RFC 6749 §4.1.2: could not remove a replayed code of user %d: %v", code.UserID, err)
 		}

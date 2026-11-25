@@ -115,6 +115,9 @@ func (r recordingCodeRepo) MarkAsUsedWithTokens(_ context.Context, code, family,
 }
 
 func (r recordingCodeRepo) KeepFamilyUntil(_ context.Context, family string, keepUntil time.Time) error {
+	if family == "" {
+		return nil // as the GORM repository: no family, no code to keep
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for k, c := range r.codes {
@@ -488,5 +491,45 @@ func TestCodeStore_ReplayRetentionKeepsTheRedeemedCode(t *testing.T) {
 	g := newReplayFixture(t, codeReplayModeEnforce, true)
 	if exp := g.codes.get(t, g.code).ExpiresAt; exp.After(time.Now().Add(11 * time.Minute)) {
 		t.Fatalf("without a retention the redeemed code expires at %v", exp)
+	}
+}
+
+// failingRevocationRepo is a used-token store that cannot record a
+// revocation.
+type failingRevocationRepo struct{ repository.UsedTokenRepository }
+
+func (failingRevocationRepo) MarkAsUsed(context.Context, string, string, uint, time.Time) error {
+	return errors.New("used-token store unavailable")
+}
+
+// Under enforce, a replay whose tokens could not be revoked keeps the code:
+// the next authenticated replay revokes them, rather than finding an unknown
+// code (fail closed).
+func TestCodeReplay_EnforceKeepsTheCodeWhenRevocationFails(t *testing.T) {
+	f := newReplayFixture(t, codeReplayModeEnforce, true)
+
+	f.svc.usedTokenRepo = failingRevocationRepo{f.used}
+	if _, err := f.exchange(); !errors.Is(err, ErrInvalidCode) {
+		t.Fatalf("replay = %v, want ErrInvalidCode", err)
+	}
+	if got := f.audit.last.Details["revoked"]; got != "failed" {
+		t.Fatalf("revoked = %v, want failed", got)
+	}
+	if !f.codes.stored(f.code) {
+		t.Fatal("the code was removed although its tokens were not revoked")
+	}
+
+	f.svc.usedTokenRepo = f.used
+	if _, err := f.exchange(); !errors.Is(err, ErrInvalidCode) {
+		t.Fatalf("second replay = %v, want ErrInvalidCode", err)
+	}
+	if got := f.audit.last.Details["revoked"]; got != "tokens" {
+		t.Fatalf("second replay: revoked = %v, want tokens", got)
+	}
+	if !f.accessRevoked(t) {
+		t.Error("the access token is still not revoked after the second replay")
+	}
+	if f.codes.stored(f.code) {
+		t.Error("the code is still stored once its tokens are revoked")
 	}
 }

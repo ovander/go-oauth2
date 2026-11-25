@@ -28,7 +28,8 @@ Capabilities**, non-breaking).
   TTL, extended at each rotation), so the expiry sweep does not erase it; under `enforce` a
   refresh whose code cannot be kept is refused (`server_error`, the old refresh token stays good
   to retry with), under `observe` it is only logged. An authenticated replay
-  signals once; codes redeemed before the migration are audited only. Deploy note: migration 0035
+  signals once, unless the revocation could not be recorded (`revoked: failed`): the code is then
+  kept, so the next replay tries again; codes redeemed before the migration are audited only. Deploy note: migration 0035
   (two nullable columns and an index); new variable `CODE_REPLAY_MODE`, default `off`; with it
   on, `authorization_codes` keeps one row per active sign-in, and each refresh updates it (#366).
 

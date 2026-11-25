@@ -62,6 +62,9 @@ func codeRepoInTx(t *testing.T) repository.AuthorizationCodeRepository {
 		t.Fatalf("migrate: %v", err)
 	}
 	tx := db.Begin()
+	if tx.Error != nil {
+		t.Fatalf("begin: %v", tx.Error)
+	}
 	t.Cleanup(func() { tx.Rollback() })
 	return repository.NewAuthorizationCodeRepository(tx)
 }
@@ -112,7 +115,10 @@ func TestAuthorizationCode_KeepFamilyUntil(t *testing.T) {
 	if !ok {
 		t.Fatal("the GORM code repository cannot keep a family's code")
 	}
-	redeemer := repo.(repository.AuthorizationCodeRedeemer)
+	redeemer, ok := repo.(repository.AuthorizationCodeRedeemer)
+	if !ok {
+		t.Fatal("the GORM code repository does not record the tokens a code is redeemed for")
+	}
 	ctx := context.Background()
 	tag := fmt.Sprint(time.Now().UnixNano())
 	exp := time.Now().Add(time.Minute)

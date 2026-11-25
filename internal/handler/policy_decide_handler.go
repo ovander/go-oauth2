@@ -30,7 +30,12 @@ const (
 // are decided only by the admin enforcement point, on the admin API's own
 // requests; an application asking about them would be probing the admin
 // policy, not deciding anything of its own.
-var adminActionPattern = regexp.MustCompile(`^[A-Z]+ ` + regexp.QuoteMeta(policy.AdminPrefix) + `(/|$)`)
+//
+// It matches the prefix as a path anywhere after whitespace, whatever comes
+// before it (#366): a rule glob such as "* /api/admin/*" also matches
+// "get /api/admin/x" or "  GET /api/admin/x", which an upper-case-method
+// pattern let through.
+var adminActionPattern = regexp.MustCompile(`(^|\s)` + regexp.QuoteMeta(policy.AdminPrefix) + `(/|\s|$)`)
 
 // PolicyDecideHandler serves POST /api/apps/{app_id}/service/policy/decide
 // (A4 part 2): an application's backend asks the PDP about one of its own
@@ -179,9 +184,10 @@ func (h *PolicyDecideHandler) resolveSubject(r *http.Request, app *model.App, s 
 	}
 
 	var (
-		user   *model.User
-		claims *auth.AccessTokenClaims
-		locked bool
+		user    *model.User
+		claims  *auth.AccessTokenClaims
+		locked  bool
+		byToken = s.Token != ""
 	)
 	if s.Token != "" {
 		u, c, terr := middleware.VerifyUserToken(r.Context(), h.tokenService, h.userRepo, h.usedTokenRepo, s.Token)
@@ -207,11 +213,14 @@ func (h *PolicyDecideHandler) resolveSubject(r *http.Request, app *model.App, s 
 	}
 
 	// The subject must belong to the calling application. Global admins have
-	// implicit access to every application and never hold per-app rows.
+	// implicit access to every application and never hold per-app rows — but
+	// only when the application presents the admin's own token, which shows
+	// the admin is using it (#366). By a bare user_id a non-member is unknown,
+	// admin or not, or any application could test user ids for admin rights.
 	appRole := ""
 	if role, err := h.userAppRoleRepo.FindByUserAndApp(r.Context(), user.ID, app.ID); err == nil && role != nil {
 		appRole = string(role.Role)
-	} else if !user.IsGlobalAdmin() {
+	} else if !user.IsGlobalAdmin() || !byToken {
 		return policy.Principal{}, false, errUnknownSubject
 	}
 

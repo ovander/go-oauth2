@@ -469,9 +469,12 @@ X-Correlation-ID: <the app's request id>
 proven by its client-credentials token, pinned to `{app_id}` — never a field in
 the body. The **subject is resolved by Socrate**: role, A2 attributes, forced
 password change, and the user's role *in the calling application*
-(`principal.app_role`). An application can only ask about **its own members**
-(or global admins): anyone else is `404 unknown subject`, the same answer as for
-an id that does not exist, so the endpoint cannot be used to discover users. What
+(`principal.app_role`). An application can only ask about **its own members**:
+anyone else is `404 unknown subject`, the same answer as for an id that does not
+exist, so the endpoint cannot be used to discover users. A global admin needs no
+membership, but only when the application presents the admin's own token (since
+v1.14.7): by a bare `user_id` a non-member admin is a `404` like anyone else, so
+the endpoint cannot be used to find out who the admins are either. What
 the application does supply — `action`, `resource`, `context` — are facts about
 its own domain that only it knows; `context.ip` is the end user's address as it
 observed it, and Socrate derives `context.ip_country` from it when GeoIP is
@@ -487,8 +490,9 @@ deny rule that is unknown denies. A revoked or expired subject token is a
 is a deny (`subject_locked`) without evaluating anything.
 
 **Actions** are the application's own vocabulary (`invoice.approve`,
-`report.export`). The admin namespace (`"<METHOD> /api/admin…"`) is refused
-with `400`: those actions are decided only on the admin API's own requests.
+`report.export`). The admin namespace — `/api/admin` as a path anywhere after
+whitespace, whatever the method's case — is refused with `400`: those actions
+are decided only on the admin API's own requests.
 Scope rules to an application with `app.client_id`, since a rule whose
 `actions` is `*` applies to every application's actions as well as the admin
 API's. With the baseline alone, every application action is

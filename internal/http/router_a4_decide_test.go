@@ -294,9 +294,21 @@ func TestDecide_SubjectMustBelongToTheCallingApp(t *testing.T) {
 	if r.code != nethttp.StatusNotFound {
 		t.Fatalf("non-member's token → %d %s", r.code, r.body)
 	}
-	// A global admin has implicit access to every application.
-	if r := f.decide(t, "3", svc, `{"subject":{"user_id":1},"action":"invoice.approve"}`); r.code != 200 {
-		t.Fatalf("global admin → %d %s", r.code, r.body)
+	// A global admin has implicit access to every application, but only when
+	// the application presents the admin's own token (#366). By a bare
+	// user_id the admin is a non-member like any other: the same 404 as a
+	// user who does not exist, or any application could test ids for admin
+	// rights.
+	byID := f.decide(t, "3", svc, `{"subject":{"user_id":1},"action":"invoice.approve"}`)
+	if byID.code != nethttp.StatusNotFound || byID.body != noSuchUser.body {
+		t.Fatalf("global admin by user_id → %d %s, want the 404 of an unknown user", byID.code, byID.body)
+	}
+	// By the admin's own token the decision is evaluated for the admin: the
+	// refund allow applies to an MFA token, which only a resolved principal
+	// with its token facts can match.
+	if r := f.decide(t, "3", svc, `{"subject":{"token":"`+f.userToken(t, f.root, "pwd", "otp", "mfa")+`"},"action":"refund.issue"}`); r.code != 200 ||
+		!r.resp.Allow || r.resp.Rule != "refunds" {
+		t.Fatalf("global admin by token → %d %s, want the refunds allow", r.code, r.body)
 	}
 }
 
@@ -368,12 +380,16 @@ func TestDecide_RejectsMalformedRequests(t *testing.T) {
 	}
 	many := "{" + strings.Join(keys, ",") + "}"
 	for name, body := range map[string]string{
-		"no action":             `{"subject":{"user_id":10}}`,
-		"admin namespace":       `{"subject":{"user_id":10},"action":"DELETE /api/admin/apps/{id}"}`,
-		"both subjects":         `{"subject":{"user_id":10,"token":"x"},"action":"a"}`,
-		"misspelt field":        `{"subjet":{"user_id":10},"action":"a"}`,
-		"too many attributes":   `{"action":"a","resource":{"attributes":` + many + `}}`,
-		"invalid subject token": `{"subject":{"token":"not-a-jwt"},"action":"a"}`,
+		"no action":       `{"subject":{"user_id":10}}`,
+		"admin namespace": `{"subject":{"user_id":10},"action":"DELETE /api/admin/apps/{id}"}`,
+		// #366: what an admin rule's glob ("* /api/admin/*") would match.
+		"admin namespace, lower-case method": `{"subject":{"user_id":10},"action":"delete /api/admin/apps/{id}"}`,
+		"admin namespace, leading spaces":    `{"subject":{"user_id":10},"action":"  GET /api/admin/stats"}`,
+		"admin namespace, any method token":  `{"subject":{"user_id":10},"action":"* /api/admin"}`,
+		"both subjects":                      `{"subject":{"user_id":10,"token":"x"},"action":"a"}`,
+		"misspelt field":                     `{"subjet":{"user_id":10},"action":"a"}`,
+		"too many attributes":                `{"action":"a","resource":{"attributes":` + many + `}}`,
+		"invalid subject token":              `{"subject":{"token":"not-a-jwt"},"action":"a"}`,
 	} {
 		if r := f.decide(t, "3", svc, body); r.code != nethttp.StatusBadRequest {
 			t.Errorf("%s → %d %s, want 400", name, r.code, r.body)

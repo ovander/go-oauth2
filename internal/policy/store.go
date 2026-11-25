@@ -48,6 +48,9 @@ const (
 	SourceAdminPEP = "admin_pep"
 	// SourceDecideAPI is an application asking through the decide endpoint.
 	SourceDecideAPI = "decide_api"
+	// SourceAppPEP is the enforcement point on the app-management routes,
+	// /api/apps/{app_id}/* (#395).
+	SourceAppPEP = "app_pep"
 
 	// DivergencePDPStricter: the PDP would deny a request the code gates let
 	// through. In enforce mode this is a request the PDP actually refused.

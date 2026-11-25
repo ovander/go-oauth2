@@ -58,6 +58,9 @@ type PolicyCatalogueResponse struct {
 	Mode          string   `json:"mode"`
 	AdminActions  []string `json:"admin_actions"`
 	ExemptActions []string `json:"exempt_actions"`
+	// AppActions are the app-management routes the enforcement point covers
+	// (#395), as /api/apps/{app_id}/... actions.
+	AppActions    []string `json:"app_actions"`
 	Attributes    []string `json:"attributes"`
 	AttributeMaps []string `json:"attribute_maps"`
 	Operators     []string `json:"operators"`

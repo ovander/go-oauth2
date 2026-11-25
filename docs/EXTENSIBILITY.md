@@ -303,6 +303,16 @@ On the admin API the PEP builds the input from the request:
 `GET /api/admin/policy/catalogue` lists every admin action, attribute,
 operator and obligation, so an editor can offer choices instead of free text.
 
+**The app-management routes** (`/api/apps/{app_id}/users…` and `/logs`, used by
+an application's admins) have the same enforcement point (#395), recorded with
+source `app_pep`. Their actions keep the placeholder, e.g.
+`DELETE /api/apps/{app_id}/users/{user_id}`, and the input also carries `app.id`
+(from `{app_id}`) and `principal.app_role`, the caller's role in that app, read
+server-side for each request (absent for a non-member, and for a global admin,
+who needs no membership). `resource.id` is the route's `{user_id}`. The
+catalogue lists them as `app_actions`. `/api/apps/{app_id}/service/*` keeps its
+service-account authentication and is not covered.
+
 ### Rules
 
 ```json
@@ -370,7 +380,7 @@ to the exact rules that made it. Each instance caches the current version and
 checks for a newer one every `POLICY_REFRESH_INTERVAL` (10s); its own saves
 apply immediately.
 
-**Version 1 is a baseline** that restates the admin API's code gates as rules:
+**Version 1 is a baseline** that restates the code gates as rules:
 
 | Code gate | Baseline rule |
 |---|---|
@@ -378,6 +388,14 @@ apply immediately.
 | `RequireRole("superadmin")` on `/superadmins` | `superadmin-management` — deny unless `superadmin` |
 | `RequirePasswordChangeComplete` | `password-change-pending` — deny while `must_change_password` |
 | `RequireFreshAuth` on 16 routes | `destructive-step-up` — allow with `require_fresh_auth` |
+| `RequireAppAccess` + `RequireAppAdmin` on `/api/apps/{app_id}/*` | `app-admins` — allow `* /api/apps/{app_id}/*` for the app's `admin` (`principal.app_role`) or a global `admin`/`superadmin` |
+
+**A policy stored before `app-admins` existed** has no rule for the app routes,
+so under the default deny it would refuse every one of them: in `shadow` as
+`pdp_deny_code_allow` divergences on `/api/apps/…`, in `enforce` as
+`403 policy_denied` for every app admin. Before turning `shadow` or `enforce`
+on, add the `app-admins` rule above to the current version (as for any later
+baseline addition). A fresh install seeds it.
 
 A router test walks every admin route for every kind of principal and asserts
 the baseline and the code agree everywhere, and that the baseline's step-up

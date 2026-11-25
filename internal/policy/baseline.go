@@ -3,6 +3,12 @@ package policy
 // AdminPrefix is the path prefix the admin enforcement point covers.
 const AdminPrefix = "/api/admin"
 
+// AppPrefix is the path prefix the app-management enforcement point covers
+// (#395). Its actions keep the {app_id} placeholder, like every other path
+// parameter; the application itself is input.app, and the caller's role in it
+// principal.app_role.
+const AppPrefix = "/api/apps/{app_id}"
+
 // StepUpActions are the admin routes that the router wraps in
 // RequireFreshAuth today. The baseline expresses the same requirement as an
 // obligation; the router parity test fails if the two lists ever drift.
@@ -37,6 +43,9 @@ var StepUpActions = []string{
 //	RequireRole("superadmin")          → superadmin-management
 //	RequirePasswordChangeComplete      → password-change-pending
 //	RequireFreshAuth (on StepUpActions) → destructive-step-up
+//	RequireAppAccess + RequireAppAdmin  → app-admins (every /api/apps/{app_id}
+//	                                      route needs the app's admin role or
+//	                                      a global admin)
 //
 // That is what makes shadow mode meaningful from the first request: the PDP
 // and the code should agree everywhere, so every recorded divergence is either
@@ -81,5 +90,19 @@ func Baseline() []Rule {
 			When:        &Condition{Attr: "principal.role", Op: opIn, Value: admins},
 			Obligations: []string{ObligationFreshAuth},
 		},
+		{
+			ID:          "app-admins",
+			Description: "App management is for the app's admins and for global admins (mirrors RequireAppAccess and RequireAppAdmin).",
+			Effect:      EffectAllow,
+			Actions:     []string{"* " + AppPrefix + "/*"},
+			When: &Condition{Any: []Condition{
+				{Attr: "principal.app_role", Op: opEq, Value: string(appRoleAdmin)},
+				{Attr: "principal.role", Op: opIn, Value: admins},
+			}},
+		},
 	}
 }
+
+// appRoleAdmin is model.AppRoleAdmin; the policy package does not import the
+// model.
+const appRoleAdmin = "admin"

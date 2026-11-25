@@ -500,7 +500,7 @@ func TestA4_PolicyAPI_ValidateSimulateVersionsDecisions(t *testing.T) {
 	}
 
 	// Versions.
-	if r := a4Call(t, h, "GET", "/api/admin/policy/versions", tok, ""); r.code != 200 || !strings.Contains(r.body, `"rule_count":4`) {
+	if r := a4Call(t, h, "GET", "/api/admin/policy/versions", tok, ""); r.code != 200 || !strings.Contains(r.body, `"rule_count":5`) {
 		t.Fatalf("versions → %d %s", r.code, r.body)
 	}
 	if r := a4Call(t, h, "GET", "/api/admin/policy/versions/1", tok, ""); r.code != 200 || !strings.Contains(r.body, `"global-admins"`) {

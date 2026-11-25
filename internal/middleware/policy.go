@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -71,6 +72,23 @@ const pepExemptPolicyTree = "/policy"
 //
 // It must run after AuthMiddleware.
 func (p *PolicyPEP) Middleware(prefix string, routes chi.Routes) func(http.Handler) http.Handler {
+	return p.middleware(prefix, routes, policy.SourceAdminPEP, nil)
+}
+
+// AppRoleFunc returns the user's role in the application ("" when they have
+// none), read server-side for each request.
+type AppRoleFunc func(ctx context.Context, userID, appID uint) string
+
+// AppMiddleware is Middleware for the app-management routes mounted at
+// prefix, /api/apps/{app_id} (#395). The decision input also carries the
+// application (input.app, from {app_id}) and the caller's role in it
+// (principal.app_role, from appRole). A path whose {app_id} is not a number is
+// left to the code gates, which refuse it.
+func (p *PolicyPEP) AppMiddleware(prefix string, routes chi.Routes, appRole AppRoleFunc) func(http.Handler) http.Handler {
+	return p.middleware(prefix, routes, policy.SourceAppPEP, appRole)
+}
+
+func (p *PolicyPEP) middleware(prefix string, routes chi.Routes, source string, appRole AppRoleFunc) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		if p == nil || p.pdp == nil || p.pdp.Mode() == policy.ModeOff {
 			return next
@@ -105,14 +123,27 @@ func (p *PolicyPEP) Middleware(prefix string, routes chi.Routes) func(http.Handl
 			}
 
 			fullPattern := prefix + pattern
+			resourceID := matched.URLParam("id")
+			if resourceID == "" {
+				resourceID = matched.URLParam("user_id")
+			}
 			in := policy.Input{
 				Principal: principalFor(user, claims),
 				Action:    r.Method + " " + fullPattern,
 				Resource: policy.Resource{
 					Type: resourceType(pattern),
-					ID:   matched.URLParam("id"),
+					ID:   resourceID,
 				},
 				Context: policy.Env{IP: GetClientIP(r)},
+			}
+			if appRole != nil {
+				appID, perr := strconv.ParseUint(chi.URLParam(r, "app_id"), 10, strconv.IntSize)
+				if perr != nil {
+					next.ServeHTTP(w, r) // RequireAppAccess answers 400
+					return
+				}
+				in.App = &policy.App{ID: uint(appID)}
+				in.Principal.AppRole = appRole(r.Context(), user.ID, uint(appID))
 			}
 			if p.countryOf != nil && in.Context.IP != "" {
 				in.Context.IPCountry = p.countryOf(in.Context.IP)
@@ -127,7 +158,7 @@ func (p *PolicyPEP) Middleware(prefix string, routes chi.Routes) func(http.Handl
 
 			rec := &policy.DecisionRecord{
 				CorrelationID: GetCorrelationID(r.Context()),
-				Source:        policy.SourceAdminPEP,
+				Source:        source,
 				Mode:          string(mode),
 				Enforced:      mode == policy.ModeEnforce,
 				Allow:         pdpAllow,
@@ -153,7 +184,7 @@ func (p *PolicyPEP) Middleware(prefix string, routes chi.Routes) func(http.Handl
 			case !pdpAllow:
 				outcome = "deny"
 			}
-			metrics.PolicyDecision(policy.SourceAdminPEP, string(mode), outcome)
+			metrics.PolicyDecision(source, string(mode), outcome)
 
 			if mode == policy.ModeEnforce && !pdpAllow {
 				status, code := http.StatusForbidden, "policy_denied"

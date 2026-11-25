@@ -32,6 +32,7 @@ type PolicyHandler struct {
 	mu            sync.RWMutex
 	adminActions  []string
 	exemptActions []string
+	appActions    []string
 }
 
 func NewPolicyHandler(pdp *policy.Service, adminLogService service.AdminLogService) *PolicyHandler {
@@ -47,6 +48,15 @@ func (h *PolicyHandler) SetAdminActions(actions, exempt []string) {
 	h.exemptActions = append([]string(nil), exempt...)
 	sort.Strings(h.adminActions)
 	sort.Strings(h.exemptActions)
+}
+
+// SetAppActions publishes the app-management actions the enforcement point
+// covers (#395).
+func (h *PolicyHandler) SetAppActions(actions []string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.appActions = append([]string(nil), actions...)
+	sort.Strings(h.appActions)
 }
 
 func (h *PolicyHandler) requireSuperadmin(w http.ResponseWriter, r *http.Request) (uint, bool) {
@@ -231,11 +241,13 @@ func (h *PolicyHandler) Catalogue(w http.ResponseWriter, r *http.Request) {
 	h.mu.RLock()
 	actions := append([]string{}, h.adminActions...)
 	exempt := append([]string{}, h.exemptActions...)
+	appActions := append([]string{}, h.appActions...)
 	h.mu.RUnlock()
 	writeJSON(w, dto.PolicyCatalogueResponse{
 		Mode:          string(h.pdp.Mode()),
 		AdminActions:  actions,
 		ExemptActions: exempt,
+		AppActions:    appActions,
 		Attributes:    fixed,
 		AttributeMaps: maps,
 		Operators:     policy.Operators(),

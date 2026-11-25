@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -726,7 +727,11 @@ func Bootstrap(cfg *config.Config) *App {
 		oauthHandler.SetDPoPSigningAlgs([]string{"ES256"})
 	}
 	oauthHandler.SetJWKSCacheMaxAge(int(cfg.JWKSCacheMaxAge.Seconds()))
-	oauthHandler.SetRedirectURIExactMatch(cfg.RedirectURIMatchMode == "enforce")
+	if check, err := redirectURICheckFor(cfg.RedirectURIMatchMode, oauthService); err != nil {
+		logger.Fatalf("bootstrap: %v", err)
+	} else {
+		oauthHandler.SetRedirectURICheck(check)
+	}
 	// Tier-0 admin session hardening: when an admin-console client is configured,
 	// deliver its refresh token as an HttpOnly cookie (set/read at /oauth/token,
 	// cleared at logout). Secure in production. Empty client id leaves it off.
@@ -1230,4 +1235,22 @@ func Bootstrap(cfg *config.Config) *App {
 
 		policyDecisionSweepStop: policyDecisionSweepStop,
 	}
+}
+
+// redirectURICheckFor is the redirect URI check the OAuth handler runs before
+// sign-in for REDIRECT_URI_MATCH_MODE mode (#261). Under enforce, it is the
+// OAuth service's exact-match check, which refuses and audits a non-exact
+// URI. Otherwise it is nil: under observe the service audits such a URI once,
+// when the code is issued, and under off nothing checks it.
+func redirectURICheckFor(mode string, oauthService any) (func(context.Context, *model.App, string) error, error) {
+	if mode != "enforce" {
+		return nil, nil
+	}
+	rc, ok := oauthService.(interface {
+		CheckRedirectURIExact(context.Context, *model.App, string) error
+	})
+	if !ok {
+		return nil, fmt.Errorf("%T does not support CheckRedirectURIExact", oauthService)
+	}
+	return rc.CheckRedirectURIExact, nil
 }

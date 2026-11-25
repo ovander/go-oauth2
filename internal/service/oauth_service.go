@@ -208,6 +208,16 @@ func (s *oauthService) SetRedirectURIMatchMode(mode string) { s.redirectURIMatch
 
 // checkRedirectURIExact applies REDIRECT_URI_MATCH_MODE to a redirect_uri that
 // ValidateRedirectURI already accepted.
+// CheckRedirectURIExact is the REDIRECT_URI_MATCH_MODE check of a redirect URI
+// that auth.ValidateRedirectURI already accepted for app: under observe or
+// enforce, a URI that is not exactly a registered one is audited
+// (redirect_uri_inexact_match), and under enforce refused with
+// auth.ErrRedirectURINotRegistered. The OAuth handler runs it before sign-in
+// under enforce (#261).
+func (s *oauthService) CheckRedirectURIExact(ctx context.Context, app *model.App, redirectURI string) error {
+	return s.checkRedirectURIExact(ctx, app, nil, redirectURI)
+}
+
 func (s *oauthService) checkRedirectURIExact(ctx context.Context, app *model.App, userID *uint, redirectURI string) error {
 	if s.redirectURIMatchMode != "observe" && s.redirectURIMatchMode != "enforce" {
 		return nil

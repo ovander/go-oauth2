@@ -12,14 +12,31 @@ import (
 	"testing"
 
 	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
+
+// exactCheck stands for the service's CheckRedirectURIExact under enforce:
+// it refuses a URI that is not exactly registered, and counts the refusals
+// (the service audits each one).
+type exactCheck struct{ refused int }
+
+func (c *exactCheck) check(_ context.Context, app *model.App, uri string) error {
+	if !auth.RedirectURIExactlyRegistered(uri, app.RedirectURIs) {
+		c.refused++
+		return auth.ErrRedirectURINotRegistered
+	}
+	return nil
+}
 
 func TestAuthorize_ExactRedirectURIUnderEnforce(t *testing.T) {
 	app := &model.App{ClientID: "my-app", Name: "Test App", Active: true, RedirectURIs: model.StringArray{"https://app.example.com/cb"}}
 	appSvc := &critAppService{getByClientID: func(_ context.Context, _ string) (*model.App, error) { return app, nil }}
+	checks := &exactCheck{}
 	page := func(exact bool, redirectURI string) string {
 		h := newCritTestHandler(appSvc, &critOAuthService{}, &critAuthService{})
-		h.SetRedirectURIExactMatch(exact)
+		if exact {
+			h.SetRedirectURICheck(checks.check)
+		}
 		target := "/oauth/authorize?response_type=code&client_id=my-app&state=s&redirect_uri=" + url.QueryEscape(redirectURI)
 		w := httptest.NewRecorder()
 		h.Authorize(w, httptest.NewRequest(http.MethodGet, target, nil))
@@ -35,6 +52,9 @@ func TestAuthorize_ExactRedirectURIUnderEnforce(t *testing.T) {
 	if body := page(true, "https://app.example.com/cb"); strings.Contains(body, "not registered") {
 		t.Fatal("enforce: the exact registered URI was refused")
 	}
+	if checks.refused != 1 {
+		t.Errorf("the service check refused %d URIs, want 1: the refusal must go through it, to be audited", checks.refused)
+	}
 }
 
 func TestEndSession_ExactPostLogoutURIUnderEnforce(t *testing.T) {
@@ -45,9 +65,12 @@ func TestEndSession_ExactPostLogoutURIUnderEnforce(t *testing.T) {
 		}
 		return &model.App{ClientID: "good-client", RedirectURIs: model.StringArray{registered}}, nil
 	}}
+	checks := &exactCheck{}
 	logout := func(exact bool, uri string) *httptest.ResponseRecorder {
 		h := newTestEndSessionHandler(appSvc, &mockOAuthService{})
-		h.SetRedirectURIExactMatch(exact)
+		if exact {
+			h.SetRedirectURICheck(checks.check)
+		}
 		w := httptest.NewRecorder()
 		h.EndSession(w, httptest.NewRequest(http.MethodGet, "/oauth/logout?client_id=good-client&post_logout_redirect_uri="+url.QueryEscape(uri), nil))
 		return w
@@ -61,5 +84,8 @@ func TestEndSession_ExactPostLogoutURIUnderEnforce(t *testing.T) {
 	}
 	if w := logout(true, registered); w.Code != http.StatusFound || w.Header().Get("Location") != registered {
 		t.Fatalf("enforce: the exact URI did not redirect (%d %s)", w.Code, w.Header().Get("Location"))
+	}
+	if checks.refused != 1 {
+		t.Errorf("the service check refused %d URIs, want 1", checks.refused)
 	}
 }

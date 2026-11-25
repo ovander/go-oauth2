@@ -19,6 +19,7 @@ import (
 	"github.com/ovander/go-oauth2/internal/contextkeys"
 	"github.com/ovander/go-oauth2/internal/dto"
 	"github.com/ovander/go-oauth2/internal/middleware"
+	"github.com/ovander/go-oauth2/internal/model"
 	"github.com/ovander/go-oauth2/internal/service"
 	"github.com/ovander/go-oauth2/internal/shared/auth"
 	"github.com/ovander/go-oauth2/internal/shared/auth/tokenexchange"
@@ -46,9 +47,10 @@ type OAuthHandler struct {
 	// jwksCacheMaxAge is the Cache-Control max-age (seconds) advertised on the
 	// JWKS endpoint. <= 0 disables caching (no-store). RFC-002.
 	jwksCacheMaxAge int
-	// redirectURIExact requires the exact registered redirect_uri
-	// (REDIRECT_URI_MATCH_MODE enforce, #261).
-	redirectURIExact bool
+	// redirectURICheck, when set, runs after auth.ValidateRedirectURI on the
+	// authorize pages and the post-logout redirect: the exact-match check of
+	// REDIRECT_URI_MATCH_MODE enforce (#261).
+	redirectURICheck func(ctx context.Context, app *model.App, redirectURI string) error
 	// extraGrantTypes are additional grant types advertised in OIDC discovery
 	// beyond the always-supported set (e.g. the RFC 8693 token-exchange URN when
 	// TOKEN_EXCHANGE_MODE=enforce). Empty when none are enabled.
@@ -213,26 +215,30 @@ func (h *OAuthHandler) writeRefreshCookie(w http.ResponseWriter, value string) {
 	})
 }
 
-// SetJWKSCacheMaxAge configures the Cache-Control max-age (in seconds) for the
-// JWKS endpoint. A value <= 0 disables caching.
-// SetRedirectURIExactMatch makes the authorize pages and the post-logout
-// redirect require the exact registered redirect_uri (REDIRECT_URI_MATCH_MODE
-// enforce, #261), so that a non-exact one is refused before the user signs in.
-// The service audits it, when the code is issued.
-func (h *OAuthHandler) SetRedirectURIExactMatch(exact bool) { h.redirectURIExact = exact }
+// SetRedirectURICheck makes the authorize pages and the post-logout redirect
+// run check after auth.ValidateRedirectURI, and refuse the redirect URI when it
+// fails. Under REDIRECT_URI_MATCH_MODE enforce, bootstrap sets it to the OAuth
+// service's exact-match check, which audits the refusal (#261), so that a
+// non-exact URI is refused, and recorded, before the user signs in. Nil (the
+// default) runs no extra check.
+func (h *OAuthHandler) SetRedirectURICheck(check func(ctx context.Context, app *model.App, redirectURI string) error) {
+	h.redirectURICheck = check
+}
 
-// validateRedirectURI is auth.ValidateRedirectURI, and under
-// REDIRECT_URI_MATCH_MODE enforce also requires the exact registered string.
-func (h *OAuthHandler) validateRedirectURI(uri string, registered []string) error {
-	if err := auth.ValidateRedirectURI(uri, registered, h.httpsRequired); err != nil {
+// validateRedirectURI is auth.ValidateRedirectURI against app's registered
+// URIs, followed by the check SetRedirectURICheck set, if any.
+func (h *OAuthHandler) validateRedirectURI(ctx context.Context, app *model.App, uri string) error {
+	if err := auth.ValidateRedirectURI(uri, app.RedirectURIs, h.httpsRequired); err != nil {
 		return err
 	}
-	if h.redirectURIExact && !auth.RedirectURIExactlyRegistered(uri, registered) {
-		return auth.ErrRedirectURINotRegistered
+	if h.redirectURICheck != nil {
+		return h.redirectURICheck(ctx, app, uri)
 	}
 	return nil
 }
 
+// SetJWKSCacheMaxAge configures the Cache-Control max-age (in seconds) for the
+// JWKS endpoint. A value <= 0 disables caching.
 func (h *OAuthHandler) SetJWKSCacheMaxAge(seconds int) {
 	h.jwksCacheMaxAge = seconds
 }
@@ -322,7 +328,7 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 	// NEW-02 fix: pass h.httpsRequired so that HTTP redirect URIs are rejected
 	// when the authorization server runs behind HTTPS (RFC 6749 §10.6).
 	// h.httpsRequired is true when the configured issuer starts with "https://".
-	if err := h.validateRedirectURI(req.RedirectURI, app.RedirectURIs); err != nil {
+	if err := h.validateRedirectURI(r.Context(), app, req.RedirectURI); err != nil {
 		// HIGH-01 fix: log the full error internally; never forward raw Go error
 		// strings to the client.  redirectURIErrorDescription maps each sentinel
 		// error to a safe, static description.
@@ -496,7 +502,7 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// NEW-02 fix: same as GET path — pass h.httpsRequired (not false).
-	if err := h.validateRedirectURI(req.RedirectURI, app.RedirectURIs); err != nil {
+	if err := h.validateRedirectURI(r.Context(), app, req.RedirectURI); err != nil {
 		// HIGH-01 fix: log full detail internally; send only a controlled description.
 		logger.Warnf("HIGH-01: redirect_uri validation failed (client_id=%s redirect_uri=%s): %v",
 			req.ClientID, req.RedirectURI, err)
@@ -1287,7 +1293,7 @@ func (h *OAuthHandler) EndSession(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			// NEW-02 fix: pass h.httpsRequired so HTTP post_logout_redirect_uris
 			// are rejected when the server runs under HTTPS.
-			if err := h.validateRedirectURI(postLogoutRedirectURI, app.RedirectURIs); err == nil {
+			if err := h.validateRedirectURI(r.Context(), app, postLogoutRedirectURI); err == nil {
 				redirectURL, parseErr := url.Parse(postLogoutRedirectURI)
 				if parseErr == nil {
 					if state != "" {

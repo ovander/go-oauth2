@@ -29,7 +29,7 @@ ls -l /etc/socrate/*.env      # expect 0640, root:<service-user> per file
 - [ ] `POLICY_MODE=off` or `shadow` for first rollout (not `enforce`)
 - [ ] `RATE_LIMIT_*` at defaults (not loosened)
 - [ ] SMTP configured (`SMTP_HOST/PORT/SECURITY`, `FROM_EMAIL`) and reachable
-- [ ] Opt-in modes only if intended: `REFRESH_REUSE_MODE`, `SCOPE_POLICY_MODE`,
+- [ ] Opt-in modes only if intended: `REFRESH_REUSE_MODE`, `CODE_REPLAY_MODE`, `SCOPE_POLICY_MODE`,
       `ADMIN_SCOPE_MODE`, `WEBHOOKS_MODE`, `TOKEN_EXCHANGE_MODE`, `DPOP_MODE`,
       `AUDIENCE_MODE`
 - [ ] `AUDIT_INTEGRITY_SCAN_INTERVAL_SECONDS` > 0 if you want tamper-evidence

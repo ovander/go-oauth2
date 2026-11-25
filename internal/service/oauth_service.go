@@ -174,6 +174,9 @@ type oauthService struct {
 	// §4.14.2 refresh-token reuse detection). observe audits a detected reuse;
 	// enforce additionally revokes the user's token family.
 	refreshReuseMode string
+	// codeReplayMode is CODE_REPLAY_MODE: "off" (default), "observe" or
+	// "enforce", for an authorization code presented again (RFC 6749 §4.1.2).
+	codeReplayMode string
 	// scopePolicyMode is "off" (default), "observe" or "enforce" for the
 	// per-client allowed_scopes policy (A1 / P3-8).
 	scopePolicyMode string
@@ -186,6 +189,17 @@ type oauthService struct {
 	privilegedScopeMode     string
 	privilegedScopeConsoles map[string]bool
 }
+
+// SetCodeReplayMode wires CODE_REPLAY_MODE: under "observe" a replayed
+// authorization code is audited (auth_code_failed, reason code_replayed),
+// under "enforce" the tokens it was redeemed for are also revoked.
+func (s *oauthService) SetCodeReplayMode(mode string) { s.codeReplayMode = mode }
+
+// CODE_REPLAY_MODE values.
+const (
+	codeReplayModeObserve = "observe"
+	codeReplayModeEnforce = "enforce"
+)
 
 // SetAdminAppSignInPolicy wires ADMIN_APP_SIGNIN_POLICY into code issuance and
 // the refresh grant.
@@ -602,6 +616,14 @@ func tokenOutcome(err error) string {
 func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto.TokenRequest, clientID, clientSecret string) (*dto.TokenResponse, error) {
 	// Redeem the code atomically
 	authCode, err := s.codeStore.RedeemCode(ctx, req.Code)
+	if errors.Is(err, auth.ErrCodeReplayed) && authCode != nil {
+		if s.codeReplayMode == codeReplayModeObserve || s.codeReplayMode == codeReplayModeEnforce {
+			s.signalCodeReplay(ctx, authCode, req, clientID, clientSecret)
+			return nil, ErrInvalidCode
+		}
+		// Off: the replayed code is removed, as it always was.
+		_ = s.codeStore.DeleteCode(ctx, req.Code)
+	}
 	if err != nil || authCode == nil {
 		// RFC-007: a failed code redemption (invalid, expired, or already-used
 		// code) is an attack signal (code replay / brute force) — audit it.
@@ -731,7 +753,10 @@ func (s *oauthService) handleAuthorizationCodeGrant(ctx context.Context, req dto
 	// The tokens report the sign-in behind the code, not its redemption: a
 	// code issued before the evidence existed (migration 0029) falls back to
 	// now, as before.
-	authn := auth.AuthnEvidence{AuthTime: authCode.AuthTime, AMR: authCode.AMR, ACR: authCode.ACR}
+	// The tokens get the family and jti recorded with the redemption, which a
+	// replay of the code revokes (CODE_REPLAY_MODE).
+	authn := auth.AuthnEvidence{AuthTime: authCode.AuthTime, AMR: authCode.AMR, ACR: authCode.ACR,
+		Family: authCode.TokenFamily, AccessJTI: authCode.AccessJTI}
 	if authn.AuthTime == 0 {
 		authn.AuthTime = now.Unix()
 	}
@@ -952,6 +977,24 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 		return nil, fmt.Errorf("failed to generate token set: %w", err)
 	}
 
+	// CODE_REPLAY_MODE: the code this family was redeemed from stays
+	// recognisable as long as the family can be refreshed. Done before the
+	// old token is retired: under enforce a failure refuses the refresh (fail
+	// closed: the new tokens would outlive the code, and a later replay could
+	// no longer revoke them) with a server error, and the old token stays good
+	// for the client to retry with. Under observe a replay only audits, so the
+	// refresh goes on and the failure is logged.
+	if claims.Family != "" && s.codeStore != nil &&
+		(s.codeReplayMode == codeReplayModeObserve || s.codeReplayMode == codeReplayModeEnforce) {
+		if err := s.codeStore.KeepFamilyCode(ctx, claims.Family); err != nil {
+			if s.codeReplayMode == codeReplayModeEnforce {
+				logger.FromContext(ctx).Errorf("RFC 6749 §4.1.2: could not extend the retention of the code of a refresh family, refusing the refresh: %v", err)
+				return nil, fmt.Errorf("failed to keep the authorization code of the refresh family: %w", err)
+			}
+			logger.FromContext(ctx).Errorf("RFC 6749 §4.1.2: could not extend the retention of the code of a refresh family: %v", err)
+		}
+	}
+
 	// HIGH-04 fix: mark the consumed refresh token JTI as used so future
 	// attempts to replay the same token are rejected.  We do this after
 	// generating the new token set so that a generation failure does not
@@ -1109,6 +1152,102 @@ func (s *oauthService) signalRefreshReuse(ctx context.Context, claims *auth.Refr
 		}
 	}
 	s.logSecurityEvent(ctx, model.SecurityEventRefreshTokenReuse, &userID, nil, false, details)
+}
+
+// signalCodeReplay handles an authorization code presented again after it was
+// redeemed (CODE_REPLAY_MODE, RFC 6749 §4.1.2): observe audits it, enforce
+// also revokes the tokens the code was redeemed for, which the code may have
+// been stolen to obtain — but only when the request authenticates as the
+// code's client, so that whoever merely saw a used code (in a log, a
+// referrer) cannot end the user's sign-in. An authenticated replay then
+// removes the code, so it signals once, unless the revocation failed; an
+// unauthenticated one leaves it, so that it cannot erase the evidence a later
+// authenticated replay needs.
+func (s *oauthService) signalCodeReplay(ctx context.Context, code *model.AuthorizationCode, req dto.TokenRequest, clientID, clientSecret string) {
+	details := map[string]interface{}{
+		"client_id": clientID,
+		"reason":    "code_replayed",
+		"mode":      s.codeReplayMode,
+	}
+	if clientID != code.ClientID {
+		details["code_client_id"] = code.ClientID
+	}
+	authenticated := s.replayFromCodeClient(ctx, code, req, clientID, clientSecret)
+	details["client_authenticated"] = authenticated
+	revoked := ""
+	if s.codeReplayMode == codeReplayModeEnforce {
+		if authenticated {
+			revoked = s.revokeCodeTokens(ctx, code)
+		} else {
+			revoked = "none_unauthenticated"
+		}
+		details["revoked"] = revoked
+	}
+	// A code whose tokens could not be revoked is kept (fail closed): the
+	// next authenticated replay tries again, instead of finding no code.
+	if authenticated && revoked != "failed" {
+		if err := s.codeStore.DeleteCode(ctx, code.Code); err != nil {
+			logger.FromContext(ctx).Errorf("RFC 6749 §4.1.2: could not remove a replayed code of user %d: %v", code.UserID, err)
+		}
+	}
+	uid := code.UserID
+	var appID *uint
+	if code.AppID != 0 {
+		id := code.AppID
+		appID = &id
+	}
+	s.logSecurityEvent(ctx, model.SecurityEventAuthCodeFailed, &uid, appID, false, details)
+}
+
+// replayFromCodeClient says whether a replay request authenticates as the
+// client the code was issued to: its client_id, and its client secret for a
+// confidential client or, for a public one, the PKCE verifier of the code.
+func (s *oauthService) replayFromCodeClient(ctx context.Context, code *model.AuthorizationCode, req dto.TokenRequest, clientID, clientSecret string) bool {
+	if clientID == "" || clientID != code.ClientID {
+		return false
+	}
+	app, err := s.lookupTokenClient(ctx, clientID)
+	if err != nil || app == nil {
+		return false
+	}
+	if app.ClientSecretHash != "" {
+		return clientSecret != "" && auth.CheckClientSecret(clientSecret, app.ClientSecretHash)
+	}
+	if code.CodeChallenge != "" {
+		return req.CodeVerifier != "" && auth.VerifyPKCE(req.CodeVerifier, code.CodeChallenge, code.CodeChallengeMethod) == nil
+	}
+	// A public client without PKCE has nothing more to show.
+	return true
+}
+
+// revokeCodeTokens revokes the refresh-token family and the access token a
+// code was redeemed for, and says what it revoked: "tokens", "none" for a
+// code redeemed before they were recorded (migration 0035), or "failed" when
+// the revocation store could not record one of them.
+func (s *oauthService) revokeCodeTokens(ctx context.Context, code *model.AuthorizationCode) string {
+	if code.TokenFamily == "" && code.AccessJTI == "" {
+		return "none"
+	}
+	if s.usedTokenRepo == nil {
+		return "failed"
+	}
+	outcome := "tokens"
+	revoke := func(key, kind string, ttl time.Duration) {
+		err := s.usedTokenRepo.MarkAsUsed(ctx, key, kind, code.UserID, time.Now().Add(ttl))
+		if err != nil && !errors.Is(err, repository.ErrTokenAlreadyUsed) {
+			logger.FromContext(ctx).Errorf("RFC 6749 §4.1.2: could not revoke %s of a replayed code of user %d: %v", kind, code.UserID, err)
+			outcome = "failed"
+		}
+	}
+	if code.TokenFamily != "" {
+		// Every refresh token of the family expires within one refresh TTL.
+		revoke(familyRevocationKey(code.TokenFamily), usedTokenTypeFamilyRevoked, s.tokenService.GetRefreshTokenTTL())
+	}
+	if code.AccessJTI != "" {
+		// A per-client access TTL can only be shorter than the server's.
+		revoke(code.AccessJTI, usedTokenTypeRevoked, s.tokenService.GetAccessTokenTTL())
+	}
+	return outcome
 }
 
 // RefreshFromBearer redeems a refresh token presented outside the OAuth token

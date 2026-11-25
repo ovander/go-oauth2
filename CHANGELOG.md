@@ -12,6 +12,27 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **A replayed authorization code can revoke the tokens it was redeemed for** (`CODE_REPLAY_MODE`,
+  default `off`). A code presented again after its redemption was refused, but the tokens issued
+  for it stayed valid, although the replay means someone else holds the code (RFC 6749 §4.1.2).
+  The code now records, with its redemption, the refresh-token family and the access-token `jti`
+  it was redeemed for (migration 0035). `observe` audits a replay as `auth_code_failed` with
+  `reason: code_replayed`; `enforce` also revokes that family (every refresh token rotated from
+  it) and that access token, as seen by introspection, userinfo and the admin API (a resource
+  server that only verifies the JWT accepts it until it expires) — when the replay authenticates
+  as the code's client (its secret, or for a public client the code's PKCE verifier), so that
+  whoever merely saw a used code cannot end the sign-in (`revoked: none_unauthenticated`), nor
+  erase the code before its client replays it. A used code is recognised as a replay even after
+  it has expired, or when it loses a race with its own redemption, and while a replay mode is on a
+  redeemed code is kept as long as its refresh-token family can be refreshed (the refresh-token
+  TTL, extended at each rotation), so the expiry sweep does not erase it; under `enforce` a
+  refresh whose code cannot be kept is refused (`server_error`, the old refresh token stays good
+  to retry with), under `observe` it is only logged. An authenticated replay
+  signals once, unless the revocation could not be recorded (`revoked: failed`): the code is then
+  kept, so the next replay tries again; codes redeemed before the migration are audited only. Deploy note: migration 0035
+  (two nullable columns and an index); new variable `CODE_REPLAY_MODE`, default `off`; with it
+  on, `authorization_codes` keeps one row per active sign-in, and each refresh updates it (#366).
+
 - **A sign-in records its time without saving the whole user.** Hosted login, admin login,
   invite acceptance and magic-link sign-in loaded the user, checked the password (and MFA), then
   saved the whole row with `UserRepository.Update` only to record the last-login time, writing

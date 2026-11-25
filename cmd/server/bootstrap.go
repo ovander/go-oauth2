@@ -143,6 +143,7 @@ func LogStartupSummary(cfg *config.Config) {
 		"dpop_mode":               cfg.DPoPMode,
 		"token_exchange_mode":     cfg.TokenExchangeMode,
 		"refresh_reuse_mode":      cfg.RefreshReuseMode,
+		"code_replay_mode":        cfg.CodeReplayMode,
 		"audience_mode":           cfg.AudienceMode,
 		"admin_mfa_policy":        cfg.AdminMFAPolicy,
 		"admin_app_signin_policy": cfg.AdminAppSignInPolicy,
@@ -546,10 +547,16 @@ func Bootstrap(cfg *config.Config) *App {
 	// ==========================================
 	// Code Store (database-backed with cleanup)
 	// ==========================================
-	codeStore := auth.NewCodeStore(authCodeRepo, auth.CodeStoreConfig{
+	codeStoreConfig := auth.CodeStoreConfig{
 		TTL:             10 * time.Minute,
 		CleanupInterval: time.Minute,
-	})
+	}
+	if cfg.CodeReplayMode != "off" {
+		// CODE_REPLAY_MODE: keep a redeemed code while its refresh tokens
+		// may live, so that a late replay is still recognised.
+		codeStoreConfig.ReplayRetention = cfg.RefreshTokenTTL
+	}
+	codeStore := auth.NewCodeStore(authCodeRepo, codeStoreConfig)
 
 	// ==========================================
 	// Services
@@ -667,6 +674,13 @@ func Bootstrap(cfg *config.Config) *App {
 		ps.SetPrivilegedScopePolicy(cfg.PrivilegedScopeMode, cfg.ConsoleClientIDs())
 	} else {
 		logger.Fatalf("bootstrap: %T does not support SetPrivilegedScopePolicy", oauthService)
+	}
+	// CODE_REPLAY_MODE: a replayed authorization code revokes what it was
+	// redeemed for.
+	if cr, ok := oauthService.(interface{ SetCodeReplayMode(string) }); ok {
+		cr.SetCodeReplayMode(cfg.CodeReplayMode)
+	} else {
+		logger.Fatalf("bootstrap: %T does not support SetCodeReplayMode", oauthService)
 	}
 
 	// ==========================================

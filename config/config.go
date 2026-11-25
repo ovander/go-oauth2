@@ -210,6 +210,15 @@ type Config struct {
 	// when only the normalized form matched), "enforce" (require the exact
 	// registered string). REDIRECT_URI_MATCH_MODE.
 	RedirectURIMatchMode string
+	// AlertRulesMode governs the evaluation of the monitoring alert rules
+	// (#258): "off" (default — rules are stored, nothing evaluates them),
+	// "observe" (evaluate them every AlertRulesInterval and record a triggered
+	// alert, without sending its notifications), or "enforce" (also send the
+	// rule's email, webhook and Slack notifications). ALERT_RULES_MODE.
+	AlertRulesMode string
+	// AlertRulesInterval is how often the alert rules are evaluated
+	// (ALERT_RULES_INTERVAL_SECONDS, default 60, from 10 to 86400).
+	AlertRulesInterval time.Duration
 	// AudienceMode controls how an access token's `aud` is built from the client
 	// and its registered audiences (RFC-001 / EPIC-7): "off" (default — aud is
 	// the client_id, unchanged) or "dual" (the client's registered audiences are
@@ -429,6 +438,8 @@ func Load() *Config {
 		ScopePolicyMode:          normalizeStepUpMode(getEnv("SCOPE_POLICY_MODE", "off")),
 		PrivilegedScopeMode:      normalizeStepUpMode(getEnv("PRIVILEGED_SCOPE_MODE", "off")),
 		RedirectURIMatchMode:     normalizeStepUpMode(getEnv("REDIRECT_URI_MATCH_MODE", "off")),
+		AlertRulesMode:           normalizeStepUpMode(getEnv("ALERT_RULES_MODE", "off")),
+		AlertRulesInterval:       alertRulesInterval(getEnvInt("ALERT_RULES_INTERVAL_SECONDS", 60)),
 		AudienceMode:             normalizeAudienceMode(getEnv("AUDIENCE_MODE", "off")),
 		ClaimsNamespace:          getEnv("CLAIMS_NAMESPACE", ""),
 		WebhooksEnabled:          strings.EqualFold(strings.TrimSpace(getEnv("WEBHOOKS_MODE", "off")), "on"),
@@ -653,6 +664,19 @@ func normalizeAuditWriteMode(v string) string {
 		return "async"
 	}
 	return "sync"
+}
+
+// alertRulesInterval is ALERT_RULES_INTERVAL_SECONDS as a duration, from 10
+// seconds (each pass counts the audit log once per enabled rule) to a day (a
+// larger value would overflow, and no rule's window is longer).
+func alertRulesInterval(seconds int) time.Duration {
+	switch {
+	case seconds < 10:
+		seconds = 10
+	case seconds > 24*60*60:
+		seconds = 24 * 60 * 60
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 // normalizeStepUpMode lower-cases and validates the impersonation step-up mode,

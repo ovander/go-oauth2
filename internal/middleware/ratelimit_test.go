@@ -66,8 +66,9 @@ func TestGetClientIPSafe_NoTrustedCIDRs_UsesRemoteAddr(t *testing.T) {
 }
 
 func TestGetClientIPSafe_TrustedCIDR_HonoursProxyHeaders(t *testing.T) {
-	// When RemoteAddr is inside the trusted CIDR list, the leftmost address in
-	// X-Forwarded-For is used; X-Real-IP is the fallback.
+	// When RemoteAddr is inside the trusted CIDR list, the right-most address
+	// in X-Forwarded-For that is not a trusted proxy is used; X-Real-IP is the
+	// fallback.
 	trusted := mustParseCIDRs(t, "10.0.0.0/8")
 
 	tests := []struct {
@@ -78,7 +79,7 @@ func TestGetClientIPSafe_TrustedCIDR_HonoursProxyHeaders(t *testing.T) {
 		wantIP     string
 	}{
 		{
-			name:       "trusted proxy: uses leftmost XFF address",
+			name:       "trusted proxy: skips the trusted proxy at the end",
 			remoteAddr: "10.0.0.1:1234",
 			xff:        "203.0.113.5, 10.0.0.1",
 			wantIP:     "203.0.113.5",
@@ -107,6 +108,70 @@ func TestGetClientIPSafe_TrustedCIDR_HonoursProxyHeaders(t *testing.T) {
 			remoteAddr: "10.5.6.7:9999",
 			xff:        "  203.0.113.22  ",
 			wantIP:     "203.0.113.22",
+		},
+		{
+			// The client sent its own X-Forwarded-For and the proxy appended
+			// the address it saw: the client's entry is not believed.
+			name:       "trusted proxy: a client-sent entry on the left is ignored",
+			remoteAddr: "10.0.0.1:1234",
+			xff:        "1.2.3.4, 203.0.113.5",
+			wantIP:     "203.0.113.5",
+		},
+		{
+			name:       "trusted proxy: several proxies, the client before them",
+			remoteAddr: "10.0.0.1:1234",
+			xff:        "1.2.3.4, 203.0.113.5, 10.0.0.9, 10.0.0.2",
+			wantIP:     "203.0.113.5",
+		},
+		{
+			name:       "trusted proxy: every entry trusted, the left-most",
+			remoteAddr: "10.0.0.1:1234",
+			xff:        "10.0.0.7, 10.0.0.2",
+			wantIP:     "10.0.0.7",
+		},
+		{
+			name:       "trusted proxy: nothing left of a malformed entry is believed",
+			remoteAddr: "10.0.0.1:1234",
+			xff:        "1.2.3.4, not-an-ip, 10.0.0.2",
+			wantIP:     "10.0.0.2",
+		},
+		{
+			name:       "trusted proxy: a malformed last entry falls back to the peer",
+			remoteAddr: "10.0.0.1:1234",
+			xff:        "1.2.3.4, garbage",
+			wantIP:     "10.0.0.1",
+		},
+		{
+			name:       "trusted proxy: an entry with a port counts as its address",
+			remoteAddr: "10.0.0.1:1234",
+			xff:        "1.2.3.4, 203.0.113.5:5678",
+			wantIP:     "203.0.113.5",
+		},
+		{
+			name:       "trusted proxy: an IPv6 entry with a port",
+			remoteAddr: "10.0.0.1:1234",
+			xff:        "[2001:db8::77]:443",
+			wantIP:     "2001:db8::77",
+		},
+		{
+			name:       "trusted proxy: a trusted proxy with a port is skipped",
+			remoteAddr: "10.0.0.1:1234",
+			xff:        "203.0.113.5, 10.0.0.2:8080",
+			wantIP:     "203.0.113.5",
+		},
+		{
+			// An empty entry ends the walk: believing what is left of it
+			// would let the client choose.
+			name:       "trusted proxy: an empty last entry falls back to the peer",
+			remoteAddr: "10.0.0.1:1234",
+			xff:        "1.2.3.4,",
+			wantIP:     "10.0.0.1",
+		},
+		{
+			name:       "trusted proxy: IPv6 client",
+			remoteAddr: "10.0.0.1:1234",
+			xff:        "2001:db8::1, 2001:db8::77",
+			wantIP:     "2001:db8::77",
 		},
 	}
 

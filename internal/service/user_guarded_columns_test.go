@@ -44,7 +44,9 @@ func (r *guardedOnlyRepo) ResetFailedLoginAttempts(_ context.Context, _ uint) er
 }
 
 // An admin's password reset for a user stores the new hash and revokes the
-// sessions in one write, and leaves the forced-change flag as it is.
+// sessions in one write, and leaves the forced-change flag as it is. It
+// records when the password changed, which retires the password-reset links
+// issued before it (#366).
 func TestUserService_UpdatePassword_RevokesInTheSameWrite(t *testing.T) {
 	repo := &guardedOnlyRepo{user: &model.User{ID: 4, MustChangePassword: true}}
 	if err := NewUserService(repo).UpdatePassword(context.Background(), 4, "A-new-Passw0rd!x"); err != nil {
@@ -57,8 +59,11 @@ func TestUserService_UpdatePassword_RevokesInTheSameWrite(t *testing.T) {
 	if bcrypt.CompareHashAndPassword([]byte(c.HashedPassword), []byte("A-new-Passw0rd!x")) != nil {
 		t.Fatal("the new password is not the one stored")
 	}
-	if c.ClearMustChangePassword || c.ChangedAt != nil {
+	if c.ClearMustChangePassword || c.ConfirmedAt != nil {
 		t.Fatalf("UpdatePassword changed more than the password: %+v", c)
+	}
+	if c.ChangedAt == nil {
+		t.Fatal("UpdatePassword did not record when the password changed")
 	}
 }
 

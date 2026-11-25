@@ -1060,6 +1060,13 @@ func (s *authService) ResetPassword(ctx context.Context, token, newPassword stri
 		return fmt.Errorf("%w: user_id=%d", ErrUserNotFound, userID)
 	}
 
+	// #366: a link issued before the password last changed (by a reset, a
+	// change, an admin or an activation) no longer resets it, so an old link
+	// left in a mailbox cannot undo a newer password. It is used up as well.
+	if user.PasswordChangedAt != nil && (claims.IssuedAt == nil || claims.IssuedAt.Before(*user.PasswordChangedAt)) {
+		return fmt.Errorf("%w: the password changed after this link was issued", ErrInvalidToken)
+	}
+
 	hashedPassword, err := auth.HashPassword(newPassword)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
@@ -1314,8 +1321,9 @@ func (s *authService) AcceptInvite(ctx context.Context, token, name, password st
 		// The password and the verification are one write (Update never
 		// writes a password); it also moves the token version, so read the
 		// user back for the tokens issued below.
+		// Recording the change retires the reset links issued before it (#366).
 		if err := s.userRepo.SetPassword(ctx, user.ID, repository.PasswordChange{
-			HashedPassword: hashedPassword, ConfirmedAt: &now,
+			HashedPassword: hashedPassword, ConfirmedAt: &now, ChangedAt: &now,
 		}); err != nil {
 			return nil, fmt.Errorf("failed to update user: %w", err)
 		}

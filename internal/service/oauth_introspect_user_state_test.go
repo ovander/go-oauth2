@@ -63,14 +63,37 @@ func TestIntrospect_RevocationStoreErrorIsInactive(t *testing.T) {
 	}
 }
 
-func TestIntrospect_ServiceAccountTokenStaysActive(t *testing.T) {
+// A service-account token has no user: it is active while its app exists and
+// is active, as ServiceAccountMiddleware requires.
+func TestIntrospect_ServiceAccountTokenFollowsItsApp(t *testing.T) {
 	svc := newNew03Svc(t, nil) // no user at all
-	token, err := svc.tokenService.GenerateClientCredentialsToken(&model.App{ID: 7, ClientID: "app"}, "api")
+	app := &model.App{ID: 7, ClientID: "app", Active: true}
+	apps := &crit02AppRepo{app: app}
+	svc.appRepo = apps
+	token, err := svc.tokenService.GenerateClientCredentialsToken(app, "api")
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp, err := svc.Introspect(context.Background(), token, "app")
-	if err != nil || !resp.Active || resp.Sub != "app:7" {
-		t.Fatalf("service-account token: (%+v, %v), want active with sub app:7", resp, err)
+	introspect := func() bool {
+		t.Helper()
+		resp, err := svc.Introspect(context.Background(), token, "app")
+		if err != nil {
+			t.Fatalf("Introspect: %v", err)
+		}
+		if resp.Active && resp.Sub != "app:7" {
+			t.Fatalf("sub = %q, want app:7", resp.Sub)
+		}
+		return resp.Active
+	}
+	if !introspect() {
+		t.Fatal("an active app's service-account token must be active")
+	}
+	app.Active = false
+	if introspect() {
+		t.Fatal("a disabled app's service-account token must be inactive")
+	}
+	apps.app = nil // deleted
+	if introspect() {
+		t.Fatal("a deleted app's service-account token must be inactive")
 	}
 }

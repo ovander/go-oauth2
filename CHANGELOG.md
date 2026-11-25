@@ -16,8 +16,9 @@ Capabilities**, non-breaking).
   answered `active: true` for a locked user's token, and for a deleted user's (or when the user
   could not be read), while Socrate's own API refused them. A user's token is now active only
   while the user exists, is readable, has not revoked its tokens and is not locked; a token whose
-  revocation status cannot be read is inactive too. Service-account tokens (`sub: app:{id}`) are
-  unchanged. Deploy note: none (#366).
+  revocation status cannot be read is inactive too. A service-account token (`sub: app:{id}`) is
+  active only while its app exists and is active, as on the service-account API. Deploy note:
+  none (#366).
 
 - **Two token checks no longer pass when the database errors.** If the list of revoked tokens
   could not be read, a bearer token was accepted; it is now refused with `503` and `Retry-After`

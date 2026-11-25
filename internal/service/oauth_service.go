@@ -1262,13 +1262,25 @@ func (s *oauthService) Introspect(ctx context.Context, token string, requestingC
 		return &dto.IntrospectResponse{Active: false}, nil
 	}
 
-	// A user's token is active only while the user is (#366): it exists, has
-	// not revoked its tokens, and is not locked — what AuthMiddleware and
-	// VerifyUserToken require on Socrate's own API. A service-account token
-	// (sub "app:{id}") has no user. Anything else, or a user that cannot be
-	// read, is inactive (fail closed).
+	// A token is active only while its subject is (#366), as on Socrate's own
+	// API. A user's: the user exists, has not revoked its tokens and is not
+	// locked (AuthMiddleware, VerifyUserToken). A service account's (sub
+	// "app:{id}"): the app exists and is active (ServiceAccountMiddleware).
+	// Anything else, or a subject that cannot be read, is inactive (fail
+	// closed).
 	username := ""
-	if !strings.HasPrefix(claims.Subject, "app:") {
+	if appIDStr, ok := strings.CutPrefix(claims.Subject, "app:"); ok {
+		appID, perr := strconv.ParseUint(appIDStr, 10, strconv.IntSize)
+		if perr != nil || s.appRepo == nil {
+			logger.FromContext(ctx).WithField("reason", "bad_subject").Debug("introspect: inactive")
+			return &dto.IntrospectResponse{Active: false}, nil
+		}
+		app, aerr := s.appRepo.FindByID(ctx, uint(appID))
+		if aerr != nil || app == nil || !app.Active {
+			logger.FromContext(ctx).WithField("reason", "app_unavailable").Debug("introspect: inactive")
+			return &dto.IntrospectResponse{Active: false}, nil
+		}
+	} else {
 		userID, perr := strconv.ParseUint(claims.Subject, 10, strconv.IntSize)
 		if perr != nil {
 			logger.FromContext(ctx).WithField("reason", "bad_subject").Debug("introspect: inactive")

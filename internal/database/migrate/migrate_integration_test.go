@@ -206,6 +206,53 @@ func TestMigration0035_AuthorizationCodeIssuedTokens(t *testing.T) {
 	}
 }
 
+// 0036 drops the foreign key from security_audit_logs.app_id on an upgrade;
+// a fresh install never has it (#260).
+func TestMigration0036_AuditAppForeignKeyDropped(t *testing.T) {
+	db := scratchDB(t)
+	if err := db.AutoMigrate(&model.App{}, &model.SecurityAuditLog{}); err != nil {
+		t.Fatalf("automigrate: %v", err)
+	}
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	fk := func() int64 {
+		var n int64
+		if err := db.Raw(`SELECT count(*) FROM pg_constraint
+			WHERE conrelid = 'security_audit_logs'::regclass AND contype = 'f'
+			AND conname = 'fk_security_audit_logs_app'`).Scan(&n).Error; err != nil {
+			t.Fatalf("look up the constraint: %v", err)
+		}
+		return n
+	}
+	if fk() != 0 {
+		t.Fatal("fresh install: security_audit_logs.app_id has a foreign key")
+	}
+
+	// An upgraded database has the constraint a previous model created.
+	if err := db.Exec(`ALTER TABLE security_audit_logs ADD CONSTRAINT fk_security_audit_logs_app
+		FOREIGN KEY (app_id) REFERENCES apps(id)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("DELETE FROM schema_migrations WHERE id = '0036'").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("upgrade run: %v", err)
+	}
+	if fk() != 0 {
+		t.Fatal("upgrade: the foreign key on security_audit_logs.app_id is still there")
+	}
+	// The server runs AUTO_MIGRATE after the migrations: it must not put the
+	// constraint back.
+	if err := db.AutoMigrate(&model.App{}, &model.SecurityAuditLog{}); err != nil {
+		t.Fatalf("automigrate after the migrations: %v", err)
+	}
+	if fk() != 0 {
+		t.Fatal("AutoMigrate re-created the foreign key on security_audit_logs.app_id")
+	}
+}
+
 // 0030 adds policy_decisions.obligations (NOT NULL, default empty) on a fresh
 // install and on an upgrade, without touching the rows already logged.
 func TestMigration0030_PolicyDecisionObligations(t *testing.T) {

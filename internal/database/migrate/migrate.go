@@ -762,6 +762,23 @@ var migrations = []Migration{
 				ON authorization_codes (token_family)`).Error
 		},
 	},
+	{
+		// 0036 (#260): drop the foreign key from security_audit_logs.app_id to
+		// apps. Deleting an app had to null app_id on its audit rows to satisfy
+		// it, which broke their row hash (app_id is hashed) and lost the
+		// attribution; the client_deleted event, written after the delete,
+		// was refused by it. The model no longer declares it (constraint:-),
+		// so a fresh install never has it.
+		ID:   "0036",
+		Name: "drop_security_audit_logs.app_id_foreign_key",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("security_audit_logs") {
+				return nil
+			}
+			return db.Exec(`ALTER TABLE security_audit_logs
+				DROP CONSTRAINT IF EXISTS fk_security_audit_logs_app`).Error
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

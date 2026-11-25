@@ -663,17 +663,24 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 // counting towards the lock already in place.
 func (s *authService) checkPasswordWithLockout(ctx context.Context, user *model.User, password, loginType string) error {
 	if locked, scope := s.lockedOut(ctx, user); locked {
-		if auth.CheckPassword(password, user.HashedPassword) {
-			return fmt.Errorf("%w: try again later", ErrAccountLocked)
-		}
-		details := map[string]interface{}{"email": user.Email, "account_locked": true}
+		// Both answers are audited. The right password on a locked account
+		// is the one the SOC most needs to see: whoever typed it knows the
+		// credential, while the lock may be there because of an attack.
+		passwordOK := auth.CheckPassword(password, user.HashedPassword)
+		details := map[string]interface{}{"email": user.Email, "account_locked": true, "password_verified": passwordOK}
 		if scope == "source" {
+			// The lock key, as the counting path records it: for IPv6 it is
+			// the /64, which the row's ip_address alone does not show.
 			details["lock_scope"] = "source"
+			details["source"] = loginSource(ctx)
 		}
 		if loginType != "" {
 			details["login_type"] = loginType
 		}
 		s.logSecurityEvent(ctx, model.SecurityEventLoginFailed, &user.ID, nil, false, details)
+		if passwordOK {
+			return fmt.Errorf("%w: try again later", ErrAccountLocked)
+		}
 		return ErrInvalidCredentials
 	}
 	if auth.CheckPassword(password, user.HashedPassword) {

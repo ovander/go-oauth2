@@ -12,6 +12,12 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **The right password on a locked account is audited.** Since #404 a wrong password on a locked
+  account is audited as `login_failed` with `account_locked: true`, but the right one was refused
+  without any event, although whoever typed it knows the credential while the lock may be there
+  because of an attack. Both are now audited, with `password_verified` (`true` or `false`).
+  Deploy note: none.
+
 - **A password-reset link no longer outlives a password change.** Reset links were single-use but
   stayed valid until they expired, even after the password had been changed or reset another
   way, so an old link left in a mailbox could undo a newer password. A link issued before the

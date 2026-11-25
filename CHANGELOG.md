@@ -10,6 +10,38 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-11-25
+
+Security release on the **v1.x** line. It closes the findings of the November 2026 review: account
+and session state that a concurrent save could undo, controls that failed open when the database
+erred, a locked account that revealed itself, consent and code-exchange gaps, client-IP attribution
+behind appending proxies, and timing that told which client_ids exist. Several controls are new
+and ship **off** (`LOCKOUT_SOURCE_MODE`, `PRIVILEGED_SCOPE_MODE`, `SERVICE_USER_SCOPE_MODE`,
+`CODE_REPLAY_MODE`), and existing modes cover more routes. Three migrations, no change of default,
+no change to discovery, claims or error codes.
+
+### Upgrade notes
+
+- **Migrations 0033–0035** (`AUTO_MIGRATE=false`: run them deliberately, after a backup). 0033 adds
+  `audit_chain_head` (the server anchors it on the existing log at startup), 0034 adds
+  `login_source_failures`, 0035 adds two nullable columns and an index to `authorization_codes`.
+  None rewrites data; all work on a fresh install.
+- **Before deploying**, check that no client relies on omitting PKCE without a secret — this must
+  return nothing, or those clients must send a `code_challenge`:
+  `SELECT client_id FROM apps WHERE NOT is_public AND coalesce(client_secret_hash, '') = '';`
+- **Applications calling the policy decision point** about a global admin who is not a member of
+  the app must send the admin's token, not a bare `user_id` (backendkit's `pep` already does).
+- **More than one proxy hop** in front of Socrate: list every hop in `TRUSTED_PROXIES` (the client
+  is now the right-most entry not listed). The deploy kit's single Caddy is unaffected.
+- **Users re-authenticate once** if they had a consent page open during the upgrade, or a browser
+  holding the admin console's old refresh cookie.
+- **A wrong password on a locked account** now gets `401` like any wrong password, not `403`.
+- **Stored A4 policies** (`POLICY_MODE` `shadow`/`enforce`): add the `app-admins` rule and the new
+  step-up actions to `destructive-step-up` (see `docs/EXTENSIBILITY.md`); with `POLICY_MODE=off`,
+  the default, nothing changes.
+- **New modes** are off by default; run each in `observe` and read its audit events before
+  `enforce`.
+
 ### Security
 
 - **A client without a stored secret must use PKCE, and one rule decides who is confidential.**
@@ -2646,7 +2678,8 @@ deployment kit.
   token-generation code. Behaviour is unchanged (RS256 + `kid` header).
   _Traceability: capability C3 → EPIC-3 → RFC-002 → #6._
 
-[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.14.6...HEAD
+[Unreleased]: https://github.com/ovander/go-oauth2/compare/v1.15.0...HEAD
+[1.15.0]: https://github.com/ovander/go-oauth2/compare/v1.14.6...v1.15.0
 [1.14.6]: https://github.com/ovander/go-oauth2/compare/v1.14.5...v1.14.6
 [1.14.5]: https://github.com/ovander/go-oauth2/compare/v1.14.4...v1.14.5
 [1.14.4]: https://github.com/ovander/go-oauth2/compare/v1.14.3...v1.14.4

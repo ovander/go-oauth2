@@ -473,7 +473,7 @@ password change, and the user's role *in the calling application*
 anyone else is `404 unknown subject`, the same answer as for an id that does not
 exist, so the endpoint cannot be used to discover users. A global admin needs no
 membership, but only when the application presents the admin's own token (since
-v1.14.7): by a bare `user_id` a non-member admin is a `404` like anyone else, so
+v1.15.0): by a bare `user_id` a non-member admin is a `404` like anyone else, so
 the endpoint cannot be used to find out who the admins are either. What
 the application does supply — `action`, `resource`, `context` — are facts about
 its own domain that only it knows; `context.ip` is the end user's address as it

@@ -39,18 +39,25 @@ type AuthRejectFunc func(r *http.Request, reason AuthRejectReason, detail string
 
 // isRevoked reports whether the token's JTI has been individually revoked via
 // /oauth/revoke (the JTI is blacklisted in used_tokens). Nil repo or an empty
-// JTI means "not revoked"; a repo error fails open (returns false) so a
-// transient store outage never locks out otherwise-valid tokens — consistent
-// with Introspect's best-effort blacklist check. EPIC-14 / RFC-012: this is
-// what propagates a per-token revocation to the direct-auth hot path, not just
-// to introspection.
-func isRevoked(ctx context.Context, usedTokenRepo repository.UsedTokenRepository, jti string) bool {
+// JTI means "not revoked". EPIC-14 / RFC-012: this is what propagates a
+// per-token revocation to the direct-auth hot path, not just to introspection.
+//
+// A store error is returned, and every caller refuses the token on it (fail
+// closed, #366): a revoked token must not be accepted because the list of
+// revoked tokens could not be read. The callers answer 503, not 401, so a
+// client retries instead of discarding its token over a transient outage —
+// on the optional-auth routes too, where serving the request anonymously
+// would let a logout or a revocation report success without revoking.
+func isRevoked(ctx context.Context, usedTokenRepo repository.UsedTokenRepository, jti string) (bool, error) {
 	if usedTokenRepo == nil || jti == "" {
-		return false
+		return false, nil
 	}
-	revoked, err := usedTokenRepo.IsUsed(ctx, jti)
-	return err == nil && revoked
+	return usedTokenRepo.IsUsed(ctx, jti)
 }
+
+// revocationUnavailable is the message of a token refused because its
+// revocation status could not be read.
+const revocationUnavailable = "token revocation status unavailable"
 
 // UserTokenError says why a user access token was refused. Reason is empty
 // when the refusal is not a token-abuse signal (a locked account).
@@ -117,7 +124,12 @@ func VerifyUserToken(ctx context.Context, tokenService *auth.TokenService, userR
 	// EPIC-14: reject a token whose JTI was individually revoked via
 	// /oauth/revoke, so per-token revocation propagates to this hot path
 	// (previously only Introspect honored the blacklist).
-	if isRevoked(ctx, usedTokenRepo, claims.ID) {
+	revoked, err := isRevoked(ctx, usedTokenRepo, claims.ID)
+	if err != nil {
+		// Not a token-abuse signal: no Reason.
+		return nil, nil, &UserTokenError{Detail: "revocation_unavailable", Message: revocationUnavailable, Status: http.StatusServiceUnavailable}
+	}
+	if revoked {
 		return nil, nil, &UserTokenError{Reason: AuthRejectRevoked, Detail: "jti_revoked", Message: "token has been revoked", Status: http.StatusUnauthorized}
 	}
 
@@ -175,6 +187,10 @@ func AuthMiddlewareWithDPoP(binding *DPoPBinding, tokenService *auth.TokenServic
 			if terr != nil {
 				if terr.Reason != "" {
 					fire(r, terr.Reason, terr.Detail)
+				}
+				if terr.Status == http.StatusServiceUnavailable {
+					writeUnavailable(w, terr.Message)
+					return
 				}
 				writeAuthError(w, terr.Message, terr.Status)
 				return
@@ -241,7 +257,16 @@ func OptionalAuthMiddleware(tokenService *auth.TokenService, userRepo repository
 			}
 
 			// EPIC-14: a per-token-revoked token is treated as unauthenticated.
-			if isRevoked(r.Context(), usedTokenRepo, claims.ID) {
+			// One whose revocation status cannot be read is refused with 503
+			// instead (#366): serving the request anonymously would let
+			// /oauth/logout and /oauth/revoke answer success without revoking
+			// the caller's tokens.
+			revoked, err := isRevoked(r.Context(), usedTokenRepo, claims.ID)
+			if err != nil {
+				writeUnavailable(w, revocationUnavailable)
+				return
+			}
+			if revoked {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -272,6 +297,18 @@ func GetUserIDFromContext(ctx context.Context) (uint, bool) {
 func GetUserRoleFromContext(ctx context.Context) (string, bool) {
 	role, ok := ctx.Value(contextkeys.UserRoleKey).(string)
 	return role, ok
+}
+
+// writeUnavailable answers 503 for a token that could not be checked. Unlike
+// writeAuthError it sets no invalid_token challenge: the token may well be
+// valid, and a client should retry rather than discard it.
+func writeUnavailable(w http.ResponseWriter, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", "5")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	_ = json.NewEncoder(w).Encode(struct {
+		Error string `json:"error"`
+	}{Error: message})
 }
 
 // writeAuthError writes a JSON error response for authentication failures.

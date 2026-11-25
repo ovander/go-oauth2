@@ -977,6 +977,24 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 		return nil, fmt.Errorf("failed to generate token set: %w", err)
 	}
 
+	// CODE_REPLAY_MODE: the code this family was redeemed from stays
+	// recognisable as long as the family can be refreshed. Done before the
+	// old token is retired: under enforce a failure refuses the refresh (fail
+	// closed: the new tokens would outlive the code, and a later replay could
+	// no longer revoke them) with a server error, and the old token stays good
+	// for the client to retry with. Under observe a replay only audits, so the
+	// refresh goes on and the failure is logged.
+	if claims.Family != "" && s.codeStore != nil &&
+		(s.codeReplayMode == codeReplayModeObserve || s.codeReplayMode == codeReplayModeEnforce) {
+		if err := s.codeStore.KeepFamilyCode(ctx, claims.Family); err != nil {
+			if s.codeReplayMode == codeReplayModeEnforce {
+				logger.FromContext(ctx).Errorf("RFC 6749 §4.1.2: could not extend the retention of the code of a refresh family, refusing the refresh: %v", err)
+				return nil, fmt.Errorf("failed to keep the authorization code of the refresh family: %w", err)
+			}
+			logger.FromContext(ctx).Errorf("RFC 6749 §4.1.2: could not extend the retention of the code of a refresh family: %v", err)
+		}
+	}
+
 	// HIGH-04 fix: mark the consumed refresh token JTI as used so future
 	// attempts to replay the same token are rejected.  We do this after
 	// generating the new token set so that a generation failure does not
@@ -996,15 +1014,6 @@ func (s *oauthService) handleRefreshTokenGrant(ctx context.Context, req dto.Toke
 			// the old token is still good, and the client retries with it.
 			logger.FromContext(ctx).Errorf("HIGH-04: failed to mark refresh token JTI as used, refusing the refresh: %v", markErr)
 			return nil, fmt.Errorf("failed to record the use of the refresh token: %w", markErr)
-		}
-	}
-
-	// CODE_REPLAY_MODE: the code this family was redeemed from stays
-	// recognisable as long as the family can be refreshed.
-	if claims.Family != "" && s.codeStore != nil &&
-		(s.codeReplayMode == codeReplayModeObserve || s.codeReplayMode == codeReplayModeEnforce) {
-		if err := s.codeStore.KeepFamilyCode(ctx, claims.Family); err != nil {
-			logger.FromContext(ctx).Errorf("RFC 6749 §4.1.2: could not extend the retention of the code of a refresh family: %v", err)
 		}
 	}
 

@@ -167,14 +167,23 @@ func newReplayFixture(t *testing.T, mode string, record bool) *replayFixture {
 
 func newReplayFixtureWith(t *testing.T, mode string, record bool, cfg auth.CodeStoreConfig) *replayFixture {
 	t.Helper()
+	return newReplayFixtureRepo(t, mode, cfg, func(codes *copyCodeRepo) repository.AuthorizationCodeRepository {
+		if record {
+			return recordingCodeRepo{codes}
+		}
+		return codes
+	})
+}
+
+// newReplayFixtureRepo redeems one code under mode, with the code repository
+// repo builds over the fixture's codes.
+func newReplayFixtureRepo(t *testing.T, mode string, cfg auth.CodeStoreConfig,
+	repo func(*copyCodeRepo) repository.AuthorizationCodeRepository) *replayFixture {
+	t.Helper()
 	user := &model.User{ID: 42, Email: "op@example.test", IsVerified: true, Role: model.UserRoleSuperadmin}
 	svc := newAuthorizeSvc(t, user)
 	f := &replayFixture{svc: svc, codes: newCopyCodeRepo(), used: newMemUsedTokenRepo(), audit: &captureAuditRepo{}}
-	var repo repository.AuthorizationCodeRepository = f.codes
-	if record {
-		repo = recordingCodeRepo{f.codes}
-	}
-	cs := auth.NewCodeStore(repo, cfg)
+	cs := auth.NewCodeStore(repo(f.codes), cfg)
 	t.Cleanup(cs.Stop)
 	svc.codeStore, svc.usedTokenRepo, svc.auditRepo = cs, f.used, f.audit
 	svc.SetCodeReplayMode(mode)
@@ -398,6 +407,54 @@ func TestCodeReplay_RefreshKeepsTheFamilysCode(t *testing.T) {
 	}
 	if exp := f.codes.get(t, f.code).ExpiresAt; exp.Before(time.Now().Add(retention - time.Minute)) {
 		t.Fatalf("after a rotation the code expires at %v, want about %v from now", exp, retention)
+	}
+}
+
+// unretainableCodeRepo records redemptions but cannot extend a family's
+// retention until fixed.
+type unretainableCodeRepo struct {
+	recordingCodeRepo
+	broken *bool
+}
+
+func (r unretainableCodeRepo) KeepFamilyUntil(ctx context.Context, family string, keepUntil time.Time) error {
+	if *r.broken {
+		return errors.New("database unavailable")
+	}
+	return r.recordingCodeRepo.KeepFamilyUntil(ctx, family, keepUntil)
+}
+
+// Under enforce, a refresh whose family's code cannot be kept is refused, so
+// no token outlives the code a replay would revoke it by; the refusal is a
+// server error and leaves the old refresh token good to retry with. Under
+// observe the refresh goes on.
+func TestCodeReplay_RefreshWhenTheCodeCannotBeKept(t *testing.T) {
+	cfg := auth.CodeStoreConfig{TTL: 10 * time.Minute, ReplayRetention: 7 * 24 * time.Hour}
+	for _, mode := range []string{codeReplayModeEnforce, codeReplayModeObserve} {
+		t.Run(mode, func(t *testing.T) {
+			broken := true
+			f := newReplayFixtureRepo(t, mode, cfg, func(codes *copyCodeRepo) repository.AuthorizationCodeRepository {
+				return unretainableCodeRepo{recordingCodeRepo{codes}, &broken}
+			})
+			resp, err := f.refresh(f.resp.RefreshToken)
+			if mode == codeReplayModeObserve {
+				if err != nil || resp == nil {
+					t.Fatalf("observe: refresh = %v, %v; want new tokens", resp, err)
+				}
+				return
+			}
+			if err == nil || resp != nil {
+				t.Fatalf("enforce: refresh = %v, %v; want a refusal", resp, err)
+			}
+			// A server error, not invalid_grant: the token is still good.
+			if errors.Is(err, ErrInvalidToken) {
+				t.Fatalf("enforce: refusal %v is invalid_grant; want a server error", err)
+			}
+			broken = false
+			if _, err := f.refresh(f.resp.RefreshToken); err != nil {
+				t.Fatalf("enforce: retry with the same refresh token: %v", err)
+			}
+		})
 	}
 }
 

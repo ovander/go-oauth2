@@ -25,7 +25,9 @@ Capabilities**, non-breaking).
   erase the code before its client replays it. A used code is recognised as a replay even after
   it has expired, or when it loses a race with its own redemption, and while a replay mode is on a
   redeemed code is kept as long as its refresh-token family can be refreshed (the refresh-token
-  TTL, extended at each rotation), so the expiry sweep does not erase it. An authenticated replay
+  TTL, extended at each rotation), so the expiry sweep does not erase it; under `enforce` a
+  refresh whose code cannot be kept is refused (`server_error`, the old refresh token stays good
+  to retry with), under `observe` it is only logged. An authenticated replay
   signals once; codes redeemed before the migration are audited only. Deploy note: migration 0035
   (two nullable columns and an index); new variable `CODE_REPLAY_MODE`, default `off`; with it
   on, `authorization_codes` keeps one row per active sign-in, and each refresh updates it (#366).

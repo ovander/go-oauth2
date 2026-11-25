@@ -283,8 +283,11 @@ func (s *appService) ValidateClientCredentials(ctx context.Context, clientID, cl
 	app, err := s.GetByClientID(ctx, clientID)
 	if err != nil {
 		// Unknown or inactive: the same cost as a wrong secret, so that
-		// timing does not tell which client_ids exist (#366).
-		s.checkDummyClientSecret()
+		// timing does not tell which client_ids exist (#366). A database
+		// failure is answered as an error, without the cost.
+		if errors.Is(err, ErrAppNotFound) {
+			s.checkDummyClientSecret()
+		}
 		return nil, err
 	}
 

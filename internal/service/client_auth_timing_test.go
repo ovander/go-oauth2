@@ -6,6 +6,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"sync/atomic"
 	"testing"
@@ -77,14 +79,33 @@ func TestExchangeToken_UnknownOrPublicClientPaysASecretCheck(t *testing.T) {
 
 // Introspection and revocation authenticate clients with
 // ValidateClientCredentials: an unknown or inactive client pays a secret check.
+// notFoundAppRepo answers an unknown client_id as the GORM repository does.
+type notFoundAppRepo struct{ *memAppRepo }
+
+func (r notFoundAppRepo) FindByClientID(ctx context.Context, clientID string) (*model.App, error) {
+	app, err := r.memAppRepo.FindByClientID(ctx, clientID)
+	if err != nil {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return app, nil
+}
+
+// failingAppRepo fails every lookup, as a database outage does.
+type failingAppRepo struct{ *memAppRepo }
+
+func (failingAppRepo) FindByClientID(context.Context, string) (*model.App, error) {
+	return nil, errors.New("db down")
+}
+
 func TestValidateClientCredentials_UnknownOrInactivePaysASecretCheck(t *testing.T) {
-	repo := newMemAppRepo()
+	mem := newMemAppRepo()
+	repo := notFoundAppRepo{mem}
 	hash, err := auth.HashClientSecret("s3cret-for-the-test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = repo.Create(context.Background(), &model.App{ClientID: "active", Active: true, ClientSecretHash: hash})
-	_ = repo.Create(context.Background(), &model.App{ClientID: "inactive", Active: false, ClientSecretHash: hash})
+	_ = mem.Create(context.Background(), &model.App{ClientID: "active", Active: true, ClientSecretHash: hash})
+	_ = mem.Create(context.Background(), &model.App{ClientID: "inactive", Active: false, ClientSecretHash: hash})
 	for _, clientID := range []string{"nobody", "inactive"} {
 		dummy, n := countingDummy()
 		svc := &appService{repo: repo, dummyClientSecret: dummy}
@@ -103,6 +124,30 @@ func TestValidateClientCredentials_UnknownOrInactivePaysASecretCheck(t *testing.
 	}
 	if n.Load() != 0 {
 		t.Errorf("a known client paid %d dummy checks", n.Load())
+	}
+	// A database failure is an error, without the cost.
+	dummy, n = countingDummy()
+	svc = &appService{repo: failingAppRepo{mem}, dummyClientSecret: dummy}
+	if _, err := svc.ValidateClientCredentials(context.Background(), "active", "s3cret-for-the-test"); err == nil || n.Load() != 0 {
+		t.Errorf("a lookup failure: err %v, %d dummy checks", err, n.Load())
+	}
+}
+
+// A client whose secret is still a legacy SHA-256 hash answers a wrong secret
+// after a check of the same cost as a bcrypt one, and still accepts its own.
+func TestCheckClientSecret_LegacyHashCostsACheck(t *testing.T) {
+	auth.CheckDummyClientSecret() // compute the dummy hash outside the timing
+	sum := sha256.Sum256([]byte("legacy-secret"))
+	legacy := hex.EncodeToString(sum[:])
+	if !auth.CheckClientSecret("legacy-secret", legacy) {
+		t.Fatal("a legacy hash no longer accepts its secret")
+	}
+	start := time.Now()
+	if auth.CheckClientSecret("wrong", legacy) {
+		t.Fatal("a wrong secret matched a legacy hash")
+	}
+	if elapsed := time.Since(start); elapsed < 20*time.Millisecond {
+		t.Errorf("a legacy hash refused a wrong secret in %v: no bcrypt-cost check was made", elapsed)
 	}
 }
 

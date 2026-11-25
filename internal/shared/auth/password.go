@@ -153,7 +153,10 @@ func CheckClientSecret(secret, hash string) bool {
 		return bcrypt.CompareHashAndPassword([]byte(hash), []byte(secret)) == nil
 	}
 	// Legacy SHA-256 path. P3-9: the comparison is genuinely constant-time now
-	// (the previous `==` short-circuited on the first differing byte).
+	// (the previous `==` short-circuited on the first differing byte). It
+	// also pays the cost of a bcrypt check, so that a client whose secret is
+	// still a legacy hash answers in the same time as any other (#366).
+	CheckDummyClientSecret()
 	legacy := sha256.Sum256([]byte(secret))
 	return subtle.ConstantTimeCompare([]byte(hex.EncodeToString(legacy[:])), []byte(hash)) == 1
 }

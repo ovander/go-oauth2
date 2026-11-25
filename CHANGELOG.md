@@ -12,6 +12,13 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **Introspection reports a locked or deleted user's token as inactive.** `/oauth/introspect`
+  answered `active: true` for a locked user's token, and for a deleted user's (or when the user
+  could not be read), while Socrate's own API refused them. A user's token is now active only
+  while the user exists, is readable, has not revoked its tokens and is not locked; a token whose
+  revocation status cannot be read is inactive too. Service-account tokens (`sub: app:{id}`) are
+  unchanged. Deploy note: none (#366).
+
 - **A failed-sign-in lock no longer has to lock the owner out.** New `LOCKOUT_SOURCE_MODE` (`off`
   default, `observe`, `enforce`). The lockout counted wrong passwords and codes per account, so
   anyone who knew an email could keep the account locked, admins and superadmins included. Under

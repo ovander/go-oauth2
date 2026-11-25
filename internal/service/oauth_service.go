@@ -1227,9 +1227,16 @@ func (s *oauthService) Introspect(ctx context.Context, token string, requestingC
 	// MED-01 fix: check whether this token's JTI has been explicitly revoked.
 	// A token that passed signature and expiry checks but was subsequently
 	// blacklisted via /oauth/revoke must return active:false.
+	// A store error reads as inactive too (#366): the token cannot be shown
+	// not to be revoked, and a resource server must not accept it on that.
 	if s.usedTokenRepo != nil && claims.ID != "" {
-		if revoked, rErr := s.usedTokenRepo.IsUsed(ctx, claims.ID); rErr == nil && revoked {
-			logger.FromContext(ctx).WithFields(logger.Fields{"reason": "revoked", "jti": claims.ID}).Debug("introspect: inactive")
+		revoked, rErr := s.usedTokenRepo.IsUsed(ctx, claims.ID)
+		if rErr != nil || revoked {
+			reason := "revoked"
+			if rErr != nil {
+				reason = "revocation_unavailable"
+			}
+			logger.FromContext(ctx).WithFields(logger.Fields{"reason": reason, "jti": claims.ID}).Debug("introspect: inactive")
 			return &dto.IntrospectResponse{Active: false}, nil
 		}
 	}
@@ -1252,25 +1259,37 @@ func (s *oauthService) Introspect(ctx context.Context, token string, requestingC
 		return &dto.IntrospectResponse{Active: false}, nil
 	}
 
-	userID, _ := strconv.ParseUint(claims.Subject, 10, strconv.IntSize)
-	user, err := s.userRepo.FindByID(ctx, uint(userID))
-
-	// NEW-03 fix: check token version against the user's current TokenVersion.
-	// Nuclear revocation (IncrementTokenVersion via EndSession or admin API)
-	// bumps the user's stored version.  Any access token whose embedded
-	// TokenVersion is lower than the current value must be treated as revoked,
-	// even if its JTI has not been explicitly blacklisted.
-	//
-	// This aligns Introspect with the auth middleware (internal/middleware/auth.go),
-	// which already performs this check for direct API calls.  Without it,
-	// resource servers relying on introspection would not see nuclear revocations
-	// until the token expires naturally.
-	if err == nil && user.TokenVersion > claims.TokenVersion {
-		return &dto.IntrospectResponse{Active: false}, nil
-	}
-
+	// A user's token is active only while the user is (#366): it exists, has
+	// not revoked its tokens, and is not locked — what AuthMiddleware and
+	// VerifyUserToken require on Socrate's own API. A service-account token
+	// (sub "app:{id}") has no user. Anything else, or a user that cannot be
+	// read, is inactive (fail closed).
 	username := ""
-	if err == nil {
+	if !strings.HasPrefix(claims.Subject, "app:") {
+		userID, perr := strconv.ParseUint(claims.Subject, 10, strconv.IntSize)
+		if perr != nil {
+			logger.FromContext(ctx).WithField("reason", "bad_subject").Debug("introspect: inactive")
+			return &dto.IntrospectResponse{Active: false}, nil
+		}
+		user, err := s.userRepo.FindByID(ctx, uint(userID))
+		if err != nil || user == nil {
+			logger.FromContext(ctx).WithField("reason", "user_unavailable").Debug("introspect: inactive")
+			return &dto.IntrospectResponse{Active: false}, nil
+		}
+		// NEW-03 fix: check token version against the user's current
+		// TokenVersion. Nuclear revocation (IncrementTokenVersion via
+		// EndSession or admin API) bumps the user's stored version; any access
+		// token whose embedded TokenVersion is lower is revoked, even if its
+		// JTI has not been explicitly blacklisted.
+		if user.TokenVersion > claims.TokenVersion {
+			return &dto.IntrospectResponse{Active: false}, nil
+		}
+		// P3-3: a locked account's tokens stop working on Socrate's own API;
+		// a resource server introspecting them must see the same.
+		if user.IsLocked() {
+			logger.FromContext(ctx).WithField("reason", "account_locked").Debug("introspect: inactive")
+			return &dto.IntrospectResponse{Active: false}, nil
+		}
 		username = user.Email
 	}
 

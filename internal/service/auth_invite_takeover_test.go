@@ -57,6 +57,9 @@ func (r *inviteUserRepo) SetPassword(_ context.Context, id uint, change reposito
 		r.user.IsVerified = true
 		r.user.ConfirmedAt = change.ConfirmedAt
 	}
+	if change.ChangedAt != nil {
+		r.user.PasswordChangedAt = change.ChangedAt
+	}
 	return nil
 }
 
@@ -167,6 +170,11 @@ func TestAcceptInvite_ActivatesThePendingAccount(t *testing.T) {
 		}
 		if users.user.HashedPassword == "throwaway" || !users.user.IsVerified {
 			t.Fatalf("source %s: pending account not activated: %+v", source, users.user)
+		}
+		// #366: choosing the first password retires the reset links issued
+		// for the pending account before it.
+		if users.user.PasswordChangedAt == nil || time.Since(*users.user.PasswordChangedAt) > time.Minute {
+			t.Fatalf("source %s: activation did not record the password change now: %v", source, users.user.PasswordChangedAt)
 		}
 	}
 	users, _, err := acceptInviteFor(t, nil)

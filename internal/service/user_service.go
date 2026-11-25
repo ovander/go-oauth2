@@ -325,8 +325,10 @@ func (s *userService) UpdatePassword(ctx context.Context, userID uint, newPasswo
 	}
 
 	// The new password and the revocation of every existing token are one
-	// write.
-	return s.repo.SetPassword(ctx, user.ID, repository.PasswordChange{HashedPassword: hashedPassword})
+	// write. Recording the change retires the reset links issued before it
+	// (#366).
+	now := time.Now()
+	return s.repo.SetPassword(ctx, user.ID, repository.PasswordChange{HashedPassword: hashedPassword, ChangedAt: &now})
 }
 
 func (s *userService) IncrementTokenVersion(ctx context.Context, userID uint) error {

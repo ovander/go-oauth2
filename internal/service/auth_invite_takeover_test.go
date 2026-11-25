@@ -48,7 +48,8 @@ func (r *inviteUserRepo) Update(_ context.Context, u *model.User) error {
 	return nil
 }
 
-// RecordLogin models the repository: it writes the sign-in times only. It is
+// RecordLogin models the repository: it writes the sign-in times and
+// updated_at only. It is
 // not counted in updates, which tracks changes to the account itself.
 func (r *inviteUserRepo) RecordLogin(_ context.Context, id uint, at time.Time, attempt bool) error {
 	if r.user == nil || r.user.ID != id {

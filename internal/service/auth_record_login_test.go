@@ -172,7 +172,10 @@ func TestVerifyMagicLink_RecordsTheLoginWithoutAFullRowSave(t *testing.T) {
 	if userRepo.updates != 0 || userRepo.recordLogins != 1 {
 		t.Fatalf("Update calls %d, RecordLogin calls %d; want 0 and 1", userRepo.updates, userRepo.recordLogins)
 	}
-	u := userRepo.byID[10]
+	u, ok := userRepo.byID[10]
+	if !ok {
+		t.Fatal("the user is gone from the fake repository")
+	}
 	if u.LastLogin == nil || u.LastLogin.Before(start) {
 		t.Fatalf("last_login %v, want the sign-in time", u.LastLogin)
 	}

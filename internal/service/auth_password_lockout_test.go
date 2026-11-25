@@ -50,7 +50,8 @@ func (r *lockoutUserRepo) Update(_ context.Context, u *model.User) error {
 	return nil
 }
 
-// RecordLogin writes the sign-in times, and only them, like the repository.
+// RecordLogin writes the sign-in times and updated_at, and nothing else, like
+// the repository.
 func (r *lockoutUserRepo) RecordLogin(_ context.Context, id uint, at time.Time, attempt bool) error {
 	u, ok := r.users[id]
 	if !ok {

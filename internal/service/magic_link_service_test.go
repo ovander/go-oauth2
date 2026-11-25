@@ -556,7 +556,8 @@ func (*fakeMagicLinkUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool
 	return false, nil
 }
 
-// RecordLogin writes the sign-in times, and only them, like the repository.
+// RecordLogin writes the sign-in times and updated_at, and nothing else, like
+// the repository.
 func (r *fakeMagicLinkUserRepo) RecordLogin(_ context.Context, id uint, at time.Time, attempt bool) error {
 	r.recordLogins++
 	u, ok := r.byID[id]

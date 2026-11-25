@@ -548,9 +548,9 @@ func Bootstrap(cfg *config.Config) *App {
 	// Code Store (database-backed with cleanup)
 	// ==========================================
 	// The placeholder hash that unknown clients are checked against costs a
-	// bcrypt hash to compute: compute it now, not on the first such request
-	// (#366).
-	go auth.CheckDummyClientSecret()
+	// bcrypt hash to compute (about 250 ms): compute it here, before the server
+	// serves, so that no request waits for it (#366).
+	auth.CheckDummyClientSecret()
 
 	codeStoreConfig := auth.CodeStoreConfig{
 		TTL:             10 * time.Minute,

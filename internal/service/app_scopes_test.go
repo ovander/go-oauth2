@@ -186,6 +186,17 @@ func (r *multiAppRepo) FindByClientID(_ context.Context, clientID string) (*mode
 	return nil, errors.New("not found")
 }
 
+// FindByID finds the same apps by id, as introspection of a service-account
+// token does.
+func (r *multiAppRepo) FindByID(_ context.Context, id uint) (*model.App, error) {
+	for _, a := range r.apps {
+		if a.ID == id {
+			return a, nil
+		}
+	}
+	return nil, errors.New("not found")
+}
+
 const appScopeSecret = "correct-secret"
 
 // appScopeService returns a service whose clients are "a" (registers

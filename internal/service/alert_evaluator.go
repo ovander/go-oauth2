@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/ovander/go-oauth2/internal/model"
@@ -146,17 +147,27 @@ func (e *AlertEvaluator) evaluateRule(ctx context.Context, rule *model.AlertRule
 			alerted[g] = true
 		}
 	}
+	// In group order, so that a pass is reproducible.
+	groups := make([]string, 0, len(counts))
+	for group := range counts {
+		groups = append(groups, group)
+	}
+	sort.Strings(groups)
 	triggered := 0
-	for group, count := range counts {
+	var errs []error
+	for _, group := range groups {
+		count := counts[group]
 		if count < int64(cond.Threshold) || alerted[group] {
 			continue
 		}
+		// A failed save is retried next pass; the rule's other groups go on.
 		if err := e.trigger(ctx, rule, cond, group, count, now); err != nil {
-			return triggered, err
+			errs = append(errs, err)
+			continue
 		}
 		triggered++
 	}
-	return triggered, nil
+	return triggered, errors.Join(errs...)
 }
 
 func (e *AlertEvaluator) trigger(ctx context.Context, rule *model.AlertRule, cond model.AlertCondition, group string, count int64, now time.Time) error {
@@ -182,7 +193,6 @@ func (e *AlertEvaluator) trigger(ctx context.Context, rule *model.AlertRule, con
 	if err := e.alerts.Create(ctx, alert); err != nil {
 		return fmt.Errorf("record alert: %w", err)
 	}
-	e.auditTriggered(ctx, rule, alert)
 
 	alert.Details["notifications"] = e.notify(ctx, rule, alert)
 	if err := e.alerts.Update(ctx, alert); err != nil {
@@ -190,6 +200,9 @@ func (e *AlertEvaluator) trigger(ctx context.Context, rule *model.AlertRule, con
 		logger.WithFields(logger.Fields{"alert_id": alert.ID, "error": err.Error()}).
 			Warn("alert rules: could not record the notification outcome")
 	}
+	// Audited once the notifications are done, so the security log also
+	// says whether the alert was delivered.
+	e.auditTriggered(ctx, rule, alert)
 	return nil
 }
 

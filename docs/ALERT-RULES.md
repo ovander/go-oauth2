@@ -27,7 +27,7 @@ Rules are evaluated only when the server runs with `ALERT_RULES_MODE` set (#258)
 Run `observe` first: the alert history then shows what each rule would have sent, so thresholds
 can be tuned before anyone is paged.
 
-Every `ALERT_RULES_INTERVAL_SECONDS` (default 60, at least 10), each enabled rule counts its
+Every `ALERT_RULES_INTERVAL_SECONDS` (default 60, from 10 to 86400), each enabled rule counts its
 `event_type`'s events of the last `window_minutes`, per group of `group_by` (all together without
 it; an event with no value for `group_by`, such as no user, is not counted). A group whose count
 reaches `threshold` triggers one alert; the rule does not alert again for that group until its

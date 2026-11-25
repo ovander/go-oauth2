@@ -499,8 +499,11 @@ func TestMigration0037_DefaultAlertRules(t *testing.T) {
 		string(model.SecurityEventClientAuthFailed): true, string(model.SecurityEventAuditIntegrityViolation): true,
 	}
 	for _, r := range seeded {
-		if !r.Enabled || r.CreatedBy != nil || len(r.Recipients) != 0 || len(r.Actions) != 1 || r.Actions[0] != "email" {
-			t.Errorf("rule %q: enabled %v, created_by %v, recipients %v, actions %v", r.Name, r.Enabled, r.CreatedBy, r.Recipients, r.Actions)
+		if r.CreatedBy != nil {
+			t.Errorf("rule %q: created_by = %d, want none", r.Name, *r.CreatedBy)
+		}
+		if !r.Enabled || len(r.Recipients) != 0 || len(r.Actions) != 1 || r.Actions[0] != "email" {
+			t.Errorf("rule %q: enabled %v, recipients %v, actions %v; want enabled, none, [email]", r.Name, r.Enabled, r.Recipients, r.Actions)
 		}
 		if !emitted[r.EventType] {
 			t.Errorf("rule %q watches %q, an event the server does not record", r.Name, r.EventType)

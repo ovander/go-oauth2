@@ -426,6 +426,7 @@ func (stubUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error) {
 func (stubUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
 	return false, nil
 }
+func (stubUserRepo) RecordLogin(context.Context, uint, time.Time, bool) error { return nil }
 
 func (stubUserRepo) SetPassword(context.Context, uint, repository.PasswordChange) error { return nil }
 func (stubUserRepo) UpdateProfile(context.Context, *model.User, bool) error             { return nil }

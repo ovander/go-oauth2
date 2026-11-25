@@ -50,6 +50,14 @@ type UserRepository interface {
 	// only if it is later than the one recorded. It reports whether it did
 	// (false: that step or a later one was already used).
 	AdvanceMFAStep(ctx context.Context, userID uint, step int64) (bool, error)
+	// RecordLogin records a successful sign-in at time at: it writes
+	// last_login (and last_login_attempt too when attempt is set) and
+	// updated_at, and no other column. A sign-in loads the user before it
+	// checks the password and the second factor; a full-row Update of that
+	// copy would write back whatever changed meanwhile (an MFA enrolment or
+	// reset, a role, an email). It returns gorm.ErrRecordNotFound when no such
+	// non-deleted user exists.
+	RecordLogin(ctx context.Context, userID uint, at time.Time, attempt bool) error
 }
 
 // PasswordChange is a new password hash and what is recorded with it.
@@ -279,6 +287,26 @@ func (r *userRepository) ClaimInviteApp(ctx context.Context, userID, appID uint)
 		return false, res.Error
 	}
 	return res.RowsAffected == 1, nil
+}
+
+func (r *userRepository) RecordLogin(ctx context.Context, userID uint, at time.Time, attempt bool) error {
+	columns := map[string]interface{}{
+		"last_login": at,
+		"updated_at": at,
+	}
+	if attempt {
+		columns["last_login_attempt"] = at
+	}
+	// Model(&model.User{}) keeps the soft-delete scope: a user deleted since
+	// it was read stays deleted.
+	res := r.db.WithContext(ctx).Model(&model.User{}).Where("id = ?", userID).Updates(columns)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (r *userRepository) AdvanceMFAStep(ctx context.Context, userID uint, step int64) (bool, error) {

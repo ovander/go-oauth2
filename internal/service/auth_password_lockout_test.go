@@ -50,6 +50,19 @@ func (r *lockoutUserRepo) Update(_ context.Context, u *model.User) error {
 	return nil
 }
 
+// RecordLogin writes the sign-in times, and only them, like the repository.
+func (r *lockoutUserRepo) RecordLogin(_ context.Context, id uint, at time.Time, attempt bool) error {
+	u, ok := r.users[id]
+	if !ok {
+		return errors.New("record not found")
+	}
+	u.LastLogin, u.UpdatedAt = &at, at
+	if attempt {
+		u.LastLoginAttempt = &at
+	}
+	return nil
+}
+
 // SetPassword stores the hash and increments the token version together, or
 // fails with setPasswordErr and changes nothing.
 func (r *lockoutUserRepo) SetPassword(_ context.Context, id uint, c repository.PasswordChange) error {

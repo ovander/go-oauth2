@@ -60,6 +60,19 @@ func (r *mfaMemUserRepo) Update(_ context.Context, user *model.User) error {
 	return nil
 }
 
+// RecordLogin writes the sign-in times, and only them, like the repository.
+func (r *mfaMemUserRepo) RecordLogin(_ context.Context, id uint, at time.Time, attempt bool) error {
+	u, ok := r.users[id]
+	if !ok {
+		return errors.New("record not found")
+	}
+	u.LastLogin, u.UpdatedAt = &at, at
+	if attempt {
+		u.LastLoginAttempt = &at
+	}
+	return nil
+}
+
 // AdvanceMFAStep mirrors the conditional UPDATE: it records step only if it is
 // later than the stored one.
 func (r *mfaMemUserRepo) AdvanceMFAStep(_ context.Context, id uint, step int64) (bool, error) {

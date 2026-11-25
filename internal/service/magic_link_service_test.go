@@ -87,6 +87,9 @@ func (r *fakeMagicLinkRepo) DeleteExpired(_ context.Context) (int64, error) {
 type fakeMagicLinkUserRepo struct {
 	users map[string]*model.User // keyed by email
 	byID  map[uint]*model.User
+	// updates counts full-row saves; recordLogins counts RecordLogin calls.
+	updates      int
+	recordLogins int
 }
 
 func newFakeMagicLinkUserRepo() *fakeMagicLinkUserRepo {
@@ -118,6 +121,7 @@ func (r *fakeMagicLinkUserRepo) FindByID(_ context.Context, id uint) (*model.Use
 }
 
 func (r *fakeMagicLinkUserRepo) Update(_ context.Context, u *model.User) error {
+	r.updates++
 	r.users[u.Email] = u
 	r.byID[u.ID] = u
 	return nil
@@ -550,6 +554,20 @@ func (*fakeMagicLinkUserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool
 }
 func (*fakeMagicLinkUserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
 	return false, nil
+}
+
+// RecordLogin writes the sign-in times, and only them, like the repository.
+func (r *fakeMagicLinkUserRepo) RecordLogin(_ context.Context, id uint, at time.Time, attempt bool) error {
+	r.recordLogins++
+	u, ok := r.byID[id]
+	if !ok {
+		return errors.New("not found")
+	}
+	u.LastLogin, u.UpdatedAt = &at, at
+	if attempt {
+		u.LastLoginAttempt = &at
+	}
+	return nil
 }
 
 func (*fakeMagicLinkUserRepo) SetPassword(context.Context, uint, repository.PasswordChange) error {

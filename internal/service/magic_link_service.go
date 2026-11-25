@@ -310,11 +310,12 @@ func (s *magicLinkService) VerifyMagicLink(ctx context.Context, req dto.MagicLin
 		appRoles = make(map[string]string)
 	}
 
-	// Update last login timestamp.
+	// Record the sign-in time, and only it: a full-row save of the user loaded
+	// above would undo a change made meanwhile.
 	now := time.Now()
 	user.LastLogin = &now
 	user.UpdatedAt = now
-	_ = s.userRepo.Update(ctx, user) // best-effort; don't fail the login
+	_ = s.userRepo.RecordLogin(ctx, user.ID, now, false) // best-effort; don't fail the login
 
 	if err := hooks.RunBeforeTokenIssue(ctx, &hooks.TokenIssue{User: user, App: app, Grant: "magic_link"}); err != nil {
 		return nil, err

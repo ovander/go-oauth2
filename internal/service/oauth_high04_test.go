@@ -298,6 +298,7 @@ func (*high04UserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error
 func (*high04UserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
 	return false, nil
 }
+func (*high04UserRepo) RecordLogin(context.Context, uint, time.Time, bool) error { return nil }
 
 func (*high04UserRepo) SetPassword(context.Context, uint, repository.PasswordChange) error {
 	return nil

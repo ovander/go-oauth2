@@ -22,6 +22,9 @@ type inviteUserRepo struct {
 	user    *model.User
 	updates int
 	creates int
+	// fullSaves counts Update calls; recordLogins counts RecordLogin calls.
+	fullSaves    int
+	recordLogins int
 }
 
 func (r *inviteUserRepo) FindByEmail(_ context.Context, email string) (*model.User, error) {
@@ -36,11 +39,26 @@ func (r *inviteUserRepo) FindByEmail(_ context.Context, email string) (*model.Us
 // version.
 func (r *inviteUserRepo) Update(_ context.Context, u *model.User) error {
 	r.updates++
+	r.fullSaves++
 	c := *u
 	if r.user != nil {
 		c.HashedPassword, c.TokenVersion = r.user.HashedPassword, r.user.TokenVersion
 	}
 	r.user = &c
+	return nil
+}
+
+// RecordLogin models the repository: it writes the sign-in times only. It is
+// not counted in updates, which tracks changes to the account itself.
+func (r *inviteUserRepo) RecordLogin(_ context.Context, id uint, at time.Time, attempt bool) error {
+	if r.user == nil || r.user.ID != id {
+		return errors.New("record not found")
+	}
+	r.recordLogins++
+	r.user.LastLogin, r.user.UpdatedAt = &at, at
+	if attempt {
+		r.user.LastLoginAttempt = &at
+	}
 	return nil
 }
 
@@ -333,5 +351,35 @@ func TestAcceptInvite_TokensCarryTheNewTokenVersion(t *testing.T) {
 	}
 	if claims.TokenVersion != 5 {
 		t.Fatalf("access token version %d, want 5 (the stored one)", claims.TokenVersion)
+	}
+}
+
+// Accepting an invite records the sign-in time with RecordLogin, not with a
+// full-row save of the user it loaded.
+func TestAcceptInvite_RecordsTheLoginWithoutAFullRowSave(t *testing.T) {
+	start := time.Now()
+	users, _, err := acceptInviteFor(t, nil)
+	if err != nil {
+		t.Fatalf("new address: %v", err)
+	}
+	if users.fullSaves != 0 || users.recordLogins != 1 {
+		t.Fatalf("new address: Update calls %d, RecordLogin calls %d; want 0 and 1", users.fullSaves, users.recordLogins)
+	}
+	if users.user.LastLogin == nil || users.user.LastLogin.Before(start) {
+		t.Fatalf("new address: last_login %v, want the sign-in time", users.user.LastLogin)
+	}
+
+	// A pending account: the only full-row save left is the name the invitee
+	// typed, made before the password is set; the sign-in time is recorded
+	// on its own.
+	users, _, err = acceptInviteFor(t, &model.User{ID: 7, Email: "invitee@example.test", HashedPassword: "throwaway", Source: "invite", InviteAppID: appID(1)})
+	if err != nil {
+		t.Fatalf("pending account: %v", err)
+	}
+	if users.fullSaves != 1 || users.recordLogins != 1 {
+		t.Fatalf("pending account: Update calls %d, RecordLogin calls %d; want 1 (the name) and 1", users.fullSaves, users.recordLogins)
+	}
+	if users.user.LastLogin == nil || users.user.LastLogin.Before(start) {
+		t.Fatalf("pending account: last_login %v, want the sign-in time", users.user.LastLogin)
 	}
 }

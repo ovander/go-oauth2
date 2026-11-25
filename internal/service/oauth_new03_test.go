@@ -289,6 +289,7 @@ func (*new03UserRepo) ClaimInviteApp(_ context.Context, _, _ uint) (bool, error)
 func (*new03UserRepo) AdvanceMFAStep(context.Context, uint, int64) (bool, error) {
 	return false, nil
 }
+func (*new03UserRepo) RecordLogin(context.Context, uint, time.Time, bool) error { return nil }
 
 func (*new03UserRepo) SetPassword(context.Context, uint, repository.PasswordChange) error { return nil }
 func (*new03UserRepo) UpdateProfile(context.Context, *model.User, bool) error             { return nil }

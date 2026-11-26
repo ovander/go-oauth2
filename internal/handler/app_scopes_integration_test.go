@@ -189,6 +189,8 @@ func TestIntegration_TokenExchange_ClientErrorMapping(t *testing.T) {
 		{service.ErrExchangeNotAllowed, http.StatusForbidden, `"unauthorized_client"`},
 		{service.ErrInvalidCredentials, http.StatusUnauthorized, `"invalid_client"`},
 		{service.ErrAudienceNotAllowed, http.StatusBadRequest, `"invalid_target"`},
+		// A hook's veto (T-3) is refused like on the other grants.
+		{fmt.Errorf("%w: not today", service.ErrTokenVetoed), http.StatusForbidden, `"access_denied"`},
 	} {
 		r := buildOAuthTestRouter(&fakeOAuthSvc{tokenErr: tc.err})
 		body := strings.NewReader("grant_type=urn:ietf:params:oauth:grant-type:token-exchange&subject_token=x&subject_token_type=urn:ietf:params:oauth:token-type:access_token&audience=https://api")

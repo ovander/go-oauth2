@@ -38,11 +38,13 @@ import (
 var ErrVetoed = errors.New("token issuance vetoed by hook")
 
 // TokenIssue describes a token about to be minted. User is nil for
-// client_credentials (service accounts).
+// client_credentials (service accounts), and for a token exchange whose
+// subject is a service account's token. For token_exchange, App is the
+// requesting client.
 type TokenIssue struct {
 	User  *model.User
 	App   *model.App
-	Grant string // authorization_code | refresh_token | client_credentials | password | magic_link | admin_password
+	Grant string // authorization_code | refresh_token | client_credentials | token_exchange | password | magic_link | admin_password
 	Scope string
 }
 

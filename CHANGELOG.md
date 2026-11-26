@@ -33,6 +33,19 @@ Capabilities**, non-breaking).
   change: the locking attempt's status moves from `403` to `401`; a client that showed "account
   locked" on it shows "invalid credentials" until the next attempt with the right password.
 
+- **Token exchange hardening** (only with `TOKEN_EXCHANGE_MODE` `shadow` or `enforce`; the v1.14.2
+  audit's T-1 and T-3 leftovers):
+  - an exchanged token never targets an operator console (`OPERATOR_CONSOLE_CLIENT_IDS`,
+    `ADMIN_CONSOLE_CLIENT_ID`) or Socrate's admin portal, even one registered as the client's
+    audience: it would be an admin-API credential (`invalid_target`, audited
+    `deny_reason: console_audience`);
+  - the token-issuance hooks (`hooks.OnBeforeTokenIssue`) now run on an exchange too, with grant
+    `token_exchange`, and can veto it as any other grant;
+  - a client without a secret can no longer be given `allow_token_exchange` (`400` on create, or
+    on an update that turns it on): the exchange authenticates the client, so it could never use
+    it. An existing public client that has it keeps it, inert, and can still be updated otherwise;
+  - a hook's veto on an exchange answers `403 access_denied`, as on the other grants.
+
 - **`/oauth/revoke` and `/oauth/logout` check a DPoP-bound token's proof** (`DPOP_MODE`, default
   `off`; the v1.14.2 audit's G-4 follow-up). Their optional bearer identity was read without the
   binding check, so a stolen bound token, used as a plain bearer token, could log its user out

@@ -12,6 +12,16 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **Turning MFA off counts failed attempts toward the account lockout, and the MFA routes are
+  rate-limited.** `POST /api/profile/mfa/disable` checked the password and the code without
+  counting failures and had no rate limit, so whoever held a user's access token and password
+  could try codes without limit and switch the second factor off; the hosted account page's
+  disable step did not count a wrong code either. Both now go through the auth service's new
+  `ReverifyForMFAChange`, which uses the sign-in checks (`checkPasswordWithLockout`, `stepUpMFA`):
+  each wrong password or code counts, and a locked account is refused (`403`) before anything is
+  checked. The `/api/profile/mfa` posts are rate-limited per user with the login limiter (`429`).
+  Closes the gap the v1.14.2 audit's H-2 fix left on this route. No new setting.
+
 - **Token exchange hardening** (only with `TOKEN_EXCHANGE_MODE` `shadow` or `enforce`; the v1.14.2
   audit's T-1 and T-3 leftovers):
   - an exchanged token never targets an operator console (`OPERATOR_CONSOLE_CLIENT_IDS`,

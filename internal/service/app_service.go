@@ -107,6 +107,12 @@ func (s *appService) Create(ctx context.Context, req dto.CreateAppRequest, owner
 		}
 	}
 
+	// T-3: token exchange authenticates the client; one without a secret
+	// cannot be authenticated, so it is never allowed to exchange.
+	if req.IsPublic && req.AllowTokenExchange {
+		return nil, "", ErrPublicClientTokenExchange
+	}
+
 	// Generate client ID
 	clientID, err := generateSecureToken(16)
 	if err != nil {
@@ -193,6 +199,13 @@ func (s *appService) Update(ctx context.Context, id uint, req dto.UpdateAppReque
 		app.RequireDPoP = *req.RequireDPoP
 	}
 	if req.AllowTokenExchange != nil {
+		// T-3: a client without a secret cannot be authenticated, so it is
+		// never given token exchange. A public client that already has the
+		// flag (set before v1.16.1) can still be updated otherwise: the flag
+		// is inert there, since the exchange authenticates the client first.
+		if *req.AllowTokenExchange && !app.IsConfidential() {
+			return nil, ErrPublicClientTokenExchange
+		}
 		app.AllowTokenExchange = *req.AllowTokenExchange
 	}
 	if req.AllowImpersonation != nil {

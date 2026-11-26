@@ -953,6 +953,9 @@ func (h *OAuthHandler) Token(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case errors.Is(err, service.ErrInvalidGrantType):
 				writeOAuthError(w, "unsupported_grant_type", "unsupported grant type", http.StatusBadRequest)
+			case errors.Is(err, service.ErrTokenVetoed):
+				// A6: an operator hook refused the exchange, as on every grant.
+				writeOAuthError(w, "access_denied", "token issuance refused by policy", http.StatusForbidden)
 			case errors.Is(err, service.ErrInvalidCredentials):
 				writeOAuthError(w, "invalid_client", "client authentication failed", http.StatusUnauthorized)
 			case errors.Is(err, service.ErrAppInactive):

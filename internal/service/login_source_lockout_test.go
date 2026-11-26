@@ -121,8 +121,9 @@ func TestSourceLockout_EnforceLocksOnlyTheSource(t *testing.T) {
 			t.Fatalf("wrong password %d: %v", i, err)
 		}
 	}
-	if err := reauth(s, attacker, "wrong"); !errors.Is(err, ErrAccountLocked) {
-		t.Fatalf("third wrong password: %v, want ErrAccountLocked", err)
+	// The locking attempt is answered like any wrong password.
+	if err := reauth(s, attacker, "wrong"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("third wrong password: %v, want ErrInvalidCredentials", err)
 	}
 	ev := audit.lastOf(model.SecurityEventAccountLocked)
 	if ev == nil || ev.Details["lock_scope"] != "source" || ev.Details["source"] != attacker {
@@ -157,9 +158,12 @@ func TestSourceLockout_EnforceLocksOnlyTheSource(t *testing.T) {
 func TestSourceLockout_EnforceIPv6CountsThe64(t *testing.T) {
 	s, _, _, audit := sourceLockoutService(t, lockoutSourceEnforce)
 	for i, ip := range []string{"2001:db8:1:2::1", "2001:db8:1:2::2", "2001:db8:1:2:ffff::3"} {
-		err := reauth(s, ip, "wrong")
-		if want := i == 2; errors.Is(err, ErrAccountLocked) != want {
-			t.Fatalf("attempt %d from %s: %v (locked want %v)", i+1, ip, err, want)
+		// The locking attempt too is answered like any wrong password.
+		if err := reauth(s, ip, "wrong"); !errors.Is(err, ErrInvalidCredentials) {
+			t.Fatalf("attempt %d from %s: %v, want ErrInvalidCredentials", i+1, ip, err)
+		}
+		if locked := audit.lastOf(model.SecurityEventAccountLocked) != nil; locked != (i == 2) {
+			t.Fatalf("attempt %d from %s: locked %v, want %v", i+1, ip, locked, i == 2)
 		}
 	}
 	// An attempt from another address in the locked /64 is audited with the
@@ -221,8 +225,8 @@ func TestSourceLockout_ObserveKeepsTheAccountLockAndAudits(t *testing.T) {
 	if ev := audit.lastOf(model.SecurityEventLoginFailed); ev == nil || ev.Details["source_failed_attempts"] != 2 || ev.Details["failed_attempts"] != 2 {
 		t.Fatalf("observe details: %+v", ev)
 	}
-	if err := reauth(s, ip, "wrong"); !errors.Is(err, ErrAccountLocked) {
-		t.Fatalf("observe keeps the account-wide lock: %v", err)
+	if err := reauth(s, ip, "wrong"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("observe, the locking attempt: %v, want ErrInvalidCredentials", err)
 	}
 	if !repo.users[5].IsLocked() {
 		t.Fatal("observe must lock the account as before")
@@ -270,8 +274,8 @@ func TestSourceLockout_EnforceStoreWriteErrorCountsOnTheAccount(t *testing.T) {
 			t.Fatalf("wrong password %d: %v", i+1, err)
 		}
 	}
-	if err := reauth(s, "198.51.100.7", "wrong"); !errors.Is(err, ErrAccountLocked) {
-		t.Fatalf("third wrong password with the store down: %v, want ErrAccountLocked", err)
+	if err := reauth(s, "198.51.100.7", "wrong"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("third wrong password with the store down: %v, want ErrInvalidCredentials", err)
 	}
 	if !repo.users[5].IsLocked() {
 		t.Fatal("the account was not locked while the source store failed")

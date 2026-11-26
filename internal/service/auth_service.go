@@ -657,9 +657,10 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 // account. Both are audited. Shared by Login and AuthenticateAccount so every
 // password check on behalf of a user counts towards the same lockout.
 //
-// A locked account does not reveal itself: its password is still checked, at
-// the same cost as any attempt, and only the right password gets
-// ErrAccountLocked (whoever typed it knows the account, and the owner learns
+// A locked account does not reveal itself, nor does the attempt that locks it
+// (answered ErrInvalidCredentials, as any wrong password): its password is
+// still checked, at the same cost as any attempt, and only the right password
+// gets ErrAccountLocked (whoever typed it knows the account, and the owner learns
 // why they cannot sign in). A wrong one gets ErrInvalidCredentials, exactly as
 // an unknown email or another wrong password does, and is audited without
 // counting towards the lock already in place.
@@ -697,9 +698,13 @@ func (s *authService) checkPasswordWithLockout(ctx context.Context, user *model.
 		details["login_type"] = loginType
 	}
 	if locked {
-		// Log account lockout
+		// The account (or, under LOCKOUT_SOURCE_MODE=enforce, only this
+		// source) is locked and audited, but the attempt that locked it is
+		// answered like any wrong password: answering "locked" would show
+		// that the email names an account, which an unknown email never
+		// gets. From now on only the right password learns of the lock.
 		s.logSecurityEvent(ctx, model.SecurityEventAccountLocked, &user.ID, nil, false, details)
-		return ErrAccountLocked
+		return ErrInvalidCredentials
 	}
 	// Log failed login attempt
 	s.logSecurityEvent(ctx, model.SecurityEventLoginFailed, &user.ID, nil, false, details)

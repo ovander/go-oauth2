@@ -10,6 +10,33 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.16.1] - 2026-11-26
+
+Security patch release on the **v1.x** line. It closes what was left of the v1.14.2 audit: turning
+MFA off and replacing the recovery codes are re-proved and count toward the lockout, the attempt
+that locks an account no longer reveals that it exists, token exchange never yields an
+operator-console token, and revoke and logout check a DPoP-bound token's proof. One migration,
+one new control (**off** by default, `MFA_RECOVERY_CODES_REVERIFY_MODE`), no change to discovery
+or claims.
+
+### Upgrade notes
+
+- **Migration 0038** (`AUTO_MIGRATE=false`: run it deliberately, after a backup). It drops the
+  foreign key on `admin_logs.app_id` and rewrites no data.
+- **Client-facing changes:**
+  - the sign-in attempt that locks an account answers `401 invalid_credentials` instead of `403`
+    account locked;
+  - `POST /api/profile/mfa/confirm` answers `200` with the first `recovery_codes` instead of
+    `204`;
+  - the `/api/profile/mfa` posts are rate-limited per user (`429`);
+  - `POST /api/profile/mfa/disable` answers `403` once the account is locked.
+- **Recovery codes**: deploy the admin console v1.7.4 (it sends the password and a code, and takes
+  confirm's codes), then run `MFA_RECOVERY_CODES_REVERIFY_MODE=observe` and look for
+  `mfa_recovery_codes_reverify` events with `would_refuse_missing` before `enforce`.
+- **Token exchange** and **DPoP** changes apply only with `TOKEN_EXCHANGE_MODE` or `DPOP_MODE` on.
+  An existing public client with `allow_token_exchange` keeps it, inert; turning it on for one is
+  refused (`400`).
+
 ### Security
 
 - **Replacing the MFA recovery codes can require the password and a code**

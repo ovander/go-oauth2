@@ -133,6 +133,13 @@ const (
 	// an account not created for the app (SERVICE_USER_SCOPE_MODE). Success
 	// is false when enforce refused it.
 	SecurityEventServiceUserScope SecurityEventType = "service_user_scope"
+
+	// SecurityEventMFARecoveryCodesReverify: a request to replace a user's
+	// recovery codes under MFA_RECOVERY_CODES_REVERIFY_MODE, with its outcome
+	// (credentials_present or would_refuse_missing under observe; verified,
+	// refused_missing or refused_failed under enforce). Success is false when
+	// enforce refused it.
+	SecurityEventMFARecoveryCodesReverify SecurityEventType = "mfa_recovery_codes_reverify"
 )
 
 // SecuritySeverity indicates the severity level of the event

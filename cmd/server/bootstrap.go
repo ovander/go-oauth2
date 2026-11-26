@@ -144,22 +144,23 @@ func LogStartupSummary(cfg *config.Config) {
 		"admin_port":  cfg.AdminPort,
 		"log_level":   logger.Logger.GetLevel().String(),
 		// Security posture (observe → enforce rollout flags).
-		"dpop_mode":               cfg.DPoPMode,
-		"token_exchange_mode":     cfg.TokenExchangeMode,
-		"refresh_reuse_mode":      cfg.RefreshReuseMode,
-		"code_replay_mode":        cfg.CodeReplayMode,
-		"audience_mode":           cfg.AudienceMode,
-		"admin_mfa_policy":        cfg.AdminMFAPolicy,
-		"admin_app_signin_policy": cfg.AdminAppSignInPolicy,
-		"admin_scope_mode":        cfg.AdminScopeMode,
-		"admin_api_audience_mode": cfg.AdminAPIAudienceMode,
-		"privileged_scope_mode":   cfg.PrivilegedScopeMode,
-		"redirect_uri_match_mode": cfg.RedirectURIMatchMode,
-		"alert_rules_mode":        cfg.AlertRulesMode,
-		"service_user_scope_mode": cfg.ServiceUserScopeMode,
-		"lockout_source_mode":     cfg.LockoutSourceMode,
-		"audit_write_mode":        cfg.AuditWriteMode,
-		"policy_mode":             cfg.PolicyMode,
+		"dpop_mode":                        cfg.DPoPMode,
+		"token_exchange_mode":              cfg.TokenExchangeMode,
+		"refresh_reuse_mode":               cfg.RefreshReuseMode,
+		"code_replay_mode":                 cfg.CodeReplayMode,
+		"audience_mode":                    cfg.AudienceMode,
+		"admin_mfa_policy":                 cfg.AdminMFAPolicy,
+		"admin_app_signin_policy":          cfg.AdminAppSignInPolicy,
+		"admin_scope_mode":                 cfg.AdminScopeMode,
+		"admin_api_audience_mode":          cfg.AdminAPIAudienceMode,
+		"privileged_scope_mode":            cfg.PrivilegedScopeMode,
+		"redirect_uri_match_mode":          cfg.RedirectURIMatchMode,
+		"alert_rules_mode":                 cfg.AlertRulesMode,
+		"service_user_scope_mode":          cfg.ServiceUserScopeMode,
+		"mfa_recovery_codes_reverify_mode": cfg.RecoveryCodesReverifyMode,
+		"lockout_source_mode":              cfg.LockoutSourceMode,
+		"audit_write_mode":                 cfg.AuditWriteMode,
+		"policy_mode":                      cfg.PolicyMode,
 		// Admin-console session hardening.
 		"admin_console_pkce":   cfg.AdminConsoleClientID != "",
 		"admin_elevation":      dur(cfg.AdminElevationMaxAge),
@@ -765,6 +766,9 @@ func Bootstrap(cfg *config.Config) *App {
 	// #203: AdminHandler emits client-lifecycle changes as alertable security
 	// events; give it a security audit service over the same repo.
 	adminSecurityAuditService := service.NewSecurityAuditService(securityAuditRepo)
+	// MFA_RECOVERY_CODES_REVERIFY_MODE: whether replacing the recovery codes
+	// needs the password and a code, as turning MFA off does.
+	mfaHandler.SetRecoveryCodesReverify(cfg.RecoveryCodesReverifyMode, adminSecurityAuditService)
 	// SERVICE_USER_SCOPE_MODE: what an app's service account may do to an
 	// account it did not create (adding it to the app, editing its profile).
 	appUsersHandler.SetServiceUserScope(cfg.ServiceUserScopeMode, adminSecurityAuditService)

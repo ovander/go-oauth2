@@ -486,12 +486,24 @@ func TestMigration0037_DefaultAlertRules(t *testing.T) {
 	if err := migrate.Run(db); err != nil {
 		t.Fatalf("run: %v", err)
 	}
+	if db.Migrator().HasTable("users") {
+		t.Error("migration 0037 created users: it must touch alert_rules only")
+	}
 	if err := db.AutoMigrate(&model.User{}, &model.App{}, &model.SecurityAuditLog{}, &model.AlertRule{}, &model.TriggeredAlert{}); err != nil {
 		t.Fatalf("automigrate after the migrations: %v", err)
 	}
 	seeded := rules(db)
 	if len(seeded) != 7 {
 		t.Fatalf("fresh install: %d rules, want 7", len(seeded))
+	}
+	// The migration created alert_rules without its foreign key to users,
+	// which may not exist yet; AutoMigrate added it afterwards.
+	var fks int64
+	if err := db.Raw(`SELECT count(*) FROM pg_constraint WHERE conrelid = 'alert_rules'::regclass AND contype = 'f'`).Scan(&fks).Error; err != nil || fks != 1 {
+		t.Errorf("fresh install: %d foreign keys on alert_rules (err %v), want created_by's", fks, err)
+	}
+	if err := db.Create(&model.TriggeredAlert{RuleID: seeded[0].ID, Severity: model.AlertSeverityWarning, Message: "m"}).Error; err != nil {
+		t.Errorf("a seeded rule cannot be alerted on: %v", err)
 	}
 	emitted := map[string]bool{
 		string(model.SecurityEventLoginFailed): true, string(model.SecurityEventAccountLocked): true,

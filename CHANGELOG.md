@@ -33,7 +33,8 @@ Capabilities**, non-breaking).
   its own. `docs/ALERT-RULES.md` lists them, lists the event types never recorded (a rule on them
   never triggers), and its examples no longer use `rate_limit_exceeded` or
   `brute_force_detected`. Deploy note: migration 0037 runs on start; it adds rows only to an empty
-  `alert_rules`.
+  `alert_rules`, writes fixed SQL, and touches no other table (on a fresh install it creates
+  `alert_rules`, whose foreign key AutoMigrate adds).
 
 ### Security
 

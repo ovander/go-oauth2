@@ -2036,7 +2036,7 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 	// token as they do every other grant's. The subject user is given when
 	// the subject is a user (a service account's token names its app).
 	issue := &hooks.TokenIssue{App: app, Grant: "token_exchange", Scope: decision.GrantedScope}
-	if uid, perr := strconv.ParseUint(subjectSub, 10, 64); perr == nil {
+	if uid, perr := strconv.ParseUint(subjectSub, 10, strconv.IntSize); perr == nil {
 		u, uerr := s.userRepo.FindByID(ctx, uint(uid))
 		if uerr != nil {
 			return fail("error", fmt.Errorf("token exchange: load the subject user: %w", uerr))

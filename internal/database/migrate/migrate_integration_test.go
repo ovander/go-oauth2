@@ -10,6 +10,7 @@ import (
 
 	"github.com/ovander/go-oauth2/internal/database/migrate"
 	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/service"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	glogger "gorm.io/gorm/logger"
@@ -465,5 +466,91 @@ func TestMigration0034_LoginSourceFailures(t *testing.T) {
 	var n int64
 	if err := db.Raw("SELECT count(*) FROM login_source_failures WHERE (source = '192.0.2.1' AND failed_attempts = 4) OR source = '192.0.2.2'").Scan(&n).Error; err != nil || n != 2 {
 		t.Fatalf("rows kept by the re-run = %d (%v), want both, unchanged", n, err)
+	}
+}
+
+// 0037 seeds the default alert rules (#258) on a fresh install, where the
+// migrations run before the models are migrated, and on an upgrade without
+// rules; an upgrade whose operators already wrote rules keeps only theirs.
+func TestMigration0037_DefaultAlertRules(t *testing.T) {
+	rules := func(db *gorm.DB) []model.AlertRule {
+		var out []model.AlertRule
+		if err := db.Order("id").Find(&out).Error; err != nil {
+			t.Fatalf("list the alert rules: %v", err)
+		}
+		return out
+	}
+
+	// Fresh install: migrations first, on an empty database, then the models.
+	db := scratchDB(t)
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if db.Migrator().HasTable("users") {
+		t.Error("migration 0037 created users: it must touch alert_rules only")
+	}
+	if err := db.AutoMigrate(&model.User{}, &model.App{}, &model.SecurityAuditLog{}, &model.AlertRule{}, &model.TriggeredAlert{}); err != nil {
+		t.Fatalf("automigrate after the migrations: %v", err)
+	}
+	seeded := rules(db)
+	if len(seeded) != 7 {
+		t.Fatalf("fresh install: %d rules, want 7", len(seeded))
+	}
+	// The migration created alert_rules without its foreign key to users,
+	// which may not exist yet; AutoMigrate added it afterwards.
+	var fks int64
+	if err := db.Raw(`SELECT count(*) FROM pg_constraint WHERE conrelid = 'alert_rules'::regclass AND contype = 'f'`).Scan(&fks).Error; err != nil || fks != 1 {
+		t.Errorf("fresh install: %d foreign keys on alert_rules (err %v), want created_by's", fks, err)
+	}
+	if err := db.Create(&model.TriggeredAlert{RuleID: seeded[0].ID, Severity: model.AlertSeverityWarning, Message: "m"}).Error; err != nil {
+		t.Errorf("a seeded rule cannot be alerted on: %v", err)
+	}
+	emitted := map[string]bool{
+		string(model.SecurityEventLoginFailed): true, string(model.SecurityEventAccountLocked): true,
+		string(model.SecurityEventRefreshTokenReuse): true, string(model.SecurityEventRevokedTokenUsed): true,
+		string(model.SecurityEventClientAuthFailed): true, string(model.SecurityEventAuditIntegrityViolation): true,
+	}
+	for _, r := range seeded {
+		if r.CreatedBy != nil {
+			t.Errorf("rule %q: created_by = %d, want none", r.Name, *r.CreatedBy)
+		}
+		if !r.Enabled || len(r.Recipients) != 0 || len(r.Actions) != 1 || r.Actions[0] != "email" {
+			t.Errorf("rule %q: enabled %v, recipients %v, actions %v; want enabled, none, [email]", r.Name, r.Enabled, r.Recipients, r.Actions)
+		}
+		if !emitted[r.EventType] {
+			t.Errorf("rule %q watches %q, an event the server does not record", r.Name, r.EventType)
+		}
+		if _, err := service.ParseAlertCondition(r.Condition); err != nil {
+			t.Errorf("rule %q: the evaluator refuses its condition: %v", r.Name, err)
+		}
+	}
+
+	// Upgrade with rules of its own: nothing is added.
+	db = scratchDB(t)
+	if err := db.AutoMigrate(&model.User{}, &model.AlertRule{}); err != nil {
+		t.Fatal(err)
+	}
+	own := model.AlertRule{Name: "Ours", EventType: "login_failed", Severity: model.AlertSeverityWarning,
+		Condition: map[string]interface{}{"threshold": 3, "window_minutes": 5}, Actions: []string{"webhook"}}
+	if err := db.Create(&own).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got := rules(db); len(got) != 1 || got[0].Name != "Ours" {
+		t.Fatalf("upgrade with rules: %d rules, want only the operator's", len(got))
+	}
+
+	// Upgrade without rules: seeded.
+	db = scratchDB(t)
+	if err := db.AutoMigrate(&model.User{}, &model.AlertRule{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got := rules(db); len(got) != 7 {
+		t.Fatalf("upgrade without rules: %d rules, want 7", len(got))
 	}
 }

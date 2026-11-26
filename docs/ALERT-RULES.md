@@ -41,6 +41,23 @@ unknown `group_by`) is skipped and logged; the other rules still run.
 and under `notifications` the outcome of each action: `sent`, `failed`, or why it was not sent
 (the mode is `observe`, no recipient or webhook URL, email not configured, unknown action).
 
+## Default rules
+
+A fresh install, and a server upgraded with no rule of its own, starts with seven rules (migration
+0037). They are enabled and notify by email, but have no recipient: under `ALERT_RULES_MODE=enforce`
+nobody is emailed until recipients are added, and the alert records why. Edit, disable or delete
+them like any other rule; a server that already had rules gets none of them.
+
+| Rule | Event | Condition | Severity |
+|------|-------|-----------|----------|
+| Brute force from one IP | `login_failed` | 10 in 5 min, per `ip_address` | `error` |
+| Account under attack | `login_failed` | 5 in 10 min, per `user_id` | `warning` |
+| Account locked | `account_locked` | 1 in 5 min, per `user_id` | `warning` |
+| Refresh token reused | `refresh_token_reuse` | 1 in 5 min | `critical` |
+| Revoked token still in use | `revoked_token_used` | 3 in 10 min, per `ip_address` | `error` |
+| Client secret guessing | `client_auth_failed` | 10 in 5 min, per `ip_address` | `warning` |
+| Audit log tampering | `audit_integrity_violation` | 1 in 60 min | `critical` |
+
 ## API Endpoints
 
 | Method | Endpoint | Description |
@@ -83,32 +100,40 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
 
 ### Available Event Types
 
+A rule only triggers on events the server records. Among them:
+
 | Event Type | Description |
 |------------|-------------|
-| `login_success` | Successful user login |
-| `login_failed` | Failed login attempt |
-| `logout` | User logout |
-| `account_locked` | Account locked due to failed attempts |
-| `account_unlocked` | Account unlocked |
-| `password_changed` | Password was changed |
-| `password_reset_requested` | Password reset was requested |
-| `password_reset_used` | Password reset token was used |
-| `token_issued` | OAuth token issued |
-| `token_refreshed` | Token was refreshed |
-| `token_revoked` | Token was revoked |
-| `all_tokens_revoked` | All user tokens revoked |
-| `invalid_token_used` | Invalid token usage attempt |
-| `expired_token_used` | Expired token usage attempt |
-| `auth_code_issued` | Authorization code issued |
-| `auth_code_exchanged` | Code exchanged for token |
+| `login_success` | Successful sign-in |
+| `login_failed` | Failed sign-in |
+| `account_locked` | Account locked after failed sign-ins |
+| `password_changed` | Password changed |
+| `password_reset_requested` | Password reset requested |
+| `user_registered` | New user registration |
+| `invite_accepted` | Invitation accepted |
+| `token_issued` | Token issued |
+| `token_refreshed` | Token refreshed |
+| `token_revoked` | Token revoked |
+| `all_tokens_revoked` | All of a user's tokens revoked |
+| `invalid_token_used` | A forged, malformed or unknown-user bearer token was presented |
+| `revoked_token_used` | A revoked bearer token was presented |
+| `refresh_token_reuse` | A rotated refresh token was used again |
+| `client_auth_failed` | Client authentication failed |
 | `auth_code_failed` | Authorization code exchange failed (`reason: code_replayed` for a replayed code under `CODE_REPLAY_MODE`) |
 | `pkce_validation_failed` | PKCE verification failed |
-| `suspicious_activity` | General suspicious activity |
-| `rate_limit_exceeded` | Rate limit was exceeded |
-| `brute_force_detected` | Brute force attack detected |
-| `user_registered` | New user registration |
-| `user_invited` | User invitation sent |
-| `invite_accepted` | Invitation accepted |
+| `scope_denied` | A requested scope was refused |
+| `redirect_uri_inexact_match` | A redirect URI matched its registration only after normalization |
+| `mfa_policy_violation` | A sign-in broke the admin MFA policy |
+| `dpop_validation_failed` | A DPoP proof was refused |
+| `audit_integrity_violation` | The audit-log integrity scan found a row that does not verify |
+| `ip_blocked`, `ip_unblocked` | An IP address was blocked or unblocked |
+| `alert_triggered` | An alert rule triggered |
+
+Some event types exist in the code but are never recorded, so a rule on them never triggers:
+`logout`, `account_unlocked`, `password_reset_used`, `email_change_requested`, `email_changed`,
+`user_invited`, `expired_token_used` (deliberately: an expired token followed by a refresh is
+normal), `auth_code_issued`, `auth_code_exchanged`, `suspicious_activity`, `rate_limit_exceeded`
+and `brute_force_detected`.
 
 ### Condition Options
 
@@ -287,22 +312,22 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
   }'
 ```
 
-### 7. Rate Limit Abuse
+### 7. Admin MFA Policy Violations
 
-Alerts on repeated rate limit violations.
+Alerts when sign-ins keep breaking the admin MFA policy (`ADMIN_MFA_POLICY`).
 
 ```bash
 curl -X POST http://localhost:8081/api/admin/alerts/rules \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
   -d '{
-    "name": "Rate Limit Abuse",
-    "description": "Repeated rate limit violations from same source",
-    "event_type": "rate_limit_exceeded",
+    "name": "Admin MFA Policy Violations",
+    "description": "Sign-ins refused by the admin MFA policy",
+    "event_type": "mfa_policy_violation",
     "condition": {
-      "threshold": 10,
-      "window_minutes": 5,
-      "group_by": "ip_address"
+      "threshold": 3,
+      "window_minutes": 15,
+      "group_by": "user_id"
     },
     "severity": "warning",
     "enabled": true,
@@ -456,8 +481,8 @@ curl -X POST http://localhost:8081/api/admin/alerts/rules \
   -H "Authorization: Bearer <token>" \
   -d '{
     "name": "Critical Security Alert",
-    "event_type": "brute_force_detected",
-    "condition": {"threshold": 1, "window_minutes": 1},
+    "event_type": "refresh_token_reuse",
+    "condition": {"threshold": 1, "window_minutes": 5},
     "severity": "critical",
     "actions": ["slack"],
     "webhook_url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
@@ -551,11 +576,11 @@ curl -s -X POST "$BASE_URL/api/admin/alerts/rules" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"name":"PKCE Bypass Attempt","event_type":"pkce_validation_failed","condition":{"threshold":3,"window_minutes":10,"group_by":"ip_address"},"severity":"critical","actions":["email"]}'
 
-# 7. Rate Limit Abuse
+# 7. Admin MFA Policy Violations
 curl -s -X POST "$BASE_URL/api/admin/alerts/rules" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{"name":"Rate Limit Abuse","event_type":"rate_limit_exceeded","condition":{"threshold":10,"window_minutes":5,"group_by":"ip_address"},"severity":"warning","actions":["email"]}'
+  -d '{"name":"Admin MFA Policy Violations","event_type":"mfa_policy_violation","condition":{"threshold":3,"window_minutes":15,"group_by":"user_id"},"severity":"warning","actions":["email"]}'
 
 # 8. Password Reset Abuse
 curl -s -X POST "$BASE_URL/api/admin/alerts/rules" \

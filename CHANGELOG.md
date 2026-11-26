@@ -25,6 +25,16 @@ Capabilities**, non-breaking).
   `block_ip`, `high`/`medium`/`low`/`info`, `match_value`). Deploy note: new variables
   `ALERT_RULES_MODE` (default `off`) and `ALERT_RULES_INTERVAL_SECONDS`; run `observe` first and
   read the alert history before `enforce`.
+- **Default alert rules** (migration 0037). A fresh install, or a server upgraded without any rule,
+  starts with seven: brute force from one IP, account under attack, account locked, refresh token
+  reused, revoked token still in use, client secret guessing, audit log tampering. Each watches an
+  event the server records, is enabled and notifies by email, with no recipient until one is added;
+  nothing is evaluated until `ALERT_RULES_MODE` is set. A server that already has rules keeps only
+  its own. `docs/ALERT-RULES.md` lists them, lists the event types never recorded (a rule on them
+  never triggers), and its examples no longer use `rate_limit_exceeded` or
+  `brute_force_detected`. Deploy note: migration 0037 runs on start; it adds rows only to an empty
+  `alert_rules`, writes fixed SQL, and touches no other table (on a fresh install it creates
+  `alert_rules`, whose foreign key AutoMigrate adds).
 
 ### Security
 

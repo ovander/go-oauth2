@@ -2,47 +2,45 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/ovander/go-oauth2/internal/model"
 	"github.com/ovander/go-oauth2/internal/service"
-	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
 
 // P3-9: POST /api/profile/mfa/disable must re-verify the account (password +
 // TOTP or recovery code) — a bearer token alone must not strip the second
-// factor.
+// factor. The checks and the lockout are the auth service's
+// (ReverifyForMFAChange, tested in internal/service); here, the handler hands
+// it the password and code and answers by its verdict.
 
-// p39UserService overrides only GetByID; the embedded nil interface makes any
-// other call panic.
-type p39UserService struct {
-	service.UserService
-	user *model.User
+// fakeReverifier records what it was asked, and answers err.
+type fakeReverifier struct {
+	err      error
+	calls    int
+	password *string
+	code     string
 }
 
-func (s *p39UserService) GetByID(_ context.Context, _ uint) (*model.User, error) {
-	return s.user, nil
-}
-
-func p39Handler(t *testing.T, password string, verifyErr error, redeemOK bool) (*MFAHandler, *bool) {
-	t.Helper()
-	hash := ""
-	if password != "" {
-		var err error
-		if hash, err = auth.HashPassword(password); err != nil {
-			t.Fatalf("hash: %v", err)
-		}
+func (f *fakeReverifier) ReverifyForMFAChange(_ context.Context, userID uint, password *string, code string) error {
+	f.calls++
+	f.password, f.code = password, code
+	if userID != 7 {
+		return errors.New("wrong user")
 	}
+	return f.err
+}
+
+func p39Handler(err error) (*MFAHandler, *fakeReverifier, *bool) {
 	disabled := false
+	rv := &fakeReverifier{err: err}
 	h := NewMFAHandler(&mockMFAService{
-		verifyFn:  func(_ context.Context, _ uint, _ string) error { return verifyErr },
-		redeemFn:  func(_ context.Context, _ uint, _ string) (bool, error) { return redeemOK, nil },
 		disableFn: func(_ context.Context, _ uint) error { disabled = true; return nil },
-	}, &p39UserService{user: &model.User{ID: 7, HashedPassword: hash}})
-	return h, &disabled
+	}, rv)
+	return h, rv, &disabled
 }
 
 func p39Post(h *MFAHandler, body string) *httptest.ResponseRecorder {
@@ -54,72 +52,57 @@ func p39Post(h *MFAHandler, body string) *httptest.ResponseRecorder {
 }
 
 func TestP39_Disable_BearerAloneIsNotEnough(t *testing.T) {
-	h, disabled := p39Handler(t, "Correct-Horse-1!", nil, false)
+	h, rv, disabled := p39Handler(nil)
 	for _, body := range []string{``, `{}`, `{"password":"Correct-Horse-1!"}`} {
 		rr := p39Post(h, body)
 		if rr.Code == http.StatusNoContent || *disabled {
 			t.Fatalf("body %q: MFA disabled without a code (status %d)", body, rr.Code)
 		}
 	}
-}
-
-func TestP39_Disable_WrongPassword_Rejected(t *testing.T) {
-	h, disabled := p39Handler(t, "Correct-Horse-1!", nil, false)
-	rr := p39Post(h, `{"password":"wrong","code":"123456"}`)
-	if rr.Code != http.StatusUnauthorized || *disabled {
-		t.Fatalf("status %d disabled=%v, want 401 and not disabled", rr.Code, *disabled)
+	if rv.calls != 0 {
+		t.Errorf("the account was re-verified %d times without a code", rv.calls)
 	}
 }
 
-func TestP39_Disable_WrongCode_Rejected(t *testing.T) {
-	h, disabled := p39Handler(t, "Correct-Horse-1!", service.ErrMFAInvalidCode, false)
-	rr := p39Post(h, `{"password":"Correct-Horse-1!","code":"000000"}`)
-	if rr.Code != http.StatusUnauthorized || *disabled {
-		t.Fatalf("status %d disabled=%v, want 401 and not disabled", rr.Code, *disabled)
-	}
-}
-
-func TestP39_Disable_PasswordAndTOTP_Succeeds(t *testing.T) {
-	h, disabled := p39Handler(t, "Correct-Horse-1!", nil, false)
+func TestP39_Disable_PassesThePasswordAndCode(t *testing.T) {
+	h, rv, disabled := p39Handler(nil)
 	rr := p39Post(h, `{"password":"Correct-Horse-1!","code":"123456"}`)
 	if rr.Code != http.StatusNoContent || !*disabled {
 		t.Fatalf("status %d disabled=%v, want 204 and disabled", rr.Code, *disabled)
 	}
-}
-
-func TestP39_Disable_RecoveryCodeFallback(t *testing.T) {
-	h, disabled := p39Handler(t, "Correct-Horse-1!", service.ErrMFAInvalidCode, true)
-	rr := p39Post(h, `{"password":"Correct-Horse-1!","code":"aaaaa-bbbbb"}`)
-	if rr.Code != http.StatusNoContent || !*disabled {
-		t.Fatalf("status %d disabled=%v, want 204 via recovery code", rr.Code, *disabled)
+	if rv.calls != 1 || rv.password == nil || *rv.password != "Correct-Horse-1!" || rv.code != "123456" {
+		t.Errorf("re-verified with password %v, code %q (%d calls)", rv.password, rv.code, rv.calls)
 	}
 }
 
-func TestP39_Disable_PasswordlessAccountStillNeedsCode(t *testing.T) {
-	h, disabled := p39Handler(t, "", service.ErrMFAInvalidCode, false)
-	if rr := p39Post(h, `{"code":"000000"}`); rr.Code != http.StatusUnauthorized || *disabled {
-		t.Fatalf("status %d disabled=%v, want 401", rr.Code, *disabled)
-	}
-	h, disabled = p39Handler(t, "", nil, false)
-	if rr := p39Post(h, `{"code":"123456"}`); rr.Code != http.StatusNoContent || !*disabled {
-		t.Fatalf("status %d disabled=%v, want 204 for a valid code on a passwordless account", rr.Code, *disabled)
+// Each refusal of the re-verification is answered without disabling MFA.
+func TestP39_Disable_Refusals(t *testing.T) {
+	for name, tc := range map[string]struct {
+		err  error
+		want int
+	}{
+		"wrong password": {service.ErrInvalidCredentials, http.StatusUnauthorized},
+		"wrong code":     {service.ErrMFAInvalidCode, http.StatusUnauthorized},
+		"no code":        {service.ErrMFARequired, http.StatusUnauthorized},
+		"locked":         {service.ErrAccountLocked, http.StatusForbidden},
+		"not enrolled":   {service.ErrMFANotEnrolled, http.StatusConflict},
+		"store error":    {errors.New("db down"), http.StatusInternalServerError},
+	} {
+		h, _, disabled := p39Handler(tc.err)
+		rr := p39Post(h, `{"password":"x","code":"123456"}`)
+		if rr.Code != tc.want || *disabled {
+			t.Errorf("%s: status %d disabled=%v, want %d and not disabled", name, rr.Code, *disabled, tc.want)
+		}
 	}
 }
 
-func TestP39_Disable_NotEnrolled_409(t *testing.T) {
-	h, _ := p39Handler(t, "Correct-Horse-1!", service.ErrMFANotEnrolled, false)
-	if rr := p39Post(h, `{"password":"Correct-Horse-1!","code":"123456"}`); rr.Code != http.StatusConflict {
-		t.Fatalf("status %d, want 409", rr.Code)
-	}
-}
-
-func TestP39_Disable_NoUserService_FailsClosed(t *testing.T) {
+func TestP39_Disable_NoReverifier_FailsClosed(t *testing.T) {
 	disabled := false
 	h := NewMFAHandler(&mockMFAService{
 		disableFn: func(_ context.Context, _ uint) error { disabled = true; return nil },
 	}, nil)
 	rr := p39Post(h, `{"password":"x","code":"123456"}`)
 	if rr.Code == http.StatusNoContent || disabled {
-		t.Fatalf("status %d disabled=%v: Disable must fail closed without a user service", rr.Code, disabled)
+		t.Fatalf("status %d disabled=%v: Disable must fail closed without a re-verifier", rr.Code, disabled)
 	}
 }

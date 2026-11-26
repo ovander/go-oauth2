@@ -405,7 +405,8 @@ required" screen. Off by default: the route does not exist.
   membership is needed.
 - They can then set up an authenticator app (key and `otpauth://` link, confirmed with a code),
   receive recovery codes, generate new ones, and turn MFA off (with a current code or a recovery
-  code). Each step uses the same service as `/api/profile/mfa`.
+  code, a wrong one counting toward the account lockout). Each step uses the same service as
+  `/api/profile/mfa`.
 - Socrate admins and superadmins are refused: they manage MFA in the admin console, where
   `ADMIN_MFA_POLICY` applies.
 - There is no server-side session: signing in yields a signed 10-minute page session in a hidden
@@ -1029,7 +1030,7 @@ binary, read from the binary itself.
 | POST | `/api/auth/magic-link/verify` | — | Verify magic link |
 | GET | `/api/userinfo` | Bearer | Current user |
 | GET/PUT/PATCH | `/api/profile` | Bearer | Profile self-service |
-| GET/POST | `/api/profile/mfa`, `/api/profile/mfa/{enroll,confirm,disable,recovery-codes}` | Bearer | TOTP self-service |
+| GET/POST | `/api/profile/mfa`, `/api/profile/mfa/{enroll,confirm,disable,recovery-codes}` | Bearer | TOTP self-service; the posts are rate-limited per user (`429`). `disable` needs the password and a code; each wrong one counts toward the account lockout (`403` once locked) |
 | GET/POST | `/auth/{login,signup,forgot-password,reset-password,verify-email,invite}` | — | Hosted pages (HTML) |
 | GET/POST | `/account/security` | — | Hosted MFA page (`ACCOUNT_SECURITY_PAGE=on`) |
 | GET | `/health`, `/health/{liveness,readiness}`, `/version`, `/api/version` | — | Health & build |

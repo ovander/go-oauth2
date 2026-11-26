@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -8,7 +9,6 @@ import (
 	"github.com/ovander/go-oauth2/internal/dto"
 	"github.com/ovander/go-oauth2/internal/middleware"
 	"github.com/ovander/go-oauth2/internal/service"
-	"github.com/ovander/go-oauth2/internal/shared/auth"
 	"github.com/ovander/go-oauth2/pkg/logger"
 )
 
@@ -23,14 +23,22 @@ import (
 //	POST /api/profile/mfa/confirm  – confirm enrollment with a code
 //	POST /api/profile/mfa/disable  – disable MFA (requires password + code, P3-9)
 type MFAHandler struct {
-	mfaService  service.MFAService
-	userService service.UserService // password re-verification for Disable
+	mfaService service.MFAService
+	reverifier MFAReverifier // re-proves the account before Disable
 }
 
-// NewMFAHandler creates the handler. userService is used to re-verify the
-// account password before MFA is disabled; if nil, Disable fails closed.
-func NewMFAHandler(mfaService service.MFAService, userService service.UserService) *MFAHandler {
-	return &MFAHandler{mfaService: mfaService, userService: userService}
+// MFAReverifier re-proves an account before its second factor is turned off:
+// the password (when given and the account has one) and a TOTP or recovery
+// code, each failure counting toward the account lockout. The auth service
+// implements it (ReverifyForMFAChange).
+type MFAReverifier interface {
+	ReverifyForMFAChange(ctx context.Context, userID uint, password *string, code string) error
+}
+
+// NewMFAHandler creates the handler. reverifier re-proves the account before
+// MFA is disabled; if nil, Disable fails closed.
+func NewMFAHandler(mfaService service.MFAService, reverifier MFAReverifier) *MFAHandler {
+	return &MFAHandler{mfaService: mfaService, reverifier: reverifier}
 }
 
 // Status handles GET /api/profile/mfa.
@@ -159,43 +167,28 @@ func (h *MFAHandler) Disable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.userService == nil {
-		logger.Warnf("mfa: disable for user %d: no user service wired, refusing", userID)
+	if h.reverifier == nil {
+		logger.Warnf("mfa: disable for user %d: no re-verifier wired, refusing", userID)
 		writeError(w, "could not disable MFA", http.StatusInternalServerError)
 		return
 	}
-	user, err := h.userService.GetByID(r.Context(), userID)
-	if err != nil {
-		writeError(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	// Accounts created through invite/magic-link flows may have no password;
-	// those still have to present a second-factor code below.
-	if user.HashedPassword != "" && !auth.CheckPassword(req.Password, user.HashedPassword) {
-		writeError(w, "re-authentication failed", http.StatusUnauthorized)
-		return
-	}
-
-	switch err := h.mfaService.Verify(r.Context(), userID, req.Code); {
+	// The password (accounts created through invite or magic-link flows may
+	// have none) and a TOTP or recovery code; each failure counts toward the
+	// account lockout, so a bearer token is not a way to guess them.
+	switch err := h.reverifier.ReverifyForMFAChange(r.Context(), userID, &req.Password, req.Code); {
 	case err == nil:
-		// TOTP code accepted.
 	case errors.Is(err, service.ErrMFANotEnrolled):
 		writeError(w, "MFA is not enabled", http.StatusConflict)
 		return
-	case errors.Is(err, service.ErrMFAInvalidCode):
-		// Fall back to a recovery code (consumed on success).
-		redeemed, rerr := h.mfaService.RedeemRecoveryCode(r.Context(), userID, req.Code)
-		if rerr != nil {
-			logger.Warnf("mfa: redeem recovery code for user %d: %v", userID, rerr)
-			writeError(w, "could not disable MFA", http.StatusInternalServerError)
-			return
-		}
-		if !redeemed {
-			writeError(w, "re-authentication failed", http.StatusUnauthorized)
-			return
-		}
+	case errors.Is(err, service.ErrAccountLocked):
+		writeError(w, "account is locked", http.StatusForbidden)
+		return
+	case errors.Is(err, service.ErrInvalidCredentials), errors.Is(err, service.ErrMFAInvalidCode),
+		errors.Is(err, service.ErrMFARequired), errors.Is(err, service.ErrUserNotFound):
+		writeError(w, "re-authentication failed", http.StatusUnauthorized)
+		return
 	default:
-		logger.Warnf("mfa: verify before disable for user %d: %v", userID, err)
+		logger.Warnf("mfa: re-verify before disable for user %d: %v", userID, err)
 		writeError(w, "could not disable MFA", http.StatusInternalServerError)
 		return
 	}

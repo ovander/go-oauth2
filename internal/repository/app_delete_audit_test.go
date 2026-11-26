@@ -56,8 +56,11 @@ func TestAppDelete_LeavesItsAuditRowsIntact(t *testing.T) {
 	if err := db.First(&keptLog, adminLog.ID).Error; err != nil {
 		t.Fatalf("reload the admin log: %v", err)
 	}
-	if keptLog.AppID == nil || *keptLog.AppID != appID {
-		t.Fatalf("the admin log lost its app: app_id = %v, want %d", keptLog.AppID, appID)
+	if keptLog.AppID == nil {
+		t.Fatalf("the admin log lost its app: app_id is NULL, want %d", appID)
+	}
+	if *keptLog.AppID != appID {
+		t.Fatalf("the admin log names app %d, want %d", *keptLog.AppID, appID)
 	}
 
 	var row model.SecurityAuditLog

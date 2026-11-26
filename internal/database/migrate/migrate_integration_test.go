@@ -263,11 +263,14 @@ func TestMigration0036_AuditAppForeignKeyDropped(t *testing.T) {
 // install never has it (#260 follow-up).
 func TestMigration0038_AdminLogAppForeignKeyDropped(t *testing.T) {
 	db := scratchDB(t)
+	// A fresh install in the server's order: the migrations run on an empty
+	// database (0038 finds no admin_logs table), then AutoMigrate creates the
+	// tables from the models.
+	if err := migrate.Run(db); err != nil {
+		t.Fatalf("run on an empty database: %v", err)
+	}
 	if err := db.AutoMigrate(&model.User{}, &model.App{}, &model.AdminLog{}); err != nil {
 		t.Fatalf("automigrate: %v", err)
-	}
-	if err := migrate.Run(db); err != nil {
-		t.Fatalf("run: %v", err)
 	}
 	fk := func() int64 {
 		var n int64

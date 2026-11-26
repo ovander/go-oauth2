@@ -148,8 +148,9 @@ func (h *MFAHandler) RecoveryCodes(w http.ResponseWriter, r *http.Request) {
 // P3-9: a bearer token alone (which may have been minted long ago, or stolen)
 // must not be enough to strip the second factor. The caller re-proves the
 // account: the current password when the account has one, plus a valid TOTP
-// code or an unused recovery code. Every failure returns the same 401 so the
-// response does not reveal which factor was wrong.
+// code or an unused recovery code. A wrong password and a wrong code get the
+// same 401, so the response does not reveal which factor was wrong; each counts
+// toward the account lockout, and a locked account gets 403.
 func (h *MFAHandler) Disable(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {

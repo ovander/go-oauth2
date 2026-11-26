@@ -19,6 +19,12 @@ import (
 // one cannot stand in for the other.
 const accountSessionAudience = "socrate:account-security"
 
+// mfaReverifier re-proves an account before its second factor is turned off
+// (the auth service's ReverifyForMFAChange).
+type mfaReverifier interface {
+	ReverifyForMFAChange(ctx context.Context, userID uint, password *string, code string) error
+}
+
 // AccountSecurityHandler serves Socrate's hosted account page
 // (ACCOUNT_SECURITY_PAGE): a user who is not a Socrate admin signs in with
 // their own credentials and turns two-factor authentication on, regenerates
@@ -38,12 +44,10 @@ type AccountSecurityHandler struct {
 	auth service.AuthService
 	// reverify checks the fresh code before MFA is turned off, counting a
 	// wrong one toward the account lockout (the auth service implements it).
-	reverify interface {
-		ReverifyForMFAChange(ctx context.Context, userID uint, password *string, code string) error
-	}
-	mfa    service.MFAService
-	secret []byte
-	secure bool
+	reverify mfaReverifier
+	mfa      service.MFAService
+	secret   []byte
+	secure   bool
 }
 
 // NewAccountSecurityHandler builds the handler. secret is SECRET_KEY_BASE and
@@ -53,9 +57,7 @@ func NewAccountSecurityHandler(authService service.AuthService, mfaService servi
 	if authService == nil || mfaService == nil {
 		return nil, errors.New("account security page: auth and MFA services are required")
 	}
-	reverify, ok := authService.(interface {
-		ReverifyForMFAChange(ctx context.Context, userID uint, password *string, code string) error
-	})
+	reverify, ok := authService.(mfaReverifier)
 	if !ok {
 		return nil, errors.New("account security page: the auth service cannot re-verify a second factor")
 	}

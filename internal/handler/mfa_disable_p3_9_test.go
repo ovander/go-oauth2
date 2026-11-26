@@ -71,7 +71,11 @@ func TestP39_Disable_PassesThePasswordAndCode(t *testing.T) {
 		t.Fatalf("status %d disabled=%v, want 204 and disabled", rr.Code, *disabled)
 	}
 	if rv.calls != 1 || rv.password == nil || *rv.password != "Correct-Horse-1!" || rv.code != "123456" {
-		t.Errorf("re-verified with password %v, code %q (%d calls)", rv.password, rv.code, rv.calls)
+		pw := "<nil>"
+		if rv.password != nil {
+			pw = *rv.password
+		}
+		t.Errorf("re-verified with password %q, code %q (%d calls)", pw, rv.code, rv.calls)
 	}
 }
 

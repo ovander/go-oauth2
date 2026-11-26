@@ -945,11 +945,11 @@ func (s *authService) RefreshTokens(ctx context.Context, refreshToken string) (*
 // off (P3-9): its password, when password is given and the account has one,
 // then a valid TOTP code or an unused recovery code (redeemed on success). A
 // wrong password or code counts toward the account lockout, and a locked
-// account is refused before anything is checked, as on every sign-in path:
+// account is refused before any factor is checked, as on every sign-in path:
 // a stolen access token is not a way to guess the factors without limit.
 // The failed-attempt counter is not reset on success (only a sign-in resets
-// it). ErrMFANotEnrolled when the account has no second factor; it fails
-// closed when no MFA verifier is wired.
+// it). ErrMFANotEnrolled, checked first, when the account has no second
+// factor; it fails closed when no MFA verifier is wired.
 func (s *authService) ReverifyForMFAChange(ctx context.Context, userID uint, password *string, code string) error {
 	if s.mfa == nil {
 		return errors.New("auth: no MFA verifier wired")

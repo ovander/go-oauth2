@@ -38,8 +38,29 @@ func TestAppDelete_LeavesItsAuditRowsIntact(t *testing.T) {
 		t.Fatalf("audit client_created: %v", err)
 	}
 
+	admin := &model.User{Email: fmt.Sprint("admin-", time.Now().UnixNano(), "@example.test"), Name: "admin"}
+	if err := db.Create(admin).Error; err != nil {
+		t.Fatalf("create admin: %v", err)
+	}
+	adminLog := &model.AdminLog{AdminID: admin.ID, AppID: &appID, Action: model.AdminActionPolicyUpdated}
+	if err := db.Create(adminLog).Error; err != nil {
+		t.Fatalf("create admin log: %v", err)
+	}
+
 	if err := apps.Delete(ctx, appID); err != nil {
 		t.Fatalf("delete app: %v", err)
+	}
+
+	// The admin-log row still names the app its action concerned (0038).
+	var keptLog model.AdminLog
+	if err := db.First(&keptLog, adminLog.ID).Error; err != nil {
+		t.Fatalf("reload the admin log: %v", err)
+	}
+	if keptLog.AppID == nil {
+		t.Fatalf("the admin log lost its app: app_id is NULL, want %d", appID)
+	}
+	if *keptLog.AppID != appID {
+		t.Fatalf("the admin log names app %d, want %d", *keptLog.AppID, appID)
 	}
 
 	var row model.SecurityAuditLog

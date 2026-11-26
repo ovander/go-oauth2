@@ -76,6 +76,13 @@ Capabilities**, non-breaking).
   audit's #366 follow-up). The account page's sign-in is also covered by the every-path lockout
   test.
 
+- **Deleting an app keeps its admin-log rows' `app_id`** (migration 0038, #260 follow-up). The
+  foreign key from `admin_logs.app_id` to `apps` made app deletion null that column, so the admin
+  log lost which app an action concerned. Migration 0038 drops every foreign key on it, as 0036
+  did for the security audit log; the model no longer declares one (`constraint:-`), and app
+  deletion leaves the rows as they are. Deploy note: migration 0038 runs on start; it drops a
+  constraint only and rewrites no data. Rows nulled by earlier deletions stay null.
+
 ## [1.16.0] - 2026-11-26
 
 Feature release on the **v1.x** line. The monitoring alert rules, stored until now but never

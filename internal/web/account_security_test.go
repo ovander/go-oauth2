@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -22,10 +23,36 @@ type accountAuth struct {
 	service.AuthService
 	user *model.User
 	err  error
+	// For ReverifyForMFAChange.
+	mfa         *accountMFA
+	reverifyErr error
+	passwords   []*string
 }
 
 func (a *accountAuth) AuthenticateAccount(context.Context, string, string, string) (*model.User, error) {
 	return a.user, a.err
+}
+
+// ReverifyForMFAChange stands for the auth service's check before MFA is
+// turned off: the code is checked against mfa (TOTP, then a recovery code), or
+// reverifyErr is answered. passwords records the password each call got.
+func (a *accountAuth) ReverifyForMFAChange(ctx context.Context, userID uint, password *string, code string) error {
+	a.passwords = append(a.passwords, password)
+	if a.reverifyErr != nil {
+		return a.reverifyErr
+	}
+	if a.mfa == nil {
+		return errors.New("no MFA")
+	}
+	switch err := a.mfa.Verify(ctx, userID, code); {
+	case err == nil:
+		return nil
+	case errors.Is(err, service.ErrMFAInvalidCode):
+		if ok, _ := a.mfa.RedeemRecoveryCode(ctx, userID, code); ok {
+			return nil
+		}
+	}
+	return service.ErrMFAInvalidCode
 }
 
 // accountMFA is an in-memory MFA service for one user.
@@ -209,7 +236,8 @@ func TestAccountPage_EnrolFromSignInToRecoveryCodes(t *testing.T) {
 
 func TestAccountPage_DisableNeedsAFreshCode(t *testing.T) {
 	mfa := &accountMFA{enabled: true, validCode: "123456", recovery: map[string]bool{"rc-1": true}}
-	h := newAccountHandler(t, &accountAuth{user: &model.User{ID: 7}}, mfa)
+	auth := &accountAuth{user: &model.User{ID: 7}, mfa: mfa}
+	h := newAccountHandler(t, auth, mfa)
 	p := signIn(t, h)
 
 	p = post(t, h, p, url.Values{"action": {"disable"}, "session": {p.session()}, "code": {"999999"}})
@@ -219,6 +247,31 @@ func TestAccountPage_DisableNeedsAFreshCode(t *testing.T) {
 	p = post(t, h, p, url.Values{"action": {"disable"}, "session": {p.session()}, "code": {"rc-1"}})
 	if !mfa.disabled || !strings.Contains(p.body, "Two-factor authentication is off") {
 		t.Fatalf("a recovery code should turn MFA off:\n%s", p.body)
+	}
+	// The code went through the auth service's re-verification, which counts
+	// a wrong one toward the lockout; the page session stands for the password.
+	if len(auth.passwords) != 2 || auth.passwords[0] != nil || auth.passwords[1] != nil {
+		t.Errorf("re-verified %d times, passwords %v; want 2, without a password", len(auth.passwords), auth.passwords)
+	}
+}
+
+// Once the wrong codes have locked the account, the page says so and leaves
+// MFA on.
+func TestAccountPage_DisableOnALockedAccount(t *testing.T) {
+	mfa := &accountMFA{enabled: true, validCode: "123456"}
+	auth := &accountAuth{user: &model.User{ID: 7}, mfa: mfa, reverifyErr: service.ErrAccountLocked}
+	h := newAccountHandler(t, auth, mfa)
+	p := signIn(t, h)
+	p = post(t, h, p, url.Values{"action": {"disable"}, "session": {p.session()}, "code": {"123456"}})
+	if mfa.disabled || !strings.Contains(p.body, "Your account is locked") {
+		t.Fatalf("a locked account must not turn MFA off, and must say why:\n%s", p.body)
+	}
+}
+
+// An auth service that cannot re-verify a code is refused at start-up.
+func TestAccountPage_NeedsAReverifyingAuthService(t *testing.T) {
+	if _, err := NewAccountSecurityHandler(struct{ service.AuthService }{}, &accountMFA{}, accountSecret, "https://auth.example"); err == nil {
+		t.Fatal("an auth service without ReverifyForMFAChange was accepted")
 	}
 }
 

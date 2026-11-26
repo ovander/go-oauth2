@@ -755,7 +755,13 @@ func Bootstrap(cfg *config.Config) *App {
 	}
 	appUsersHandler := handler.NewAppUsersHandler(userService, userAppRoleService, appService, adminLogService, emailService, tokenService, cfg.OAuthIssuer)
 	profileHandler := handler.NewProfileHandler(userService)
-	mfaHandler := handler.NewMFAHandler(mfaService, userService) // P3-9: disable needs re-auth
+	// P3-9: disabling MFA re-proves the account, each failure counting toward
+	// the lockout.
+	mfaReverifier, ok := authService.(handler.MFAReverifier)
+	if !ok {
+		logger.Fatalf("bootstrap: %T does not support ReverifyForMFAChange", authService)
+	}
+	mfaHandler := handler.NewMFAHandler(mfaService, mfaReverifier)
 	// #203: AdminHandler emits client-lifecycle changes as alertable security
 	// events; give it a security audit service over the same repo.
 	adminSecurityAuditService := service.NewSecurityAuditService(securityAuditRepo)

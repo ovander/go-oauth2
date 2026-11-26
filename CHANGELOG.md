@@ -54,6 +54,14 @@ Capabilities**, non-breaking).
   handled as anonymous; under `observe` the failure is logged and the token accepted; under
   `off` nothing changes. They also accept the `DPoP` scheme when binding is on.
 
+### Fixed
+
+- **`cmd/seed -force` ends earlier password-reset links.** Resetting the superadmin with
+  `-force` set a new password without recording when, so a reset link issued before it stayed
+  valid; it now sets `password_changed_at`, as every other password change does (the v1.14.2
+  audit's #366 follow-up). The account page's sign-in is also covered by the every-path lockout
+  test.
+
 ## [1.16.0] - 2026-11-26
 
 Feature release on the **v1.x** line. The monitoring alert rules, stored until now but never

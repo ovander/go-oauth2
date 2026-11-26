@@ -126,6 +126,11 @@ func TestPasswordLockout_EveryPath(t *testing.T) {
 		"change password": {model.UserRoleSuperadmin, func(s *authService, pw string) error {
 			return s.ChangePassword(context.Background(), 5, pw, "Another-Password-2!")
 		}},
+		// The hosted account page's sign-in (ACCOUNT_SECURITY_PAGE).
+		"account page": {model.UserRoleUser, func(s *authService, pw string) error {
+			_, err := s.AuthenticateAccount(context.Background(), "lock@example.com", pw, "")
+			return err
+		}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			repo := newLockoutUserRepo(lockoutTestUser(t, tc.role))

@@ -10,6 +10,18 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Security
+
+- **The attempt that locks an account no longer reveals that it exists.** The wrong password that
+  reached the lockout limit was answered `403` account locked, an answer an unknown email never
+  gets, so a few wrong passwords told whether an email names an account. That attempt is now answered `401` invalid credentials, like any wrong
+  password; the account is still locked and the lock audited (`account_locked`), and, as since
+  v1.15.0, only the right password then gets `403` account locked. With
+  `LOCKOUT_SOURCE_MODE=enforce` the same holds for the source lock. A wrong MFA code that locks
+  the account still answers `403`: whoever sent it has passed the password check. Client-facing
+  change: the locking attempt's status moves from `403` to `401`; a client that showed "account
+  locked" on it shows "invalid credentials" until the next attempt with the right password.
+
 ## [1.16.0] - 2026-11-26
 
 Feature release on the **v1.x** line. The monitoring alert rules, stored until now but never

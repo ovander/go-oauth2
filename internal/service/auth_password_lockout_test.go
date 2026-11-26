@@ -138,11 +138,16 @@ func TestPasswordLockout_EveryPath(t *testing.T) {
 					t.Fatalf("after %d wrong passwords the counter is %d", i, got)
 				}
 			}
-			if err := tc.try(s, "wrong"); !errors.Is(err, ErrAccountLocked) {
-				t.Fatalf("third wrong password: %v, want ErrAccountLocked", err)
+			// The attempt that locks the account is answered like any wrong
+			// password: "locked" would show that the email names an account.
+			if err := tc.try(s, "wrong"); !errors.Is(err, ErrInvalidCredentials) || errors.Is(err, ErrAccountLocked) {
+				t.Fatalf("third wrong password: %v, want ErrInvalidCredentials", err)
 			}
 			if !repo.users[5].IsLocked() {
 				t.Fatal("account not locked")
+			}
+			if a := s.auditRepo.(*captureAuditRepo); a.last == nil || a.last.EventType != model.SecurityEventAccountLocked {
+				t.Fatalf("the lock was not audited: %+v", a.last)
 			}
 			// While locked, a wrong password gets the answer an unknown
 			// email gets: the lock is not revealed to someone without the

@@ -397,14 +397,19 @@ func newOAuthRouter(
 			r.Put("/", profileHandler.UpdateProfile)
 			r.Patch("/", profileHandler.UpdateProfile)
 
-			// MFA self-service (TOTP) — RFC-011 / EPIC-9.
+			// MFA self-service (TOTP) — RFC-011 / EPIC-9. The posts check a
+			// password or a code (confirm, disable): rate-limited per user, on
+			// top of the account lockout that disable's checks count toward.
 			if mfaHandler != nil {
 				r.Route("/mfa", func(r chi.Router) {
 					r.Get("/", mfaHandler.Status)
-					r.Post("/enroll", mfaHandler.Enroll)
-					r.Post("/confirm", mfaHandler.Confirm)
-					r.Post("/disable", mfaHandler.Disable)
-					r.Post("/recovery-codes", mfaHandler.RecoveryCodes)
+					r.Group(func(r chi.Router) {
+						r.Use(middleware.UserRateLimitMiddleware(config.LoginRateLimiter, config.TrustedProxyCIDRs))
+						r.Post("/enroll", mfaHandler.Enroll)
+						r.Post("/confirm", mfaHandler.Confirm)
+						r.Post("/disable", mfaHandler.Disable)
+						r.Post("/recovery-codes", mfaHandler.RecoveryCodes)
+					})
 				})
 			}
 		})

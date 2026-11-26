@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"html/template"
 	"net/http"
@@ -18,6 +19,12 @@ import (
 // one cannot stand in for the other.
 const accountSessionAudience = "socrate:account-security"
 
+// mfaReverifier re-proves an account before its second factor is turned off
+// (the auth service's ReverifyForMFAChange).
+type mfaReverifier interface {
+	ReverifyForMFAChange(ctx context.Context, userID uint, password *string, code string) error
+}
+
 // AccountSecurityHandler serves Socrate's hosted account page
 // (ACCOUNT_SECURITY_PAGE): a user who is not a Socrate admin signs in with
 // their own credentials and turns two-factor authentication on, regenerates
@@ -33,11 +40,14 @@ const accountSessionAudience = "socrate:account-security"
 // (10 minutes) carried in a hidden field; every post also carries the
 // double-submit CSRF token. Every page is no-store.
 type AccountSecurityHandler struct {
-	tmpl   *template.Template
-	auth   service.AuthService
-	mfa    service.MFAService
-	secret []byte
-	secure bool
+	tmpl *template.Template
+	auth service.AuthService
+	// reverify checks the fresh code before MFA is turned off, counting a
+	// wrong one toward the account lockout (the auth service implements it).
+	reverify mfaReverifier
+	mfa      service.MFAService
+	secret   []byte
+	secure   bool
 }
 
 // NewAccountSecurityHandler builds the handler. secret is SECRET_KEY_BASE and
@@ -46,6 +56,10 @@ type AccountSecurityHandler struct {
 func NewAccountSecurityHandler(authService service.AuthService, mfaService service.MFAService, secret []byte, issuer string) (*AccountSecurityHandler, error) {
 	if authService == nil || mfaService == nil {
 		return nil, errors.New("account security page: auth and MFA services are required")
+	}
+	reverify, ok := authService.(mfaReverifier)
+	if !ok {
+		return nil, errors.New("account security page: the auth service cannot re-verify a second factor")
 	}
 	if len(secret) == 0 {
 		return nil, errors.New("account security page: SECRET_KEY_BASE is required")
@@ -66,11 +80,12 @@ func NewAccountSecurityHandler(authService service.AuthService, mfaService servi
 		return nil, err
 	}
 	return &AccountSecurityHandler{
-		tmpl:   tmpl,
-		auth:   authService,
-		mfa:    mfaService,
-		secret: secret,
-		secure: strings.HasPrefix(issuer, "https://"),
+		tmpl:     tmpl,
+		auth:     authService,
+		reverify: reverify,
+		mfa:      mfaService,
+		secret:   secret,
+		secure:   strings.HasPrefix(issuer, "https://"),
 	}, nil
 }
 
@@ -248,22 +263,19 @@ func (h *AccountSecurityHandler) disable(w http.ResponseWriter, r *http.Request,
 		h.renderOverview(w, r, userID, session, "Enter a current code or a recovery code.", "")
 		return
 	}
-	switch err := h.mfa.Verify(r.Context(), userID, code); {
+	// The page session already proves the password; the code is checked
+	// here, a wrong one counting toward the account lockout.
+	switch err := h.reverify.ReverifyForMFAChange(r.Context(), userID, nil, code); {
 	case err == nil:
 	case errors.Is(err, service.ErrMFANotEnrolled):
 		h.renderOverview(w, r, userID, session, "Two-factor authentication is already off.", "")
 		return
-	case errors.Is(err, service.ErrMFAInvalidCode):
-		redeemed, rerr := h.mfa.RedeemRecoveryCode(r.Context(), userID, code)
-		if rerr != nil {
-			logger.Warnf("account security: redeem recovery code for user %d: %v", userID, rerr)
-			h.renderOverview(w, r, userID, session, "Could not turn off two-factor authentication. Please try again.", "")
-			return
-		}
-		if !redeemed {
-			h.renderOverview(w, r, userID, session, "Code not accepted.", "")
-			return
-		}
+	case errors.Is(err, service.ErrAccountLocked):
+		h.renderSignIn(w, "", "Your account is locked. Try again later.", false, "")
+		return
+	case errors.Is(err, service.ErrMFAInvalidCode), errors.Is(err, service.ErrMFARequired):
+		h.renderOverview(w, r, userID, session, "Code not accepted.", "")
+		return
 	default:
 		logger.Warnf("account security: verify before disable for user %d: %v", userID, err)
 		h.renderOverview(w, r, userID, session, "Could not turn off two-factor authentication. Please try again.", "")

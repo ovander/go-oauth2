@@ -301,10 +301,12 @@ Errors: `401` invalid credentials, `403` account locked / email not verified.
 A wrong password and a wrong second-factor code (TOTP or recovery code) count on the same
 per-account counter; the account is locked for the lockout duration when it reaches the limit
 (since v1.14.5; before, only a wrong password counted). A complete sign-in resets the counter.
-While an account is locked, only the right password gets `403` account locked; a wrong one gets
-`401` invalid credentials, like an unknown email, after the same password check, so the lock does
-not reveal that the account exists (since v1.15.0). The same holds wherever a password is checked:
-the hosted login, admin login, `/elevate` and change-password.
+The attempt that reaches the limit locks the account but is answered `401`, like any wrong
+password (since v1.16.1). While an account is locked, only the right password gets `403` account
+locked; a wrong one gets `401` invalid credentials, like an unknown email, after the same password
+check (since v1.15.0). Neither the lock nor the attempt that sets it reveals that the account
+exists. The same holds wherever a password is checked: the hosted login, admin login, `/elevate`
+and change-password.
 With `LOCKOUT_SOURCE_MODE=enforce` (#403) the count is kept per account **and source** (the
 client's IPv4 address, or the /64 of its IPv6 address): reaching the limit locks that source out
 of that account for the lockout duration, and the owner signing in from elsewhere is unaffected.

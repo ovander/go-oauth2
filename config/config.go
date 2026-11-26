@@ -131,6 +131,13 @@ type Config struct {
 	// account created for another app or by itself, 403).
 	// SERVICE_USER_SCOPE_MODE.
 	ServiceUserScopeMode string
+	// RecoveryCodesReverifyMode guards POST /api/profile/mfa/recovery-codes:
+	// "off" (default — a bearer token alone replaces the codes, unchanged),
+	// "observe" (allow, audit mfa_recovery_codes_reverify with whether the
+	// request carried a password and a code) or "enforce" (require them and
+	// check them as MFA disable does; 400 without, 401 when wrong, 403 once
+	// locked). MFA_RECOVERY_CODES_REVERIFY_MODE.
+	RecoveryCodesReverifyMode string
 	// LockoutSourceMode counts failed sign-ins per account and source (#403):
 	// "off" (default, the account-wide lock), "observe" (also count per
 	// source, audit only) or "enforce" (a source reaching the limit is locked
@@ -416,44 +423,45 @@ func Load() *Config {
 		InviteTokenTTL:  time.Duration(getEnvInt("INVITE_TOKEN_TTL", 86400)) * time.Second,
 
 		// Security
-		MaxFailedAttempts:        getEnvInt("MAX_FAILED_ATTEMPTS", 5),
-		LockoutDurationSecs:      getEnvInt("LOCKOUT_DURATION_SECONDS", 900),
-		SecretKeyBase:            getEnv("SECRET_KEY_BASE", ""),
-		AdminMFAPolicy:           normalizeAdminMFAPolicy(getEnv("ADMIN_MFA_POLICY", "off")),
-		AccountSecurityPage:      strings.ToLower(strings.TrimSpace(getEnv("ACCOUNT_SECURITY_PAGE", "off"))) == "on",
-		AdminAppSignInPolicy:     normalizeStepUpMode(getEnv("ADMIN_APP_SIGNIN_POLICY", "off")),
-		OperatorConsoleClientIDs: getEnv("OPERATOR_CONSOLE_CLIENT_IDS", ""),
-		AdminAPIAudienceMode:     normalizeStepUpMode(getEnv("ADMIN_API_AUDIENCE_MODE", "off")),
-		ServiceUserScopeMode:     normalizeStepUpMode(getEnv("SERVICE_USER_SCOPE_MODE", "off")),
-		LockoutSourceMode:        normalizeStepUpMode(getEnv("LOCKOUT_SOURCE_MODE", "off")),
-		AuditWriteMode:           normalizeAuditWriteMode(getEnv("AUDIT_WRITE_MODE", "sync")),
-		DPoPMode:                 normalizeDPoPMode(getEnv("DPOP_MODE", "off")),
-		TokenExchangeMode:        normalizeTokenExchangeMode(getEnv("TOKEN_EXCHANGE_MODE", "off")),
-		ImpersonationTokenTTL:    time.Duration(getEnvInt("IMPERSONATION_TOKEN_TTL", 300)) * time.Second,
-		ImpersonationStepUpMode:  normalizeStepUpMode(getEnv("IMPERSONATION_STEPUP_MODE", "off")),
-		ImpersonationMaxAuthAge:  time.Duration(getEnvInt("IMPERSONATION_MAX_AUTH_AGE", 900)) * time.Second,
-		DelegationStepUpMode:     normalizeStepUpMode(getEnv("DELEGATION_STEPUP_MODE", "off")),
-		RefreshReuseMode:         normalizeStepUpMode(getEnv("REFRESH_REUSE_MODE", "off")),
-		CodeReplayMode:           normalizeStepUpMode(getEnv("CODE_REPLAY_MODE", "off")),
-		ScopePolicyMode:          normalizeStepUpMode(getEnv("SCOPE_POLICY_MODE", "off")),
-		PrivilegedScopeMode:      normalizeStepUpMode(getEnv("PRIVILEGED_SCOPE_MODE", "off")),
-		RedirectURIMatchMode:     normalizeStepUpMode(getEnv("REDIRECT_URI_MATCH_MODE", "off")),
-		AlertRulesMode:           normalizeStepUpMode(getEnv("ALERT_RULES_MODE", "off")),
-		AlertRulesInterval:       alertRulesInterval(getEnvInt("ALERT_RULES_INTERVAL_SECONDS", 60)),
-		AudienceMode:             normalizeAudienceMode(getEnv("AUDIENCE_MODE", "off")),
-		ClaimsNamespace:          getEnv("CLAIMS_NAMESPACE", ""),
-		WebhooksEnabled:          strings.EqualFold(strings.TrimSpace(getEnv("WEBHOOKS_MODE", "off")), "on"),
-		WebhookCacheRefresh:      time.Duration(getEnvInt("WEBHOOK_CACHE_REFRESH", 60)) * time.Second,
-		WebhookMaxAttempts:       getEnvInt("WEBHOOK_MAX_ATTEMPTS", 6),
-		WebhookPollInterval:      time.Duration(getEnvInt("WEBHOOK_POLL_INTERVAL", 10)) * time.Second,
-		WebhookBatchSize:         getEnvInt("WEBHOOK_BATCH_SIZE", 20),
-		WebhookSendTimeout:       time.Duration(getEnvInt("WEBHOOK_SEND_TIMEOUT", 5)) * time.Second,
-		StateBackend:             state.NormalizeBackend(getEnv("STATE_BACKEND", "memory")),
-		StateSweepInterval:       time.Duration(getEnvInt("STATE_SWEEP_INTERVAL", 300)) * time.Second,
-		StateOpTimeout:           time.Duration(getEnvInt("STATE_OP_TIMEOUT_MS", 2000)) * time.Millisecond,
-		PolicyMode:               string(policy.NormalizeMode(getEnv("POLICY_MODE", "off"))),
-		PolicyRefreshInterval:    time.Duration(getEnvInt("POLICY_REFRESH_INTERVAL", 10)) * time.Second,
-		PolicyDecisionRetention:  time.Duration(getEnvInt("POLICY_DECISION_RETENTION_DAYS", 30)) * 24 * time.Hour,
+		MaxFailedAttempts:         getEnvInt("MAX_FAILED_ATTEMPTS", 5),
+		LockoutDurationSecs:       getEnvInt("LOCKOUT_DURATION_SECONDS", 900),
+		SecretKeyBase:             getEnv("SECRET_KEY_BASE", ""),
+		AdminMFAPolicy:            normalizeAdminMFAPolicy(getEnv("ADMIN_MFA_POLICY", "off")),
+		AccountSecurityPage:       strings.ToLower(strings.TrimSpace(getEnv("ACCOUNT_SECURITY_PAGE", "off"))) == "on",
+		AdminAppSignInPolicy:      normalizeStepUpMode(getEnv("ADMIN_APP_SIGNIN_POLICY", "off")),
+		OperatorConsoleClientIDs:  getEnv("OPERATOR_CONSOLE_CLIENT_IDS", ""),
+		AdminAPIAudienceMode:      normalizeStepUpMode(getEnv("ADMIN_API_AUDIENCE_MODE", "off")),
+		ServiceUserScopeMode:      normalizeStepUpMode(getEnv("SERVICE_USER_SCOPE_MODE", "off")),
+		RecoveryCodesReverifyMode: normalizeStepUpMode(getEnv("MFA_RECOVERY_CODES_REVERIFY_MODE", "off")),
+		LockoutSourceMode:         normalizeStepUpMode(getEnv("LOCKOUT_SOURCE_MODE", "off")),
+		AuditWriteMode:            normalizeAuditWriteMode(getEnv("AUDIT_WRITE_MODE", "sync")),
+		DPoPMode:                  normalizeDPoPMode(getEnv("DPOP_MODE", "off")),
+		TokenExchangeMode:         normalizeTokenExchangeMode(getEnv("TOKEN_EXCHANGE_MODE", "off")),
+		ImpersonationTokenTTL:     time.Duration(getEnvInt("IMPERSONATION_TOKEN_TTL", 300)) * time.Second,
+		ImpersonationStepUpMode:   normalizeStepUpMode(getEnv("IMPERSONATION_STEPUP_MODE", "off")),
+		ImpersonationMaxAuthAge:   time.Duration(getEnvInt("IMPERSONATION_MAX_AUTH_AGE", 900)) * time.Second,
+		DelegationStepUpMode:      normalizeStepUpMode(getEnv("DELEGATION_STEPUP_MODE", "off")),
+		RefreshReuseMode:          normalizeStepUpMode(getEnv("REFRESH_REUSE_MODE", "off")),
+		CodeReplayMode:            normalizeStepUpMode(getEnv("CODE_REPLAY_MODE", "off")),
+		ScopePolicyMode:           normalizeStepUpMode(getEnv("SCOPE_POLICY_MODE", "off")),
+		PrivilegedScopeMode:       normalizeStepUpMode(getEnv("PRIVILEGED_SCOPE_MODE", "off")),
+		RedirectURIMatchMode:      normalizeStepUpMode(getEnv("REDIRECT_URI_MATCH_MODE", "off")),
+		AlertRulesMode:            normalizeStepUpMode(getEnv("ALERT_RULES_MODE", "off")),
+		AlertRulesInterval:        alertRulesInterval(getEnvInt("ALERT_RULES_INTERVAL_SECONDS", 60)),
+		AudienceMode:              normalizeAudienceMode(getEnv("AUDIENCE_MODE", "off")),
+		ClaimsNamespace:           getEnv("CLAIMS_NAMESPACE", ""),
+		WebhooksEnabled:           strings.EqualFold(strings.TrimSpace(getEnv("WEBHOOKS_MODE", "off")), "on"),
+		WebhookCacheRefresh:       time.Duration(getEnvInt("WEBHOOK_CACHE_REFRESH", 60)) * time.Second,
+		WebhookMaxAttempts:        getEnvInt("WEBHOOK_MAX_ATTEMPTS", 6),
+		WebhookPollInterval:       time.Duration(getEnvInt("WEBHOOK_POLL_INTERVAL", 10)) * time.Second,
+		WebhookBatchSize:          getEnvInt("WEBHOOK_BATCH_SIZE", 20),
+		WebhookSendTimeout:        time.Duration(getEnvInt("WEBHOOK_SEND_TIMEOUT", 5)) * time.Second,
+		StateBackend:              state.NormalizeBackend(getEnv("STATE_BACKEND", "memory")),
+		StateSweepInterval:        time.Duration(getEnvInt("STATE_SWEEP_INTERVAL", 300)) * time.Second,
+		StateOpTimeout:            time.Duration(getEnvInt("STATE_OP_TIMEOUT_MS", 2000)) * time.Millisecond,
+		PolicyMode:                string(policy.NormalizeMode(getEnv("POLICY_MODE", "off"))),
+		PolicyRefreshInterval:     time.Duration(getEnvInt("POLICY_REFRESH_INTERVAL", 10)) * time.Second,
+		PolicyDecisionRetention:   time.Duration(getEnvInt("POLICY_DECISION_RETENTION_DAYS", 30)) * 24 * time.Hour,
 
 		// Rate Limiting
 		// LOW-03 fix: window env vars now have an explicit _MS suffix so

@@ -25,6 +25,16 @@ type MFADisableRequest struct {
 	Code     string `json:"code"`
 }
 
+// MFARecoveryCodesRequest is the body of POST /api/profile/mfa/recovery-codes.
+// Under MFA_RECOVERY_CODES_REVERIFY_MODE=enforce the caller re-proves the
+// account as for MFADisableRequest: the current password (when the account
+// has one) and a current TOTP code or an unused recovery code. Otherwise it may
+// be left out.
+type MFARecoveryCodesRequest struct {
+	Password string `json:"password"`
+	Code     string `json:"code"`
+}
+
 // MFAStatusResponse reports whether MFA is currently enabled for the user and
 // how many recovery codes remain (so a client can prompt to regenerate before
 // they run out). It never includes the secret.

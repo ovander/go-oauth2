@@ -1038,7 +1038,7 @@ binary, read from the binary itself.
 | POST | `/api/auth/magic-link/verify` | — | Verify magic link |
 | GET | `/api/userinfo` | Bearer | Current user |
 | GET/PUT/PATCH | `/api/profile` | Bearer | Profile self-service |
-| GET/POST | `/api/profile/mfa`, `/api/profile/mfa/{enroll,confirm,disable,recovery-codes}` | Bearer | TOTP self-service; the posts are rate-limited per user (`429`). `disable` needs the password and a code; each wrong one counts toward the account lockout (`403` once locked) |
+| GET/POST | `/api/profile/mfa`, `/api/profile/mfa/{enroll,confirm,disable,recovery-codes}` | Bearer | TOTP self-service; the posts are rate-limited per user (`429`). `confirm` answers `200` with the first `recovery_codes` (since v1.16.1; `204` if they could not be generated). `disable` needs the password and a code; each wrong one counts toward the account lockout (`403` once locked). `recovery-codes` replaces the codes; under `MFA_RECOVERY_CODES_REVERIFY_MODE=enforce` it needs `{"password","code"}` too, checked as for `disable` (`400` without, `401` when wrong) |
 | GET/POST | `/auth/{login,signup,forgot-password,reset-password,verify-email,invite}` | — | Hosted pages (HTML) |
 | GET/POST | `/account/security` | — | Hosted MFA page (`ACCOUNT_SECURITY_PAGE=on`) |
 | GET | `/health`, `/health/{liveness,readiness}`, `/version`, `/api/version` | — | Health & build |

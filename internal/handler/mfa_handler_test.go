@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -128,6 +129,8 @@ func TestMFAHandler_Enroll_Unauthenticated(t *testing.T) {
 // Confirm
 // ---------------------------------------------------------------------------
 
+// A confirmed enrollment returns the first recovery codes: the code just
+// accepted cannot be used again to ask for them.
 func TestMFAHandler_Confirm_Success(t *testing.T) {
 	h := NewMFAHandler(&mockMFAService{
 		confirmFn: func(_ context.Context, _ uint, code string) error {
@@ -136,6 +139,7 @@ func TestMFAHandler_Confirm_Success(t *testing.T) {
 			}
 			return nil
 		},
+		recoveryFn: func(_ context.Context, _ uint) ([]string, error) { return []string{"aaaa-bbbb", "cccc-dddd"}, nil },
 	}, nil)
 
 	rr := httptest.NewRecorder()
@@ -143,8 +147,23 @@ func TestMFAHandler_Confirm_Success(t *testing.T) {
 		strings.NewReader(`{"code":"123456"}`)), 7)
 	h.Confirm(rr, req)
 
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"recovery_codes":["aaaa-bbbb","cccc-dddd"]`) {
+		t.Fatalf("expected 200 with the recovery codes, got %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+// MFA is on even when the first codes cannot be generated: 204, and the
+// client asks for them.
+func TestMFAHandler_Confirm_CodesUnavailable(t *testing.T) {
+	h := NewMFAHandler(&mockMFAService{
+		confirmFn:  func(_ context.Context, _ uint, _ string) error { return nil },
+		recoveryFn: func(_ context.Context, _ uint) ([]string, error) { return nil, errors.New("store down") },
+	}, nil)
+	rr := httptest.NewRecorder()
+	h.Confirm(rr, withUser(httptest.NewRequest(http.MethodPost, "/api/profile/mfa/confirm",
+		strings.NewReader(`{"code":"123456"}`)), 7))
 	if rr.Code != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d", rr.Code)
+		t.Fatalf("expected 204, got %d %s", rr.Code, rr.Body.String())
 	}
 }
 

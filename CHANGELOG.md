@@ -12,6 +12,20 @@ Capabilities**, non-breaking).
 
 ### Security
 
+- **Replacing the MFA recovery codes can require the password and a code**
+  (`MFA_RECOVERY_CODES_REVERIFY_MODE`, default `off`). `POST /api/profile/mfa/recovery-codes`
+  hands out a fresh set of recovery codes, a second factor, to whoever holds the user's access
+  token. Under `enforce` it needs `{"password","code"}`, checked as for MFA disable (each wrong
+  one counts toward the lockout; `400` without them, `401` when wrong, `403` once locked);
+  `observe` allows and audits `mfa_recovery_codes_reverify` with whether the request carried
+  them; `off` changes nothing. So that turning MFA on still gives the first codes, `POST
+  /api/profile/mfa/confirm` now answers `200` with them (`recovery_codes`) instead of `204`: the
+  code just used cannot be used again. Client-facing change: confirm's new body; a client that
+  ignores it and asks for codes afterwards still works unless the mode is `enforce`. Deploy note:
+  upgrade the admin console (which sends the password and code, and takes confirm's codes)
+  before setting `observe` or `enforce`. The hosted account page, behind its fresh sign-in, is
+  unchanged.
+
 - **Turning MFA off counts failed attempts toward the account lockout, and the MFA routes are
   rate-limited.** `POST /api/profile/mfa/disable` checked the password and the code without
   counting failures and had no rate limit, so whoever held a user's access token and password

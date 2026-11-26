@@ -56,6 +56,12 @@ Capabilities**, non-breaking).
 
 ### Fixed
 
+- **`cmd/seed -force` ends earlier password-reset links.** Resetting the superadmin with
+  `-force` set a new password without recording when, so a reset link issued before it stayed
+  valid; it now sets `password_changed_at`, as every other password change does (the v1.14.2
+  audit's #366 follow-up). The account page's sign-in is also covered by the every-path lockout
+  test.
+
 - **Deleting an app keeps its admin-log rows' `app_id`** (migration 0038, #260 follow-up). The
   foreign key from `admin_logs.app_id` to `apps` made app deletion null that column, so the admin
   log lost which app an action concerned. Migration 0038 drops every foreign key on it, as 0036

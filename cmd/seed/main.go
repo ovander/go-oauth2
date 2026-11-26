@@ -72,13 +72,7 @@ func main() {
 		}
 
 		// Update existing user
-		existingUser.Name = *name
-		existingUser.HashedPassword = hashedPassword
-		existingUser.Role = model.UserRoleSuperadmin
-		existingUser.IsVerified = true
-		existingUser.MustChangePassword = true
-		existingUser.ConfirmedAt = &now
-		existingUser.UpdatedAt = now
+		applyForcedReset(&existingUser, *name, hashedPassword, now)
 
 		// Save the account without its token version and lockout columns,
 		// and increment the token version in the database (invalidating
@@ -169,4 +163,19 @@ func randInt(max int) int {
 		return int(time.Now().UnixNano()) % max
 	}
 	return int(n.Int64())
+}
+
+// applyForcedReset makes u the seeded superadmin again (-force): its name, a
+// new password that must be changed at first sign-in, a verified account.
+// The password counts as changed now, so reset links issued before no longer
+// work, as after any password change (#366).
+func applyForcedReset(u *model.User, name, hashedPassword string, now time.Time) {
+	u.Name = name
+	u.HashedPassword = hashedPassword
+	u.Role = model.UserRoleSuperadmin
+	u.IsVerified = true
+	u.MustChangePassword = true
+	u.ConfirmedAt = &now
+	u.UpdatedAt = now
+	u.PasswordChangedAt = &now
 }

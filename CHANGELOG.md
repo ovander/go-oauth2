@@ -10,6 +10,25 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-11-26
+
+Feature release on the **v1.x** line. The monitoring alert rules, stored until now but never
+evaluated, are evaluated under a new mode, and a fresh install starts with a recommended set of
+them; a redirect URI can be required to match its registration exactly. Both controls ship
+**off** (`ALERT_RULES_MODE`, `REDIRECT_URI_MATCH_MODE`). One migration, no change of default, no
+change to discovery, claims or error codes.
+
+### Upgrade notes
+
+- **Migration 0037** (`AUTO_MIGRATE=false`: run it deliberately, after a backup). It adds the seven
+  default alert rules only if `alert_rules` is empty, touches no other table and rewrites no data;
+  on a fresh install it creates `alert_rules`.
+- **Alert rules**: nothing is evaluated until `ALERT_RULES_MODE` is set. Run `observe`, read the
+  alert history in the monitoring console (v1.3.0 shows the mode on its Alerts page), add
+  recipients or a webhook URL to the rules you keep, then `enforce`. Email needs SMTP configured.
+- **Exact redirect URIs**: run `REDIRECT_URI_MATCH_MODE=observe` and look for
+  `redirect_uri_inexact_match` events (the consoles' callbacks included) before `enforce`.
+
 ### Added
 
 - **Alert rules are evaluated** (`ALERT_RULES_MODE`, default `off`, #258). Rules could be created in
@@ -44,8 +63,9 @@ Capabilities**, non-breaking).
   9700 §2.1 recommends. `observe` audits `redirect_uri_inexact_match` at code issuance when only
   the normalized form matched (the client and the URI it sent); `enforce` refuses it as not
   registered, and audits the refusal: on the authorization page (before sign-in), at code issuance
-  and for `post_logout_redirect_uri`. `docs/API.md` no longer says the match was exact. Deploy note: new variable `REDIRECT_URI_MATCH_MODE`, default
-  `off`; run `observe` and fix the registrations or clients it names before `enforce` (#261).
+  and for `post_logout_redirect_uri`. `docs/API.md` no longer says the match was exact. Deploy
+  note: new variable `REDIRECT_URI_MATCH_MODE`, default `off`; run `observe` and fix the
+  registrations or clients it names before `enforce` (#261).
 
 ## [1.15.0] - 2026-11-25
 

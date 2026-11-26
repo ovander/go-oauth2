@@ -698,8 +698,9 @@ func (s *authService) checkPasswordWithLockout(ctx context.Context, user *model.
 		details["login_type"] = loginType
 	}
 	if locked {
-		// The account is locked and audited, but the attempt that locked it
-		// is answered like any wrong password: answering "locked" would show
+		// The account (or, under LOCKOUT_SOURCE_MODE=enforce, only this
+		// source) is locked and audited, but the attempt that locked it is
+		// answered like any wrong password: answering "locked" would show
 		// that the email names an account, which an unknown email never
 		// gets. From now on only the right password learns of the lock.
 		s.logSecurityEvent(ctx, model.SecurityEventAccountLocked, &user.ID, nil, false, details)

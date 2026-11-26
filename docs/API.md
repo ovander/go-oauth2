@@ -721,7 +721,7 @@ login limiter (`429`), as is `/elevate`.
   Returns `AppWithSecretResponse` including the one-time `client_secret`
   (empty for public clients). `require_dpop` makes a DPoP proof mandatory at the
   token endpoint (§6.2); `allow_token_exchange` / `allow_impersonation` gate
-  RFC 8693 for this client (§6.1), and `allow_token_exchange` is refused
+  RFC 8693 for this client (§6.1); turning `allow_token_exchange` on is refused
   (`400`) for a client without a secret, which an exchange cannot authenticate
   (since v1.16.1). `audiences` (optional) registers the resource
   identifiers tokens for this client are intended for — the canonical `aud`

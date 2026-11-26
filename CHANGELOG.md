@@ -30,9 +30,10 @@ Capabilities**, non-breaking).
     `deny_reason: console_audience`);
   - the token-issuance hooks (`hooks.OnBeforeTokenIssue`) now run on an exchange too, with grant
     `token_exchange`, and can veto it as any other grant;
-  - a client without a secret can no longer be given `allow_token_exchange` (`400` on create and
-    update): the exchange authenticates the client, so it could never use it. An existing public
-    client that has it must clear it in its next update.
+  - a client without a secret can no longer be given `allow_token_exchange` (`400` on create, or
+    on an update that turns it on): the exchange authenticates the client, so it could never use
+    it. An existing public client that has it keeps it, inert, and can still be updated otherwise;
+  - a hook's veto on an exchange answers `403 access_denied`, as on the other grants.
 
 ## [1.16.0] - 2026-11-26
 

@@ -100,6 +100,26 @@ func TestAppService_NoTokenExchangeWithoutASecret(t *testing.T) {
 	if _, err := svc.Update(context.Background(), pub.ID, dto.UpdateAppRequest{AllowTokenExchange: &on}); !errors.Is(err, ErrPublicClientTokenExchange) {
 		t.Fatalf("turning token exchange on for a public client: %v, want ErrPublicClientTokenExchange", err)
 	}
+	// A public client given the flag before v1.16.1 can still be updated
+	// otherwise, and can clear it; it cannot turn it back on.
+	legacy, _, err := svc.Create(context.Background(), dto.CreateAppRequest{
+		Name: "Legacy SPA", RedirectURIs: []string{"https://legacy.example.com/cb"}, IsPublic: true,
+	}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy.AllowTokenExchange = true
+	if err := svc.repo.Update(context.Background(), legacy); err != nil {
+		t.Fatal(err)
+	}
+	name := "Legacy SPA, renamed"
+	if got, err := svc.Update(context.Background(), legacy.ID, dto.UpdateAppRequest{Name: &name}); err != nil || got.Name != name {
+		t.Fatalf("an unrelated update of a legacy public client: %v, %+v", err, got)
+	}
+	off := false
+	if got, err := svc.Update(context.Background(), legacy.ID, dto.UpdateAppRequest{AllowTokenExchange: &off}); err != nil || got.AllowTokenExchange {
+		t.Fatalf("clearing the flag on a legacy public client: %v, %+v", err, got)
+	}
 	conf, _, err := svc.Create(context.Background(), dto.CreateAppRequest{
 		Name: "API", RedirectURIs: []string{"https://api.example.com/cb"}, AllowTokenExchange: true,
 	}, 1)

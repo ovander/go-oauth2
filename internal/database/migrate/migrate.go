@@ -802,6 +802,33 @@ var migrations = []Migration{
 		Name: "seed_default_alert_rules",
 		Run:  seedDefaultAlertRules,
 	},
+	{
+		// 0038 (#260 follow-up): drop the foreign key from admin_logs.app_id
+		// to apps, as 0036 did for the security audit log. Deleting an app had
+		// to null app_id on its admin-log rows to satisfy it, which lost which
+		// app an admin action concerned. The model no longer declares it
+		// (constraint:-), so a fresh install never has it.
+		ID:   "0038",
+		Name: "drop_admin_logs.app_id_foreign_key",
+		Run: func(db *gorm.DB) error {
+			if !db.Migrator().HasTable("admin_logs") {
+				return nil
+			}
+			var names []string
+			if err := db.Raw(`SELECT con.conname FROM pg_constraint con
+				JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = ANY (con.conkey)
+				WHERE con.conrelid = 'admin_logs'::regclass AND con.contype = 'f'
+				AND att.attname = 'app_id'`).Scan(&names).Error; err != nil {
+				return err
+			}
+			for _, name := range names {
+				if err := db.Exec(`ALTER TABLE admin_logs DROP CONSTRAINT ` + quoteIdent(name)).Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	},
 }
 
 // schemaMigration is the GORM model for the _schema_migrations tracking table.

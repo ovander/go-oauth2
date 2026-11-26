@@ -52,11 +52,14 @@ type AdminLog struct {
 	// CorrelationID links this admin-action row to the request that produced it
 	// for end-to-end tracing (RFC-007/RFC-008). Empty when produced outside a
 	// request context.
-	CorrelationID string    `gorm:"column:correlation_id;type:varchar(64);index" json:"correlation_id,omitempty"`
-	Admin         *User     `gorm:"foreignKey:AdminID" json:"admin,omitempty"`
-	App           *App      `gorm:"foreignKey:AppID" json:"app,omitempty"`
-	TargetUser    *User     `gorm:"foreignKey:TargetUserID" json:"target_user,omitempty"`
-	CreatedAt     time.Time `gorm:"column:inserted_at;index" json:"created_at"`
+	CorrelationID string `gorm:"column:correlation_id;type:varchar(64);index" json:"correlation_id,omitempty"`
+	Admin         *User  `gorm:"foreignKey:AdminID" json:"admin,omitempty"`
+	// App is loaded for display only: there is no foreign key on app_id
+	// (constraint:-, migration 0038), so deleting an app leaves the admin-log
+	// rows that name it as they are.
+	App        *App      `gorm:"foreignKey:AppID;constraint:-" json:"app,omitempty"`
+	TargetUser *User     `gorm:"foreignKey:TargetUserID" json:"target_user,omitempty"`
+	CreatedAt  time.Time `gorm:"column:inserted_at;index" json:"created_at"`
 }
 
 func (AdminLog) TableName() string {

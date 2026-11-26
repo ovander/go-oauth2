@@ -10,6 +10,20 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Security
+
+- **Token exchange hardening** (only with `TOKEN_EXCHANGE_MODE` `shadow` or `enforce`; the v1.14.2
+  audit's T-1 and T-3 leftovers):
+  - an exchanged token never targets an operator console (`OPERATOR_CONSOLE_CLIENT_IDS`,
+    `ADMIN_CONSOLE_CLIENT_ID`) or Socrate's admin portal, even one registered as the client's
+    audience: it would be an admin-API credential (`invalid_target`, audited
+    `deny_reason: console_audience`);
+  - the token-issuance hooks (`hooks.OnBeforeTokenIssue`) now run on an exchange too, with grant
+    `token_exchange`, and can veto it as any other grant;
+  - a client without a secret can no longer be given `allow_token_exchange` (`400` on create and
+    update): the exchange authenticates the client, so it could never use it. An existing public
+    client that has it must clear it in its next update.
+
 ## [1.16.0] - 2026-11-26
 
 Feature release on the **v1.x** line. The monitoring alert rules, stored until now but never

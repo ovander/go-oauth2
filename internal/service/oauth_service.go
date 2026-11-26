@@ -1947,6 +1947,15 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 	if len(decision.Audience) > 0 {
 		details["audience"] = decision.Audience
 	}
+	// T-1: an exchanged token never targets an operator console or Socrate's
+	// admin portal, whatever audiences an operator registered for the client:
+	// it would be an admin-API credential obtained by exchange.
+	for _, a := range decision.Audience {
+		if s.privilegedScopeConsoles[a] || a == AdminPortalClientID {
+			details["deny_reason"] = "console_audience"
+			return fail("denied", ErrAudienceNotAllowed)
+		}
+	}
 
 	if !enforce {
 		details["outcome"] = "shadow_allow"
@@ -2022,6 +2031,21 @@ func (s *oauthService) ExchangeToken(ctx context.Context, form url.Values, clien
 	// A1: the requesting client's scope policy bounds the exchanged token too.
 	if err := s.enforceClientScopes(ctx, app, nil, "token_exchange", decision.GrantedScope); err != nil {
 		return nil, err
+	}
+	// T-3 / A6: the token-issuance hooks see, and may veto, an exchanged
+	// token as they do every other grant's. The subject user is given when
+	// the subject is a user (a service account's token names its app).
+	issue := &hooks.TokenIssue{App: app, Grant: "token_exchange", Scope: decision.GrantedScope}
+	if uid, perr := strconv.ParseUint(subjectSub, 10, 64); perr == nil {
+		u, uerr := s.userRepo.FindByID(ctx, uint(uid))
+		if uerr != nil {
+			return fail("error", fmt.Errorf("token exchange: load the subject user: %w", uerr))
+		}
+		issue.User = u
+	}
+	if err := hooks.RunBeforeTokenIssue(ctx, issue); err != nil {
+		details["deny_reason"] = "hook_veto"
+		return fail("denied", err)
 	}
 	token, expiresIn, merr := s.tokenService.GenerateExchangedTokenWithTTL(subjectSub, decision.Audience, decision.GrantedScope, subjectVer, actor, jkt, ttl)
 	if merr != nil {

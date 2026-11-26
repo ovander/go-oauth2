@@ -530,8 +530,10 @@ tokens were revoked (token version), or one whose user is locked or unknown is
 app exists and is active; an ID token is not accepted (it cannot be revoked). The exchanged access token is downscoped (`invalid_scope`
 beyond the subject's scope), audience-bound (`invalid_target` without a target, or
 — since v1.14.6 — when a requested `audience` or `resource` is not one of the
-client's registered `audiences`; the token's `aud` is the requested audiences and
-resources) and carries the actor chain in `act`. In a delegation the actor token
+client's registered `audiences`, or — since v1.16.1 — when it is an operator console's
+`client_id` or Socrate's admin portal, whatever is registered; the token's `aud` is the requested
+audiences and resources) and carries the actor chain in `act`. The token-issuance hooks
+(`OnBeforeTokenIssue`, grant `token_exchange`) run before it is minted and can veto it. In a delegation the actor token
 must belong to the requesting client: a token issued to it (`aud[0]` is its
 `client_id`) or its own service-account token (`400 invalid_grant` otherwise); an impersonation token lives at most
 `IMPERSONATION_TOKEN_TTL`. `IMPERSONATION_STEPUP_MODE` and
@@ -718,7 +720,9 @@ login limiter (`429`), as is `/elevate`.
   Returns `AppWithSecretResponse` including the one-time `client_secret`
   (empty for public clients). `require_dpop` makes a DPoP proof mandatory at the
   token endpoint (§6.2); `allow_token_exchange` / `allow_impersonation` gate
-  RFC 8693 for this client (§6.1). `audiences` (optional) registers the resource
+  RFC 8693 for this client (§6.1), and `allow_token_exchange` is refused
+  (`400`) for a client without a secret, which an exchange cannot authenticate
+  (since v1.16.1). `audiences` (optional) registers the resource
   identifiers tokens for this client are intended for — the canonical `aud`
   claim (RFC-001). `allowed_scopes` (optional) is the client's scope policy:
   the only scopes it may request at `/oauth/authorize` and at every grant,

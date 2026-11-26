@@ -107,6 +107,12 @@ func (s *appService) Create(ctx context.Context, req dto.CreateAppRequest, owner
 		}
 	}
 
+	// T-3: token exchange authenticates the client; one without a secret
+	// cannot be authenticated, so it is never allowed to exchange.
+	if req.IsPublic && req.AllowTokenExchange {
+		return nil, "", ErrPublicClientTokenExchange
+	}
+
 	// Generate client ID
 	clientID, err := generateSecureToken(16)
 	if err != nil {
@@ -194,6 +200,11 @@ func (s *appService) Update(ctx context.Context, id uint, req dto.UpdateAppReque
 	}
 	if req.AllowTokenExchange != nil {
 		app.AllowTokenExchange = *req.AllowTokenExchange
+	}
+	// T-3: a client without a secret cannot be authenticated, so it is never
+	// allowed to exchange (checked whatever the update changes).
+	if app.AllowTokenExchange && !app.IsConfidential() {
+		return nil, ErrPublicClientTokenExchange
 	}
 	if req.AllowImpersonation != nil {
 		app.AllowImpersonation = *req.AllowImpersonation

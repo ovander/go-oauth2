@@ -29,10 +29,14 @@ var (
 	ErrMFAEnrollmentRequired = errors.New("mfa: enrollment required")
 
 	// App errors
-	ErrAppNotFound        = errors.New("app not found")
-	ErrAppInactive        = errors.New("app is deactivated")
-	ErrClientIDExists     = errors.New("client ID already exists")
-	ErrInvalidRedirectURI = errors.New("invalid redirect URI")
+	ErrAppNotFound = errors.New("app not found")
+	// ErrPublicClientTokenExchange refuses allow_token_exchange on a client
+	// without a secret: token exchange authenticates the client, and such a
+	// client cannot be authenticated (T-3).
+	ErrPublicClientTokenExchange = errors.New("a client without a secret cannot allow token exchange: set allow_token_exchange to false")
+	ErrAppInactive               = errors.New("app is deactivated")
+	ErrClientIDExists            = errors.New("client ID already exists")
+	ErrInvalidRedirectURI        = errors.New("invalid redirect URI")
 
 	// Role errors
 	ErrRoleNotFound      = errors.New("role not found")

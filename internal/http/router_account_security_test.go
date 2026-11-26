@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	nethttp "net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,7 +14,13 @@ import (
 
 // Neither service is called by these requests (a GET, and posts refused for
 // their missing CSRF cookie); the embedded nil interfaces fail loudly if one is.
+// ReverifyForMFAChange is defined only because the page requires it to be built.
 type accountRouteAuth struct{ service.AuthService }
+
+func (accountRouteAuth) ReverifyForMFAChange(context.Context, uint, *string, string) error {
+	return service.ErrMFAInvalidCode
+}
+
 type accountRouteMFA struct{ service.MFAService }
 
 func accountRouter(t *testing.T, on bool) nethttp.Handler {

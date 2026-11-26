@@ -276,12 +276,12 @@ func newOAuthRouter(
 		r.With(clientAuthMW...).Post("/introspect", oauthHandler.Introspect)
 
 		revokeMW := append(append([]func(http.Handler) http.Handler{}, clientAuthMW...),
-			middleware.OptionalAuthMiddleware(tokenService, userRepo, usedTokenRepo))
+			middleware.OptionalAuthMiddlewareWithDPoP(config.dpopBinding(), tokenService, userRepo, usedTokenRepo))
 		r.With(revokeMW...).Post("/revoke", oauthHandler.Revoke)
 
-		r.With(middleware.OptionalAuthMiddleware(tokenService, userRepo, usedTokenRepo)).
+		r.With(middleware.OptionalAuthMiddlewareWithDPoP(config.dpopBinding(), tokenService, userRepo, usedTokenRepo)).
 			Get("/logout", oauthHandler.EndSession)
-		r.With(middleware.OptionalAuthMiddleware(tokenService, userRepo, usedTokenRepo)).
+		r.With(middleware.OptionalAuthMiddlewareWithDPoP(config.dpopBinding(), tokenService, userRepo, usedTokenRepo)).
 			Post("/logout", oauthHandler.EndSession)
 	})
 

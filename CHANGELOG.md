@@ -10,6 +10,16 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Security
+
+- **`/oauth/revoke` and `/oauth/logout` check a DPoP-bound token's proof** (`DPOP_MODE`, default
+  `off`; the v1.14.2 audit's G-4 follow-up). Their optional bearer identity was read without the
+  binding check, so a stolen bound token, used as a plain bearer token, could log its user out
+  (revoking their tokens) or name them to `/oauth/revoke`. They now use
+  `OptionalAuthMiddlewareWithDPoP`: under `enforce` such a token is ignored and the request is
+  handled as anonymous; under `observe` the failure is logged and the token accepted; under
+  `off` nothing changes. They also accept the `DPoP` scheme when binding is on.
+
 ## [1.16.0] - 2026-11-26
 
 Feature release on the **v1.x** line. The monitoring alert rules, stored until now but never

@@ -10,6 +10,13 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Documentation
+
+- **The production env template lists every opt-in control.** `deploy/env/socrate.env.example`
+  gains `MFA_RECOVERY_CODES_REVERIFY_MODE` (v1.16.1), `AUDIT_INTEGRITY_SCAN_INTERVAL_SECONDS` and
+  `_LOOKBACK_SECONDS`, and `ADMIN_PASSWORD_LOGIN_ENABLED`, each commented out at its default; it
+  now matches the monitoring deploy kit's copy. No behaviour change.
+
 ## [1.16.1] - 2026-11-26
 
 Security patch release on the **v1.x** line. It closes what was left of the v1.14.2 audit: turning

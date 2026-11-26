@@ -46,6 +46,14 @@ Capabilities**, non-breaking).
     it. An existing public client that has it keeps it, inert, and can still be updated otherwise;
   - a hook's veto on an exchange answers `403 access_denied`, as on the other grants.
 
+- **`/oauth/revoke` and `/oauth/logout` check a DPoP-bound token's proof** (`DPOP_MODE`, default
+  `off`; the v1.14.2 audit's G-4 follow-up). Their optional bearer identity was read without the
+  binding check, so a stolen bound token, used as a plain bearer token, could log its user out
+  (revoking their tokens) or name them to `/oauth/revoke`. They now use
+  `OptionalAuthMiddlewareWithDPoP`: under `enforce` such a token is ignored and the request is
+  handled as anonymous; under `observe` the failure is logged and the token accepted; under
+  `off` nothing changes. They also accept the `DPoP` scheme when binding is on.
+
 ### Fixed
 
 - **`cmd/seed -force` ends earlier password-reset links.** Resetting the superadmin with

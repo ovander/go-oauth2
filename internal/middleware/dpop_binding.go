@@ -78,6 +78,18 @@ func (b *DPoPBinding) failure(r *http.Request, token string, claims *auth.Access
 // written the 401, when the request must stop (enforce); a failure in
 // observe mode is reported and allowed. A nil b allows everything.
 func (b *DPoPBinding) allow(w http.ResponseWriter, r *http.Request, token string, claims *auth.AccessTokenClaims) bool {
+	if b.accepts(r, token, claims) {
+		return true
+	}
+	writeDPoPChallenge(w)
+	return false
+}
+
+// accepts reports whether a verified token may be used for r: true when it is
+// unbound, its proof is valid, or the mode is observe (the failure is then
+// reported). A failure is logged and reported to onFail. A nil b accepts
+// everything.
+func (b *DPoPBinding) accepts(r *http.Request, token string, claims *auth.AccessTokenClaims) bool {
 	if b == nil {
 		return true
 	}
@@ -94,11 +106,7 @@ func (b *DPoPBinding) allow(w http.ResponseWriter, r *http.Request, token string
 	if b.onFail != nil {
 		b.onFail(r, reason, b.enforce)
 	}
-	if !b.enforce {
-		return true
-	}
-	writeDPoPChallenge(w)
-	return false
+	return !b.enforce
 }
 
 // writeDPoPChallenge answers 401 with the RFC 9449 §7.1 challenge for a bound

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/ovander/go-oauth2/internal/contextkeys"
 	"github.com/ovander/go-oauth2/internal/model"
@@ -212,6 +211,17 @@ func AuthMiddlewareWithDPoP(binding *DPoPBinding, tokenService *auth.TokenServic
 
 // OptionalAuthMiddleware extracts user info if token present, but doesn't require it
 func OptionalAuthMiddleware(tokenService *auth.TokenService, userRepo repository.UserRepository, usedTokenRepo repository.UsedTokenRepository) func(http.Handler) http.Handler {
+	return OptionalAuthMiddlewareWithDPoP(nil, tokenService, userRepo, usedTokenRepo)
+}
+
+// OptionalAuthMiddlewareWithDPoP is OptionalAuthMiddleware that also checks a
+// DPoP-bound token's proof (DPOP_MODE, the v1.14.2 audit's G-4 follow-up), and
+// accepts the DPoP scheme when binding is on. Under enforce, a bound token
+// without a valid proof is ignored like any other invalid token: the request
+// goes on unauthenticated, so a stolen bound token does not act as its user
+// (a logout, the identity /oauth/revoke reads). Under observe the failure is
+// reported and the token accepted. A nil binding checks nothing.
+func OptionalAuthMiddlewareWithDPoP(binding *DPoPBinding, tokenService *auth.TokenService, userRepo repository.UserRepository, usedTokenRepo repository.UsedTokenRepository) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
@@ -220,8 +230,8 @@ func OptionalAuthMiddleware(tokenService *auth.TokenService, userRepo repository
 				return
 			}
 
-			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-			if tokenString == authHeader {
+			tokenString, ok := binding.tokenFromAuthorization(authHeader)
+			if !ok {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -273,6 +283,12 @@ func OptionalAuthMiddleware(tokenService *auth.TokenService, userRepo repository
 
 			// Skip if user is locked
 			if user.IsLocked() {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// A bound token without a valid proof is not its user's (enforce).
+			if !binding.accepts(r, tokenString, claims) {
 				next.ServeHTTP(w, r)
 				return
 			}

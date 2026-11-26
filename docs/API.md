@@ -562,8 +562,10 @@ Each proof is used once. Under `enforce`, a missing or invalid proof gets `401`
 with `WWW-Authenticate: DPoP error="invalid_token"`; under `observe` it is
 logged and audited as `dpop_validation_failed`, and the request proceeds. An
 unbound token is unaffected; under `off` nothing changes and only the `Bearer`
-scheme is accepted. `/oauth/revoke` and logout (optional authentication) do
-not check the binding: a bound token there can only end its own session. The
+scheme is accepted. `/oauth/revoke` and `/oauth/logout`, where the token is an
+optional identity, check the binding too (since v1.16.1): under `enforce` a bound
+token without a valid proof is ignored there, so the request is handled as
+anonymous (a logout then revokes nothing), rather than refused. The
 policy decision endpoint receives the user's token as data from the
 application, which cannot hold the user's key, and does not check it either.
 

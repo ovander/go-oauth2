@@ -98,6 +98,8 @@ type LoginPageData struct {
 	// PromptLogin carries prompt=login (OIDC Core §3.1.2.1) to the consent
 	// step, which refuses it without a sign-in on this form.
 	PromptLogin bool
+	// AcrValues carries the OIDC acr_values parameter to the consent step.
+	AcrValues string
 }
 
 // ConsentPageData contains data for the OAuth consent page template.
@@ -124,6 +126,8 @@ type ConsentPageData struct {
 	MaxAge int
 	// PromptLogin carries prompt=login to the consent POST (see LoginPageData).
 	PromptLogin bool
+	// AcrValues carries acr_values to the consent POST (see LoginPageData).
+	AcrValues string
 }
 
 // ErrorPageData contains data for the error page template

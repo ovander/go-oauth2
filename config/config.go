@@ -217,6 +217,12 @@ type Config struct {
 	// when only the normalized form matched), "enforce" (require the exact
 	// registered string). REDIRECT_URI_MATCH_MODE.
 	RedirectURIMatchMode string
+	// ACRValuesMode governs the OIDC acr_values parameter on /oauth/authorize:
+	// "off" (default — ignored, unchanged), "observe" (audit acr_values_unmet
+	// when a request asks for "mfa" and the sign-in had no second factor) or
+	// "enforce" (also refuse it, unmet_authentication_requirements).
+	// ACR_VALUES_MODE.
+	ACRValuesMode string
 	// AlertRulesMode governs the evaluation of the monitoring alert rules
 	// (#258): "off" (default — rules are stored, nothing evaluates them),
 	// "observe" (evaluate them every AlertRulesInterval and record a triggered
@@ -446,6 +452,7 @@ func Load() *Config {
 		ScopePolicyMode:           normalizeStepUpMode(getEnv("SCOPE_POLICY_MODE", "off")),
 		PrivilegedScopeMode:       normalizeStepUpMode(getEnv("PRIVILEGED_SCOPE_MODE", "off")),
 		RedirectURIMatchMode:      normalizeStepUpMode(getEnv("REDIRECT_URI_MATCH_MODE", "off")),
+		ACRValuesMode:             normalizeStepUpMode(getEnv("ACR_VALUES_MODE", "off")),
 		AlertRulesMode:            normalizeStepUpMode(getEnv("ALERT_RULES_MODE", "off")),
 		AlertRulesInterval:        alertRulesInterval(getEnvInt("ALERT_RULES_INTERVAL_SECONDS", 60)),
 		AudienceMode:              normalizeAudienceMode(getEnv("AUDIENCE_MODE", "off")),

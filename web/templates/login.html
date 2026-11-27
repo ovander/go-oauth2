@@ -49,6 +49,9 @@
         {{if .PromptLogin}}
         <input type="hidden" name="prompt" value="login">
         {{end}}
+        {{if .AcrValues}}
+        <input type="hidden" name="acr_values" value="{{.AcrValues}}">
+        {{end}}
 
         <div class="form-group">
             <label for="email">Email</label>

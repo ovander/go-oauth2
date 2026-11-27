@@ -56,6 +56,10 @@ const (
 	// matched a registered one only after normalization, not as the exact
 	// string (REDIRECT_URI_MATCH_MODE observe and enforce, #261).
 	SecurityEventRedirectURIInexact SecurityEventType = "redirect_uri_inexact_match"
+	// SecurityEventACRValuesUnmet: an authorization request asked for
+	// acr_values=mfa and the sign-in had no second factor (ACR_VALUES_MODE
+	// observe and enforce). Success is false when enforce refused it.
+	SecurityEventACRValuesUnmet SecurityEventType = "acr_values_unmet"
 	// SecurityEventAlertTriggered: a monitoring alert rule's condition was met
 	// (ALERT_RULES_MODE observe or enforce, #258); details name the rule, the
 	// group and the count.

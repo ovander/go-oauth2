@@ -193,6 +193,49 @@ type oauthService struct {
 	// SetPrivilegedScopePolicy.
 	privilegedScopeMode     string
 	privilegedScopeConsoles map[string]bool
+
+	// acrValuesMode is ACR_VALUES_MODE: see SetACRValuesMode.
+	acrValuesMode string
+}
+
+// SetACRValuesMode wires ACR_VALUES_MODE: under "observe" or "enforce", an
+// authorization request whose acr_values asks for "mfa" (and not "pwd") but
+// whose sign-in had no second factor is audited (acr_values_unmet), and under
+// "enforce" refused with ErrACRValuesUnmet. Off: acr_values is ignored.
+//
+// acr_values reaches Socrate through the browser, like every authorization
+// parameter, so a user can drop it: the refusal spares an honest user a
+// token the client would refuse, and the client must still check acr/amr.
+func (s *oauthService) SetACRValuesMode(mode string) { s.acrValuesMode = mode }
+
+// acrValuesRequireMFA reports whether acr_values (space-separated, in order of
+// preference, OIDC Core §3.1.2.1) accepts only a second-factor sign-in: it
+// names "mfa" and not "pwd". Unknown values are ignored.
+func acrValuesRequireMFA(acrValues string) bool {
+	values := strings.Fields(acrValues)
+	return slices.Contains(values, "mfa") && !slices.Contains(values, "pwd")
+}
+
+// checkACRValues applies ACR_VALUES_MODE to the sign-in behind a code.
+func (s *oauthService) checkACRValues(ctx context.Context, app *model.App, userID uint, acrValues string, authn auth.AuthnEvidence) error {
+	if s.acrValuesMode != "observe" && s.acrValuesMode != "enforce" {
+		return nil
+	}
+	if !acrValuesRequireMFA(acrValues) || authn.ACR == "mfa" {
+		return nil
+	}
+	appID := app.ID
+	refused := s.acrValuesMode == "enforce"
+	s.logSecurityEvent(ctx, model.SecurityEventACRValuesUnmet, &userID, &appID, !refused, map[string]interface{}{
+		"client_id":  app.ClientID,
+		"acr_values": acrValues,
+		"acr":        authn.ACR,
+		"mode":       s.acrValuesMode,
+	})
+	if refused {
+		return fmt.Errorf("%w (client_id=%s)", ErrACRValuesUnmet, app.ClientID)
+	}
+	return nil
 }
 
 // SetCodeReplayMode wires CODE_REPLAY_MODE: under "observe" a replayed
@@ -445,6 +488,10 @@ func NewOAuthServiceWithConfig(
 // satisfied by the current session's auth_time.
 var ErrReauthRequired = errors.New("re-authentication required")
 
+// ErrACRValuesUnmet is returned under ACR_VALUES_MODE=enforce when the client
+// asked for acr_values=mfa and the sign-in had no second factor.
+var ErrACRValuesUnmet = errors.New("acr_values: a second factor is required")
+
 // Authorize handles the OAuth 2.0 authorization request
 func (s *oauthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, userID uint) (string, error) {
 	// Validate response type
@@ -529,6 +576,11 @@ func (s *oauthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, 
 			return "", fmt.Errorf("%w: session age %ds exceeds max_age %ds",
 				ErrReauthRequired, sessionAge, req.MaxAge)
 		}
+	}
+
+	// ACR_VALUES_MODE: acr_values=mfa asks for a second-factor sign-in.
+	if err := s.checkACRValues(ctx, app, user.ID, req.AcrValues, authn); err != nil {
+		return "", err
 	}
 
 	// MED-02: if this client requires PKCE (explicitly, or because it is a

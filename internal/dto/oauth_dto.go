@@ -16,6 +16,9 @@ type AuthorizeRequest struct {
 	// the session's auth_time and forces re-authentication if the session is
 	// older than max_age seconds.  -1 means not specified by the client.
 	MaxAge int `json:"max_age,omitempty"`
+	// AcrValues is the OIDC acr_values parameter (§3.1.2.1), space-separated:
+	// asking for "mfa" alone requires a second factor under ACR_VALUES_MODE.
+	AcrValues string `json:"acr_values,omitempty"`
 }
 
 type TokenRequest struct {

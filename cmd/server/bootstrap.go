@@ -155,6 +155,7 @@ func LogStartupSummary(cfg *config.Config) {
 		"admin_api_audience_mode":          cfg.AdminAPIAudienceMode,
 		"privileged_scope_mode":            cfg.PrivilegedScopeMode,
 		"redirect_uri_match_mode":          cfg.RedirectURIMatchMode,
+		"acr_values_mode":                  cfg.ACRValuesMode,
 		"alert_rules_mode":                 cfg.AlertRulesMode,
 		"service_user_scope_mode":          cfg.ServiceUserScopeMode,
 		"mfa_recovery_codes_reverify_mode": cfg.RecoveryCodesReverifyMode,
@@ -702,6 +703,12 @@ func Bootstrap(cfg *config.Config) *App {
 		rm.SetRedirectURIMatchMode(cfg.RedirectURIMatchMode)
 	} else {
 		logger.Fatalf("bootstrap: %T does not support SetRedirectURIMatchMode", oauthService)
+	}
+	// ACR_VALUES_MODE: acr_values=mfa requires a second-factor sign-in.
+	if am, ok := oauthService.(interface{ SetACRValuesMode(string) }); ok {
+		am.SetACRValuesMode(cfg.ACRValuesMode)
+	} else {
+		logger.Fatalf("bootstrap: %T does not support SetACRValuesMode", oauthService)
 	}
 
 	// ==========================================

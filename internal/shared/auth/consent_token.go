@@ -109,7 +109,7 @@ func IssueConsentTokenForRequest(userID uint, clientID string, authn AuthnEviden
 		Exp:      time.Now().Add(consentTokenTTL).Unix(),
 		Req:      request,
 	}
-	if authn.AuthTime != 0 || len(authn.AMR) > 0 || authn.ACR != "" {
+	if authn.AuthTime != 0 || len(authn.AMR) > 0 || authn.ACR != "" || authn.InRequest {
 		payload.Authn = &authn
 	}
 

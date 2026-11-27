@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ovander/go-oauth2/internal/contextkeys"
 	"github.com/ovander/go-oauth2/internal/dto"
 	"github.com/ovander/go-oauth2/internal/model"
 	"github.com/ovander/go-oauth2/internal/service"
@@ -243,14 +244,11 @@ func TestAuthorizePost_TheLoginFormSignInIsInTheRequest(t *testing.T) {
 	form.Set("max_age", "0")
 	form.Set("email", "u@example.test")
 	form.Set("password", "pw")
-	body := f.post(form).Body.String()
-	const marker = `name="consent_token" value="`
-	i := strings.Index(body, marker)
-	if i < 0 {
+	m := consentTokenField.FindStringSubmatch(f.post(form).Body.String())
+	if m == nil {
 		t.Fatal("no consent token on the consent page")
 	}
-	token := body[i+len(marker):]
-	token = token[:strings.Index(token, `"`)]
+	token := m[1]
 
 	submit := consentForm()
 	submit.Set("max_age", "0")
@@ -261,18 +259,34 @@ func TestAuthorizePost_TheLoginFormSignInIsInTheRequest(t *testing.T) {
 	}
 }
 
-// Evidence that does not come from the login form is not in the request.
+// A browser already signed in goes straight to the consent page (GET): that
+// sign-in was made earlier, so its evidence is not marked as in the request.
 func TestConsent_AnEarlierSignInIsNotInTheRequest(t *testing.T) {
 	f := newBindingFixture()
 	var got auth.AuthnEvidence
+	asked := 0
 	f.h.oauthService = &critOAuthService{authorize: func(ctx context.Context, _ dto.AuthorizeRequest, _ uint) (string, error) {
 		got = service.AuthnEvidenceFrom(ctx)
+		asked++
 		return "the-code", nil
 	}}
-	form := consentForm()
-	form.Set("consent_token", boundConsentToken(t, 42, form, auth.AuthnEvidence{}))
-	f.post(form)
-	if got.InRequest {
-		t.Fatalf("evidence %+v from a signed-in session is marked in the request", got)
+	q := consentForm()
+	q.Del("action")
+	q.Del("authorized")
+	q.Set("max_age", "0")
+	r := httptest.NewRequest(http.MethodGet, "/oauth/authorize?"+q.Encode(), nil)
+	r = r.WithContext(context.WithValue(r.Context(), contextkeys.UserIDKey, uint(42)))
+	w := httptest.NewRecorder()
+	f.h.Authorize(w, r)
+	m := consentTokenField.FindStringSubmatch(w.Body.String())
+	if m == nil {
+		t.Fatalf("a signed-in GET did not reach the consent page: %d", w.Code)
+	}
+	submit := consentForm()
+	submit.Set("max_age", "0")
+	submit.Set("consent_token", m[1])
+	f.post(submit)
+	if asked != 1 || got.InRequest {
+		t.Fatalf("asked %d times with evidence %+v; want once, not marked in the request", asked, got)
 	}
 }

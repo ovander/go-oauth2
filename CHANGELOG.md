@@ -31,7 +31,9 @@ Capabilities**, non-breaking).
   `unmet_authentication_requirements` (OpenID Connect Unmet Authentication Requirements 1.0);
   `observe` issues the code and audits `acr_values_unmet`; `off` changes nothing. `acr_values`
   is carried through the login and consent pages and bound into the consent token. Client-facing
-  change: the new error code, only under `enforce`. Deploy note: a user without MFA turned on
+  change: the new error code, only under `enforce`. The client must still check `acr`/`amr` in the
+  token (as `bff.StepUp.Satisfied` does): `acr_values` passes through the browser like every
+  authorization parameter, so a user can drop it. Deploy note: a user without MFA turned on
   cannot meet `acr_values=mfa`; run `observe` first.
 
 ### Documentation

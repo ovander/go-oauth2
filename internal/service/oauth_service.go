@@ -202,6 +202,10 @@ type oauthService struct {
 // authorization request whose acr_values asks for "mfa" (and not "pwd") but
 // whose sign-in had no second factor is audited (acr_values_unmet), and under
 // "enforce" refused with ErrACRValuesUnmet. Off: acr_values is ignored.
+//
+// acr_values reaches Socrate through the browser, like every authorization
+// parameter, so a user can drop it: the refusal spares an honest user a
+// token the client would refuse, and the client must still check acr/amr.
 func (s *oauthService) SetACRValuesMode(mode string) { s.acrValuesMode = mode }
 
 // acrValuesRequireMFA reports whether acr_values (space-separated, in order of

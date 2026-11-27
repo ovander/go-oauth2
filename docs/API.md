@@ -177,6 +177,7 @@ GET https://auth.example.com/oauth/authorize
 | `nonce` | recommended | echoed into the ID token |
 | `code_challenge` / `code_challenge_method` | required for public clients | `S256` |
 | `max_age` | optional | OIDC: forces re-auth if the session is older |
+| `acr_values` | optional | OIDC: `mfa` (alone, not with `pwd`) asks for a sign-in with a second factor. Under `ACR_VALUES_MODE=enforce` (since v1.16.2, default `off`) a sign-in without one gets `unmet_authentication_requirements` instead of a code; `observe` audits `acr_values_unmet` and issues it. The token's `acr` and `amr` say which sign-in it was. A user without MFA turned on cannot meet `mfa` |
 | `prompt` | optional | OIDC (v1.8.0): `login` always shows the login page, even for a signed-in browser, and sets a new `auth_time` (use it with `max_age` before a sensitive action); `none` never shows a page and redirects with `login_required` (the login and consent pages are always shown, so `none` cannot succeed; before v1.14.4 a request carrying a bearer access token got `consent_required`); `none` with another value is `invalid_request`. Other values are ignored. |
 
 The server renders the hosted **login page** followed by a **consent page**. This is a
@@ -579,7 +580,8 @@ application, which cannot hold the user's key, and does not check it either.
   `["code"]`, grants `["authorization_code","refresh_token","client_credentials"]`,
   scopes, `code_challenge_methods_supported: ["S256"]`, …). `claims_supported`
   lists the assertable claims including `auth_time`, `acr`, `amr`, `act`, and
-  `cnf`; `acr_values_supported` advertises `["pwd","mfa"]` (RFC 8176);
+  `cnf`; `acr_values_supported` advertises `["pwd","mfa"]` (RFC 8176), and a
+  request's `acr_values=mfa` is acted on under `ACR_VALUES_MODE`;
   `prompt_values_supported` `["none","login"]`;
   `authorization_response_iss_parameter_supported: true` (RFC 9207). Two values
   depend on configuration: `dpop_signing_alg_values_supported: ["ES256"]` when

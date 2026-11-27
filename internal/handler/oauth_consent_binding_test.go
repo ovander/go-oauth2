@@ -31,6 +31,7 @@ func boundConsentToken(t *testing.T, userID uint, form url.Values, authn auth.Au
 		ResponseType: form.Get("response_type"), ClientID: form.Get("client_id"), RedirectURI: form.Get("redirect_uri"),
 		Scope: form.Get("scope"), State: form.Get("state"), Nonce: form.Get("nonce"),
 		CodeChallenge: form.Get("code_challenge"), CodeChallengeMethod: form.Get("code_challenge_method"), MaxAge: maxAge,
+		AcrValues: form.Get("acr_values"),
 	}
 	token, err := auth.IssueConsentTokenForRequest(userID, req.ClientID, authn, consentRequestBinding(req, form.Get("prompt") == "login"), critTestSecretKey)
 	if err != nil {

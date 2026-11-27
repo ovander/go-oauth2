@@ -305,6 +305,7 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 		CodeChallenge:       r.URL.Query().Get("code_challenge"),
 		CodeChallengeMethod: r.URL.Query().Get("code_challenge_method"),
 		MaxAge:              maxAge,
+		AcrValues:           r.URL.Query().Get("acr_values"),
 	}
 
 	// Validate required parameters
@@ -402,6 +403,7 @@ func (h *OAuthHandler) Authorize(w http.ResponseWriter, r *http.Request) {
 			CSRFToken:           csrfToken,
 			MaxAge:              req.MaxAge,
 			PromptLogin:         promptLogin,
+			AcrValues:           req.AcrValues,
 		})
 		return
 	}
@@ -487,6 +489,7 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 		CodeChallenge:       r.FormValue("code_challenge"),
 		CodeChallengeMethod: r.FormValue("code_challenge_method"),
 		MaxAge:              maxAge,
+		AcrValues:           r.FormValue("acr_values"),
 	}
 
 	// Get app details — required for both login and consent paths.
@@ -554,6 +557,7 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 			MaxAge:              req.MaxAge,
 			ShowMFA:             showMFA,
 			PromptLogin:         promptLogin,
+			AcrValues:           req.AcrValues,
 		})
 	}
 
@@ -691,6 +695,11 @@ func (h *OAuthHandler) handleConsentPost(w http.ResponseWriter, r *http.Request,
 			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "access_denied", "user does not have access to this application")
 		case errors.Is(err, service.ErrReauthRequired):
 			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "login_required", "re-authentication required")
+		case errors.Is(err, service.ErrACRValuesUnmet):
+			// ACR_VALUES_MODE=enforce: the client asked for acr_values=mfa and
+			// the sign-in had no second factor (OpenID Connect Unmet
+			// Authentication Requirements 1.0).
+			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "unmet_authentication_requirements", "a second factor is required")
 		case errors.Is(err, service.ErrPKCERequired):
 			h.redirectWithErrorPage(w, req.RedirectURI, req.State, "invalid_request", "this client requires PKCE")
 		case errors.Is(err, service.ErrPKCEMethodUnsupported):
@@ -762,6 +771,7 @@ func (h *OAuthHandler) renderConsentPage(w http.ResponseWriter, req dto.Authoriz
 		ConsentToken:        consentToken,
 		MaxAge:              req.MaxAge,
 		PromptLogin:         promptLogin,
+		AcrValues:           req.AcrValues,
 	})
 }
 
@@ -769,10 +779,17 @@ func (h *OAuthHandler) renderConsentPage(w http.ResponseWriter, req dto.Authoriz
 // token is issued for: every parameter the consent POST acts on, so that the
 // form cannot be changed between the consent page and its submission.
 func consentRequestBinding(req dto.AuthorizeRequest, promptLogin bool) string {
-	fields, err := json.Marshal([]interface{}{
+	values := []interface{}{
 		req.ClientID, req.ResponseType, req.RedirectURI, req.Scope, req.State, req.Nonce,
 		req.CodeChallenge, req.CodeChallengeMethod, req.MaxAge, promptLogin,
-	})
+	}
+	// acr_values joins the binding only when present, so that the digest of
+	// every other request (and the consent pages open during an upgrade) is
+	// unchanged.
+	if req.AcrValues != "" {
+		values = append(values, req.AcrValues)
+	}
+	fields, err := json.Marshal(values)
 	if err != nil {
 		return "" // no binding: the consent POST refuses it (fail closed)
 	}

@@ -10,6 +10,19 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Added
+
+- **`acr_values=mfa` can require a second-factor sign-in** (`ACR_VALUES_MODE`, default `off`). A
+  client asking for a step-up sign-in before a sensitive action could not require a second factor:
+  `acr_values` was ignored, although discovery advertises `acr_values_supported`
+  `["pwd","mfa"]`. Under `enforce`, a request whose `acr_values` names `mfa` (and not `pwd`) gets a
+  code only for a sign-in with a second factor, and otherwise the error
+  `unmet_authentication_requirements` (OpenID Connect Unmet Authentication Requirements 1.0);
+  `observe` issues the code and audits `acr_values_unmet`; `off` changes nothing. `acr_values`
+  is carried through the login and consent pages and bound into the consent token. Client-facing
+  change: the new error code, only under `enforce`. Deploy note: a user without MFA turned on
+  cannot meet `acr_values=mfa`; run `observe` first.
+
 ### Documentation
 
 - **The production env template lists every opt-in control.** `deploy/env/socrate.env.example`

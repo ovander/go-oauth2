@@ -52,6 +52,9 @@
         {{if .PromptLogin}}
         <input type="hidden" name="prompt" value="login">
         {{end}}
+        {{if .AcrValues}}
+        <input type="hidden" name="acr_values" value="{{.AcrValues}}">
+        {{end}}
         <!-- CRIT-03: CSRF double-submit token -->
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
         <!-- CRIT-04: Signed user identity carrier (stateless consent) -->

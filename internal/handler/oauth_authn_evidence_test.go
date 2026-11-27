@@ -23,6 +23,10 @@ var consentTokenField = regexp.MustCompile(`name="consent_token"\s+value="([^"]+
 // Authorize, so the code's tokens report it.
 func TestHostedLogin_SignInEvidenceReachesAuthorize(t *testing.T) {
 	ev := auth.AuthnEvidence{AuthTime: 1791000000, AMR: []string{"pwd", "otp", "mfa"}, ACR: "mfa"}
+	// The login form of this request made the sign-in, so the evidence is
+	// marked as in the request (it meets max_age).
+	want := ev
+	want.InRequest = true
 	apps := &critAppService{getByClientID: func(_ context.Context, _ string) (*model.App, error) {
 		return &model.App{ID: 1, ClientID: "app-1", Name: "App", RedirectURIs: []string{"https://app.example.com/cb"}, Active: true}, nil
 	}}
@@ -55,8 +59,8 @@ func TestHostedLogin_SignInEvidenceReachesAuthorize(t *testing.T) {
 		t.Fatal("consent page has no consent_token")
 	}
 	_, _, signed, err := auth.ValidateConsentTokenWithAuthn(m[1], critTestSecretKey)
-	if err != nil || !reflect.DeepEqual(signed, ev) {
-		t.Fatalf("consent token evidence = %+v, %v; want %+v", signed, err, ev)
+	if err != nil || !reflect.DeepEqual(signed, want) {
+		t.Fatalf("consent token evidence = %+v, %v; want %+v", signed, err, want)
 	}
 
 	consent := url.Values{"action": {"consent"}, "authorized": {"true"}, "csrf_token": {"c2"}, "consent_token": {m[1]}}
@@ -64,7 +68,7 @@ func TestHostedLogin_SignInEvidenceReachesAuthorize(t *testing.T) {
 		consent[k] = v
 	}
 	post(consent, "c2")
-	if !reflect.DeepEqual(got, ev) {
-		t.Fatalf("Authorize got evidence %+v, want %+v", got, ev)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Authorize got evidence %+v, want %+v", got, want)
 	}
 }

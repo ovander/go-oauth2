@@ -10,6 +10,22 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+## [1.16.2] - 2026-11-27
+
+Patch release on the **v1.x** line for step-up sign-in. `max_age` on `/oauth/authorize` can be
+met, `0` included (it always ended in `login_required` before), and a new control, **off** by
+default, makes `acr_values=mfa` require a second-factor sign-in (`ACR_VALUES_MODE`). No
+migration, no change of default, no change to discovery or claims.
+
+### Upgrade notes
+
+- **Client-facing changes:** a request with `max_age` that ended in `login_required` after a fresh
+  sign-in on the login page now gets a code; under `ACR_VALUES_MODE=enforce` only, the new error
+  `unmet_authentication_requirements`.
+- **acr_values**: run `ACR_VALUES_MODE=observe` and look for `acr_values_unmet` events before
+  `enforce`; a user without MFA turned on cannot meet `acr_values=mfa`. Clients must still check
+  `acr`/`amr` in the token (`bff.StepUp.Satisfied`, backendkit v1.29.0).
+
 ### Fixed
 
 - **`max_age` on `/oauth/authorize` can be met, `0` included.** The check ran when the user clicked

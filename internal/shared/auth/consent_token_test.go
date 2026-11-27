@@ -197,3 +197,16 @@ func TestValidateConsentToken_FutureExpiry_IsValid(t *testing.T) {
 		t.Errorf("clientID = %q, want app-x", gotCID)
 	}
 }
+
+// InRequest alone is kept in the consent token.
+func TestConsentToken_KeepsInRequestAlone(t *testing.T) {
+	secret := []byte("0123456789abcdef0123456789abcdef")
+	token, err := IssueConsentTokenForRequest(7, "c", AuthnEvidence{InRequest: true}, "req", secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, ev, _, err := ValidateConsentTokenForRequest(token, secret)
+	if err != nil || !ev.InRequest {
+		t.Fatalf("evidence %+v, %v; want InRequest kept", ev, err)
+	}
+}

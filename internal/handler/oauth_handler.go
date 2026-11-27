@@ -627,7 +627,7 @@ func (h *OAuthHandler) AuthorizePost(w http.ResponseWriter, r *http.Request) {
 
 	// The sign-in that just happened is the authentication behind the code.
 	h.renderConsentPage(w, req, app.Name, loginResp.UserID, csrfToken,
-		auth.AuthnEvidence{AuthTime: loginResp.AuthTime, AMR: loginResp.AMR, ACR: loginResp.ACR}, promptLogin)
+		auth.AuthnEvidence{AuthTime: loginResp.AuthTime, AMR: loginResp.AMR, ACR: loginResp.ACR, InRequest: true}, promptLogin)
 }
 
 // handleConsentPost processes the explicit "Allow" / "Deny" consent POST.

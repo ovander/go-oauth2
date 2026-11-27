@@ -10,6 +10,17 @@ Capabilities**, non-breaking).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`max_age` on `/oauth/authorize` can be met, `0` included.** The check ran when the user clicked
+  Allow on the consent page, measuring the time since the sign-in: `max_age=0` therefore always
+  ended with `login_required` (`re-authentication required`), and a small `max_age` did whenever
+  the consent page stayed open a few seconds, so a client could not ask for a step-up sign-in
+  with it. A sign-in on the login page of the same request is the active re-authentication OIDC
+  Core §3.1.2.1 asks for, and now meets any `max_age`; an earlier sign-in is checked as before.
+  The tokens carry that sign-in's `auth_time`, `amr` and `acr`. Client-facing change: a request
+  with `max_age` that ended in `login_required` after a fresh sign-in now gets a code.
+
 ### Added
 
 - **`acr_values=mfa` can require a second-factor sign-in** (`ACR_VALUES_MODE`, default `off`). A

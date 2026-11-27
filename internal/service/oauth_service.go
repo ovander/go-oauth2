@@ -545,6 +545,13 @@ func (s *oauthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, 
 	// in the users table).  If LastLogin is nil the check is skipped — new
 	// accounts without a recorded login time cannot satisfy the constraint.
 	//
+	// A sign-in on the login page of this very request (InRequest) is the
+	// active re-authentication max_age asks for, so it satisfies any max_age,
+	// 0 included: measuring it when the user clicks Allow on the consent page
+	// would refuse max_age=0 always, and a small max_age whenever the consent
+	// page stays open a few seconds. Its auth_time is still the sign-in's, for
+	// the client to check.
+	//
 	// The nonce omission on refresh grants is intentional: auth_time is
 	// propagated from the original refresh token (preserving the time of
 	// the last actual user authentication) rather than being updated on each
@@ -559,7 +566,7 @@ func (s *oauthService) Authorize(ctx context.Context, req dto.AuthorizeRequest, 
 	if authn.AuthTime == 0 && user.LastLogin != nil {
 		authn.AuthTime = user.LastLogin.Unix()
 	}
-	if req.MaxAge >= 0 && authn.AuthTime != 0 {
+	if req.MaxAge >= 0 && authn.AuthTime != 0 && !authn.InRequest {
 		sessionAge := int(time.Since(time.Unix(authn.AuthTime, 0)).Seconds())
 		if sessionAge > req.MaxAge {
 			return "", fmt.Errorf("%w: session age %ds exceeds max_age %ds",

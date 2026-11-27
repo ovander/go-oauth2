@@ -14,8 +14,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ovander/go-oauth2/internal/contextkeys"
 	"github.com/ovander/go-oauth2/internal/dto"
 	"github.com/ovander/go-oauth2/internal/model"
+	"github.com/ovander/go-oauth2/internal/service"
 	"github.com/ovander/go-oauth2/internal/shared/auth"
 )
 
@@ -220,5 +222,72 @@ func TestAuthorizePost_InvalidPromptIsRefused(t *testing.T) {
 	w := f.post(form)
 	if f.authorized != 0 || !strings.Contains(w.Body.String(), "prompt=none cannot be combined") {
 		t.Fatalf("prompt=none login on the POST: authorized %d, status %d", f.authorized, w.Code)
+	}
+}
+
+// The sign-in on the login page is marked as made in this request: the code
+// is asked for with that evidence, which satisfies max_age=0 (step-up).
+func TestAuthorizePost_TheLoginFormSignInIsInTheRequest(t *testing.T) {
+	f := newBindingFixture()
+	var got auth.AuthnEvidence
+	f.h.oauthService = &critOAuthService{authorize: func(ctx context.Context, _ dto.AuthorizeRequest, _ uint) (string, error) {
+		got = service.AuthnEvidenceFrom(ctx)
+		f.authorized++
+		return "the-code", nil
+	}}
+	signedIn := time.Now().Unix()
+	f.h.authService = &critAuthService{login: func(_ context.Context, _ dto.LoginRequest) (*dto.LoginResponse, error) {
+		return &dto.LoginResponse{UserID: 42, AuthTime: signedIn, AMR: []string{"pwd", "otp", "mfa"}, ACR: "mfa"}, nil
+	}}
+	form := consentForm()
+	form.Del("action")
+	form.Del("authorized")
+	form.Set("max_age", "0")
+	form.Set("email", "u@example.test")
+	form.Set("password", "pw")
+	m := consentTokenField.FindStringSubmatch(f.post(form).Body.String())
+	if m == nil {
+		t.Fatal("no consent token on the consent page")
+	}
+	token := m[1]
+
+	submit := consentForm()
+	submit.Set("max_age", "0")
+	submit.Set("consent_token", token)
+	f.post(submit)
+	if f.authorized != 1 || !got.InRequest || got.AuthTime != signedIn || got.ACR != "mfa" {
+		t.Fatalf("authorized %d with evidence %+v, want one code with the in-request sign-in", f.authorized, got)
+	}
+}
+
+// A browser already signed in goes straight to the consent page (GET): that
+// sign-in was made earlier, so its evidence is not marked as in the request.
+func TestConsent_AnEarlierSignInIsNotInTheRequest(t *testing.T) {
+	f := newBindingFixture()
+	var got auth.AuthnEvidence
+	asked := 0
+	f.h.oauthService = &critOAuthService{authorize: func(ctx context.Context, _ dto.AuthorizeRequest, _ uint) (string, error) {
+		got = service.AuthnEvidenceFrom(ctx)
+		asked++
+		return "the-code", nil
+	}}
+	q := consentForm()
+	q.Del("action")
+	q.Del("authorized")
+	q.Set("max_age", "0")
+	r := httptest.NewRequest(http.MethodGet, "/oauth/authorize?"+q.Encode(), nil)
+	r = r.WithContext(context.WithValue(r.Context(), contextkeys.UserIDKey, uint(42)))
+	w := httptest.NewRecorder()
+	f.h.Authorize(w, r)
+	m := consentTokenField.FindStringSubmatch(w.Body.String())
+	if m == nil {
+		t.Fatalf("a signed-in GET did not reach the consent page: %d", w.Code)
+	}
+	submit := consentForm()
+	submit.Set("max_age", "0")
+	submit.Set("consent_token", m[1])
+	f.post(submit)
+	if asked != 1 || got.InRequest {
+		t.Fatalf("asked %d times with evidence %+v; want once, not marked in the request", asked, got)
 	}
 }

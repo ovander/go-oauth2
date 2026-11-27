@@ -126,10 +126,11 @@ func TestLOW02_MaxAge_StaleSession_ReturnsErrReauthRequired(t *testing.T) {
 	}
 }
 
-// TestLOW02_MaxAge_Zero_AlwaysRequiresReauth verifies that max_age=0 forces
-// re-authentication on every request (any non-zero session age fails).
+// TestLOW02_MaxAge_Zero_AlwaysRequiresReauth verifies that max_age=0 is not
+// met by an earlier sign-in, however recent: only a sign-in on the login page
+// of this request is (TestAuthorize_MaxAgeIsMetByASignInInTheRequest).
 func TestLOW02_MaxAge_Zero_AlwaysRequiresReauth(t *testing.T) {
-	// Logged in 1 second ago — even a brand-new session should fail max_age=0.
+	// Logged in 5 seconds ago, before this request.
 	user := userWithLastLogin(33, 5*time.Second)
 	app := &model.App{
 		ID:           33,

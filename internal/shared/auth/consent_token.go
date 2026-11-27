@@ -58,7 +58,13 @@ type consentPayload struct {
 type AuthnEvidence struct {
 	AuthTime int64    `json:"at,omitempty"`
 	AMR      []string `json:"amr,omitempty"`
-	ACR      string   `json:"acr,omitempty"`
+	// InRequest is true when the user signed in on the hosted login page of
+	// the very authorization request this evidence belongs to: an active
+	// re-authentication, which satisfies any max_age (OIDC Core §3.1.2.1),
+	// 0 included, however long the consent page then stays open (within the
+	// consent token's lifetime). It rides in the signed consent token only.
+	InRequest bool   `json:"ir,omitempty"`
+	ACR       string `json:"acr,omitempty"`
 	// Family is the refresh-token family a refresh carries over (#365); empty
 	// starts a new one. It is not part of the consent token.
 	Family string `json:"-"`

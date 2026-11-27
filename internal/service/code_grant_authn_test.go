@@ -127,3 +127,29 @@ func TestAuthorize_MaxAgeUsesTheSignInEvidence(t *testing.T) {
 		t.Errorf("a fresh sign-in with an old LastLogin = %v, want a code", err)
 	}
 }
+
+// A sign-in on the login page of this very request is the active
+// re-authentication max_age asks for (OIDC Core §3.1.2.1): it satisfies any
+// max_age, 0 included, although seconds pass before the user clicks Allow on
+// the consent page. Its auth_time stays the sign-in's.
+func TestAuthorize_MaxAgeIsMetByASignInInTheRequest(t *testing.T) {
+	now := time.Now()
+	longAgo := now.Add(-time.Hour)
+	user := &model.User{ID: 42, Email: "op@example.test", IsVerified: true, Role: model.UserRoleSuperadmin, LastLogin: &longAgo}
+	signedIn := now.Add(-8 * time.Second).Unix() // the consent page stayed open 8 s
+	for _, maxAge := range []int{0, 5} {
+		req := authnAuthorizeReq()
+		req.MaxAge = maxAge
+		ctx := WithAuthnEvidence(context.Background(), auth.AuthnEvidence{AuthTime: signedIn, AMR: []string{"pwd", "otp", "mfa"}, ACR: "mfa", InRequest: true})
+		if _, err := newAuthorizeSvc(t, user).Authorize(ctx, req, user.ID); err != nil {
+			t.Errorf("max_age=%d after a sign-in in this request = %v, want a code", maxAge, err)
+		}
+	}
+	// The same sign-in time, not made in this request, is checked as before.
+	req := authnAuthorizeReq()
+	req.MaxAge = 0
+	ctx := WithAuthnEvidence(context.Background(), auth.AuthnEvidence{AuthTime: signedIn})
+	if _, err := newAuthorizeSvc(t, user).Authorize(ctx, req, user.ID); !errors.Is(err, ErrReauthRequired) {
+		t.Errorf("max_age=0 with an earlier sign-in = %v, want ErrReauthRequired", err)
+	}
+}

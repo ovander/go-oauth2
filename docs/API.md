@@ -176,7 +176,7 @@ GET https://auth.example.com/oauth/authorize
 | `scope` | recommended | space-delimited |
 | `nonce` | recommended | echoed into the ID token |
 | `code_challenge` / `code_challenge_method` | required for public clients | `S256` |
-| `max_age` | optional | OIDC: forces re-auth if the session is older |
+| `max_age` | optional | OIDC: the most seconds since the user last signed in. The login page is always shown, and a sign-in on it during this request meets any `max_age`, `0` included (since v1.16.2; before, the check ran when the user clicked Allow, so `0` always failed with `login_required`). The tokens carry that sign-in's `auth_time`, `amr` and `acr`: a client that needs a recent or second-factor sign-in checks them |
 | `prompt` | optional | OIDC (v1.8.0): `login` always shows the login page, even for a signed-in browser, and sets a new `auth_time` (use it with `max_age` before a sensitive action); `none` never shows a page and redirects with `login_required` (the login and consent pages are always shown, so `none` cannot succeed; before v1.14.4 a request carrying a bearer access token got `consent_required`); `none` with another value is `invalid_request`. Other values are ignored. |
 
 The server renders the hosted **login page** followed by a **consent page**. This is a
